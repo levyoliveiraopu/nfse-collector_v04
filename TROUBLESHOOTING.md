@@ -237,14 +237,12 @@ O sistema já possui lógica de retry automático com backoff exponencial. Se o 
 python main.py --cnpj 12345678000199
 ```
 
-**2.** Para evitar que o problema ocorra na execução completa, processe clientes individualmente com intervalo entre eles:
+**2.** Divida os clientes em lotes menores para reduzir a pressão de requisições:
 
 ```bash
-# Processa um CNPJ específico
-python main.py --cnpj 12345678000199
-
-# Aguarda 10 minutos e processa o próximo
-sleep 600 && python main.py --cnpj 98765432000111
+# Divide os 300 clientes em 6 lotes de ~50
+python main.py --lote 1 --total-lotes 6
+sleep 600 && python main.py --lote 2 --total-lotes 6
 ```
 
 **3.** Aumente o `RATE_LIMIT_DELAY` no `config/.env` (ex: de 3 para 10 segundos).
@@ -437,18 +435,28 @@ Cada certificado `.pfx` carregado em memória, combinado com o parsing dos XMLs 
 
 ### Como resolver
 
-**Solução principal — Processar clientes individualmente:**
+**Solução principal — Processar em lotes menores:**
 
-Use o parâmetro `--cnpj` para processar um cliente por vez, reduzindo o uso de memória:
+Use os parâmetros `--lote` e `--total-lotes` para dividir os clientes em grupos:
 
 ```bash
-python main.py --cnpj 12345678000199
-python main.py --cnpj 98765432000111
+# Divide os 300 clientes em 6 lotes de ~50
+python main.py --lote 1 --total-lotes 6   # clientes 1-50
+python main.py --lote 2 --total-lotes 6   # clientes 51-100
+python main.py --lote 3 --total-lotes 6   # clientes 101-150
 ```
 
-**Automatizar no cron com múltiplas execuções:**
+**Automatizar no cron com intervalo entre lotes:**
 
-Crie um script que leia os CNPJs do CSV e processe cada um separadamente com intervalo entre eles. Alternativamente, aumente a RAM da VPS ou adicione swap (veja abaixo).
+```bash
+# Exemplo de crontab com 6 lotes, um por hora a partir das 02h
+0 2 5 * * /caminho/nfse-collector/scripts/executar_mensal.sh --lote 1 --total-lotes 6
+0 3 5 * * /caminho/nfse-collector/scripts/executar_mensal.sh --lote 2 --total-lotes 6
+0 4 5 * * /caminho/nfse-collector/scripts/executar_mensal.sh --lote 3 --total-lotes 6
+0 5 5 * * /caminho/nfse-collector/scripts/executar_mensal.sh --lote 4 --total-lotes 6
+0 6 5 * * /caminho/nfse-collector/scripts/executar_mensal.sh --lote 5 --total-lotes 6
+0 7 5 * * /caminho/nfse-collector/scripts/executar_mensal.sh --lote 6 --total-lotes 6
+```
 
 **Verificar uso de memória disponível:**
 

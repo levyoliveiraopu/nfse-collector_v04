@@ -343,6 +343,8 @@ def processar_todos_clientes(
     mes: int,
     dry_run: bool = False,
     cnpj_filtro: str | None = None,
+    lote: int | None = None,
+    total_lotes: int | None = None,
 ) -> None:
     """Processa o lote completo de clientes para o período informado.
 
@@ -351,6 +353,8 @@ def processar_todos_clientes(
         mes:          Mês de competência (1–12).
         dry_run:      Se True, não faz uploads nem salva estado NSU.
         cnpj_filtro:  Se informado, processa apenas esse CNPJ.
+        lote:         Número do lote a processar (1-based). Requer total_lotes.
+        total_lotes:  Total de lotes em que os clientes serão divididos.
     """
     log_level      = os.getenv("LOG_LEVEL", "INFO")
     credentials    = os.getenv("GOOGLE_CREDENTIALS_JSON", "")
@@ -372,7 +376,20 @@ def processar_todos_clientes(
 
     # 3. Clientes
     clientes = _carregar_clientes("config/clientes.csv", cnpj_filtro)
-    logger.info("%d cliente(s) carregado(s).", len(clientes))
+
+    # 3b. Fatiar por lote se solicitado
+    if lote and total_lotes:
+        import math
+        tamanho_lote = math.ceil(len(clientes) / total_lotes)
+        inicio = (lote - 1) * tamanho_lote
+        fim = min(lote * tamanho_lote, len(clientes))
+        logger.info(
+            "Lote %d/%d: clientes %d–%d de %d total.",
+            lote, total_lotes, inicio + 1, fim, len(clientes),
+        )
+        clientes = clientes[inicio:fim]
+
+    logger.info("%d cliente(s) a processar.", len(clientes))
 
     # 4. Estado NSU
     estado = nsu_tracker.carregar_estado(nsu_estado_path)

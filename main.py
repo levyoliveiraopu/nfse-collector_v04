@@ -8,6 +8,7 @@ Uso:
   python main.py --cnpj 12345678000199 --ano 2026 --mes 03
   python main.py --dry-run                    # simula sem uploads nem NSU
   python main.py --reset-nsu 12345678000199   # zera NSU e encerra
+  python main.py --lote 1 --total-lotes 6     # processa lote 1 de 6
 """
 
 import argparse
@@ -90,6 +91,18 @@ def _construir_parser() -> argparse.ArgumentParser:
         metavar="CNPJ",
         help="Reseta o NSU do CNPJ informado para 0 e encerra.",
     )
+    parser.add_argument(
+        "--lote",
+        type=int,
+        metavar="N",
+        help="Número do lote a processar (1-based). Requer --total-lotes.",
+    )
+    parser.add_argument(
+        "--total-lotes",
+        type=int,
+        metavar="T",
+        help="Total de lotes em que os clientes serão divididos.",
+    )
     return parser
 
 
@@ -114,6 +127,19 @@ def main() -> None:
 
     # --- Validar variáveis de ambiente ---
     _validar_env()
+
+    # --- Validar parâmetros de lote ---
+    if args.lote and not args.total_lotes:
+        parser.error("--lote requer --total-lotes.")
+    if args.total_lotes and not args.lote:
+        parser.error("--total-lotes requer --lote.")
+    if args.lote and args.total_lotes:
+        if args.lote < 1 or args.lote > args.total_lotes:
+            parser.error(
+                f"--lote deve estar entre 1 e {args.total_lotes}."
+            )
+        if args.total_lotes < 2:
+            parser.error("--total-lotes deve ser no mínimo 2.")
 
     # --- Determinar competência ---
     if args.ano and args.mes:
@@ -143,6 +169,8 @@ def main() -> None:
     print(f"Competência   : {mes:02d}/{ano}")
     print(f"Clientes carregados: {total_clientes}")
     print(f"Modo          : {modo}")
+    if args.lote:
+        print(f"Lote          : {args.lote}/{args.total_lotes}")
     print()
 
     # --- Processar ---
@@ -153,6 +181,8 @@ def main() -> None:
         mes=mes,
         dry_run=args.dry_run,
         cnpj_filtro=args.cnpj,
+        lote=args.lote,
+        total_lotes=args.total_lotes,
     )
 
 
