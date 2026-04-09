@@ -249,17 +249,25 @@ def _processar_cliente(
                 "total": 0.0,
             }
 
-        # h. Extrair dados de cada nota
-        lista_dados = [
-            nfse_fetcher.extrair_dados_nfse(dfe["xml"]) for dfe in lista_mes
-        ]
-
-        # i. Preparar XMLs para upload
+        # h. Extrair dados de cada nota e preparar XMLs para upload
+        lista_dados: list[dict] = []
         lista_xmls: list[tuple[str, bytes]] = []
-        for dado, dfe in zip(lista_dados, lista_mes):
-            chave = dado.get("chave_acesso") or dfe.get("nsu", "sem_chave")
+
+        for dfe in lista_mes:
+            xml_content = nfse_fetcher.extrair_xml_do_doc(dfe)
+            if not xml_content:
+                logger.warning(
+                    "Documento sem XML identificável — NSU=%s. Ignorado.",
+                    dfe.get("nsu", "?"),
+                )
+                continue
+
+            dados = nfse_fetcher.extrair_dados_nfse(xml_content)
+            lista_dados.append(dados)
+
+            chave = dados.get("chave_acesso") or dfe.get("nsu", "sem_chave")
             nome_xml = f"nfse_{chave}.xml"
-            lista_xmls.append((nome_xml, dfe["xml"].encode("utf-8")))
+            lista_xmls.append((nome_xml, xml_content.encode("utf-8")))
 
         # j. Gerar Excel
         excel_bytes = excel_builder.gerar_excel_cliente(

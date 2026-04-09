@@ -31,6 +31,10 @@ logger = logging.getLogger(__name__)
 
 _BASE_URL = "https://adn.nfse.gov.br/contribuintes"
 
+
+class _RateLimitError(Exception):
+    """Exceção interna para sinalizar HTTP 429 ao tenacity."""
+
 # Namespaces conhecidos da NFS-e Nacional (tentados em ordem)
 _NAMESPACES_NFSE = [
     "http://www.sped.fazenda.gov.br/nfse",
@@ -74,9 +78,11 @@ def buscar_lote_dfe(session: requests.Session, ultimo_nsu: int, cnpj: str) -> di
     params = {"cnpjConsulta": cnpj}
 
     @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=2, min=4, max=30),
-        retry=retry_if_exception_type((requests.Timeout, requests.ConnectionError)),
+        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=2, min=4, max=60),
+        retry=retry_if_exception_type(
+            (requests.Timeout, requests.ConnectionError, _RateLimitError)
+        ),
     )
     def _executar_requisicao() -> dict:
         logger.debug(
@@ -86,12 +92,13 @@ def buscar_lote_dfe(session: requests.Session, ultimo_nsu: int, cnpj: str) -> di
 
         if resposta.status_code == 429:
             logger.warning(
-                "HTTP 429 (rate limit) para CNPJ=%s NSU=%d — aguardando 60s.",
+                "HTTP 429 (rate limit) para CNPJ=%s NSU=%d — retry via tenacity.",
                 cnpj,
                 ultimo_nsu,
             )
-            time.sleep(60)
-            resposta = session.get(url, params=params)
+            raise _RateLimitError(
+                f"HTTP 429 para CNPJ={cnpj} NSU={ultimo_nsu}"
+            )
 
         if resposta.status_code == 200:
             return resposta.json()
@@ -217,7 +224,7 @@ def filtrar_por_competencia(
     resultado: list[dict] = []
 
     for doc in lista_dfe:
-        xml_content = _extrair_xml_do_doc(doc)
+        xml_content = extrair_xml_do_doc(doc)
         if not xml_content:
             logger.warning(
                 "Documento sem campo XML identificável — NSU=%s. Ignorado.",
@@ -412,7 +419,7 @@ def extrair_dados_nfse(xml_content: str) -> dict:
 # Funções auxiliares privadas
 # ---------------------------------------------------------------------------
 
-def _extrair_xml_do_doc(doc: dict) -> str | None:
+def extrair_xml_do_doc(doc: dict) -> str | None:
     """Retorna o conteúdo XML de um documento DFe retornado pela API ADN.
 
     A API pode entregar o XML em diferentes campos dependendo da versão.
