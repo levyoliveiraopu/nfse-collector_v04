@@ -1,0 +1,10 @@
+config/clientes.csv
+config/certificados/
+config/estado/
+config/.env
+config/google_credentials.json
+logs/
+__pycache__/
+*.pyc
+venv/
+.venv/
