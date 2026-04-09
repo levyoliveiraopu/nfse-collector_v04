@@ -371,6 +371,7 @@ def _gravar_temporario(dados_pem: bytes, sufixo: str) -> str:
         delete=False, suffix=sufixo, mode="wb"
     ) as tmp:
         tmp.write(dados_pem)
+        os.fchmod(tmp.fileno(), 0o600)
         return tmp.name
 
 

@@ -462,10 +462,7 @@ def _parsear_data(valor: str) -> datetime | None:
         "%Y-%m-%d",
         "%d/%m/%Y",
     )
-    # Normalizar offsets com dois pontos ("−03:00" → "−0300") para %z
     valor_norm = valor.strip()
-    if len(valor_norm) > 19 and valor_norm[-3] == ":":
-        valor_norm = valor_norm[:-3] + valor_norm[-2:]
 
     for fmt in formatos:
         try:

@@ -352,10 +352,6 @@ def processar_todos_clientes(
         dry_run:      Se True, não faz uploads nem salva estado NSU.
         cnpj_filtro:  Se informado, processa apenas esse CNPJ.
     """
-    # Importação local para evitar importação circular no topo
-    from dotenv import load_dotenv
-    load_dotenv("config/.env")
-
     log_level      = os.getenv("LOG_LEVEL", "INFO")
     credentials    = os.getenv("GOOGLE_CREDENTIALS_JSON", "")
     drive_root_id  = os.getenv("GOOGLE_DRIVE_FOLDER_ROOT_ID", "")
