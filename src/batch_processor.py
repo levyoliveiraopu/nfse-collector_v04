@@ -158,9 +158,9 @@ def _gerar_excel_consolidado(
             else:
                 cell.alignment = alin_esq
 
+    from openpyxl.utils import get_column_letter
     larguras = [18, 42, 12, 22, 14]
     for col_idx, largura in enumerate(larguras, start=1):
-        from openpyxl.utils import get_column_letter
         ws.column_dimensions[get_column_letter(col_idx)].width = largura
 
     ws.freeze_panes = "A2"
@@ -202,10 +202,10 @@ def _processar_cliente(
         logger.info("Processando %s (%s)", razao_social, cnpj)
 
         # b. Criar session mTLS
-        session, cert_tmp, key_tmp = auth.criar_session_cliente(cert_path, cert_password)
+        session, cert_tmp, key_tmp, certificate = auth.criar_session_cliente(cert_path, cert_password)
 
-        # c. Validar CNPJ do certificado
-        cnpj_cert = auth.extrair_cnpj_do_certificado(cert_path, cert_password)
+        # c. Validar CNPJ do certificado (usa o objeto já carregado, sem reabrir o .pfx)
+        cnpj_cert = auth.extrair_cnpj_do_certificado_obj(certificate, cert_path)
         if cnpj_cert != cnpj:
             logger.error(
                 "CNPJ do certificado (%s) difere do CSV (%s). Cliente ignorado.",
@@ -384,7 +384,7 @@ def processar_todos_clientes(
     # 5. Processar cada cliente
     resultados: list[dict] = []
 
-    for cliente in tqdm(clientes, desc="Clientes", unit="cliente", ncols=80):
+    for idx, cliente in enumerate(tqdm(clientes, desc="Clientes", unit="cliente", ncols=80)):
         resultado = _processar_cliente(
             cliente=cliente,
             ano=ano,
@@ -399,7 +399,7 @@ def processar_todos_clientes(
         resultados.append(resultado)
 
         # o. Aguardar antes do próximo cliente
-        if cliente is not clientes[-1]:
+        if idx < len(clientes) - 1:
             time.sleep(rate_limit_delay)
 
     # 6. Excel consolidado

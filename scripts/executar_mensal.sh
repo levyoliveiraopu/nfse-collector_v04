@@ -9,6 +9,9 @@
 # Ir para o diretório do projeto
 cd "$(dirname "$0")/.."
 
+# Garantir que a pasta de logs exista
+mkdir -p logs
+
 # Calcular mês anterior automaticamente
 ANO=$(date -d "$(date +%Y-%m-01) -1 month" +%Y)
 MES=$(date -d "$(date +%Y-%m-01) -1 month" +%m)
