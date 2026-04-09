@@ -206,10 +206,11 @@ Preencha cada variável conforme as instruções nos comentários do próprio ar
 
 | Variável | Descrição |
 |---|---|
-| `GOOGLE_CREDENTIALS_PATH` | Caminho para o JSON da Service Account |
+| `GOOGLE_CREDENTIALS_JSON` | Caminho para o JSON da Service Account |
 | `GOOGLE_DRIVE_FOLDER_ROOT_ID` | ID da pasta raiz no Google Drive (passo 4.7) |
-| `LOG_DIR` | Diretório onde os logs serão salvos |
-| `NSU_STATE_FILE` | Caminho para o arquivo `ultimo_nsu.json` |
+| `RATE_LIMIT_DELAY` | Segundos entre chamadas à API (padrão: 3) |
+| `LOG_LEVEL` | Nível de log: DEBUG, INFO, WARNING, ERROR (padrão: INFO) |
+| `NSU_ESTADO_PATH` | Caminho para o arquivo `ultimo_nsu.json` |
 
 Salve o arquivo com `Ctrl+O`, `Enter`, `Ctrl+X`.
 

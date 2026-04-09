@@ -237,17 +237,19 @@ O sistema já possui lógica de retry automático com backoff exponencial. Se o 
 python main.py --cnpj 12345678000199
 ```
 
-**2.** Para evitar que o problema ocorra na execução completa, processe em lotes menores com intervalo entre eles:
+**2.** Para evitar que o problema ocorra na execução completa, processe clientes individualmente com intervalo entre eles:
 
 ```bash
-# Processa os primeiros 50 clientes
-python main.py --lote 1 --total 6
+# Processa um CNPJ específico
+python main.py --cnpj 12345678000199
 
-# Aguarda 10 minutos e processa o próximo lote
-sleep 600 && python main.py --lote 2 --total 6
+# Aguarda 10 minutos e processa o próximo
+sleep 600 && python main.py --cnpj 98765432000111
 ```
 
-**3.** Ajuste o agendamento do cron para distribuir a carga em horários de menor uso (ex: madrugada):
+**3.** Aumente o `RATE_LIMIT_DELAY` no `config/.env` (ex: de 3 para 10 segundos).
+
+**4.** Ajuste o agendamento do cron para distribuir a carga em horários de menor uso (ex: madrugada):
 
 ```bash
 crontab -e
@@ -288,11 +290,9 @@ A conta Google associada à Service Account atingiu o limite de armazenamento do
 
 Para uso em produção com 300 clientes gerando XMLs e Excels mensalmente, recomenda-se contratar um plano Google One ou Google Workspace com espaço adequado.
 
-**Verificar o espaço disponível antes de executar:**
+**Verificar o espaço disponível:**
 
-```bash
-python main.py --check-drive
-```
+Acesse [drive.google.com](https://drive.google.com) com a conta associada e verifique o uso de armazenamento no rodapé esquerdo da página.
 
 ---
 
@@ -397,9 +397,9 @@ Se não for possível recuperar nenhum valor:
 cp config/estado/ultimo_nsu.json config/estado/ultimo_nsu.json.corrompido
 ```
 
-**2.** Recrie o arquivo com todos os CNPJs zerados. Para gerar automaticamente a partir do `clientes.csv`:
+**2.** Recrie o arquivo com um JSON vazio e resete cada CNPJ conforme necessário:
 ```bash
-python scripts/resetar_nsu.py
+echo '{}' > config/estado/ultimo_nsu.json
 ```
 
 **3.** Execute o sistema novamente. Todos os CNPJs serão reprocessados desde o NSU 0, o que pode demorar mais que o normal.
@@ -437,31 +437,18 @@ Cada certificado `.pfx` carregado em memória, combinado com o parsing dos XMLs 
 
 ### Como resolver
 
-**Solução principal — Processar em lotes menores:**
+**Solução principal — Processar clientes individualmente:**
 
-Use os parâmetros `--lote` e `--total` para dividir os 300 clientes em grupos:
-
-```bash
-# Divide os 300 clientes em 6 lotes de 50
-python main.py --lote 1 --total 6   # clientes 1-50
-python main.py --lote 2 --total 6   # clientes 51-100
-python main.py --lote 3 --total 6   # clientes 101-150
-python main.py --lote 4 --total 6   # clientes 151-200
-python main.py --lote 5 --total 6   # clientes 201-250
-python main.py --lote 6 --total 6   # clientes 251-300
-```
-
-**Automatizar no cron com intervalo entre lotes:**
+Use o parâmetro `--cnpj` para processar um cliente por vez, reduzindo o uso de memória:
 
 ```bash
-# Exemplo de crontab com 6 lotes, um por hora a partir das 02h
-0 2 5 * * /caminho/nfse-collector/scripts/executar_mensal.sh --lote 1 --total 6
-0 3 5 * * /caminho/nfse-collector/scripts/executar_mensal.sh --lote 2 --total 6
-0 4 5 * * /caminho/nfse-collector/scripts/executar_mensal.sh --lote 3 --total 6
-0 5 5 * * /caminho/nfse-collector/scripts/executar_mensal.sh --lote 4 --total 6
-0 6 5 * * /caminho/nfse-collector/scripts/executar_mensal.sh --lote 5 --total 6
-0 7 5 * * /caminho/nfse-collector/scripts/executar_mensal.sh --lote 6 --total 6
+python main.py --cnpj 12345678000199
+python main.py --cnpj 98765432000111
 ```
+
+**Automatizar no cron com múltiplas execuções:**
+
+Crie um script que leia os CNPJs do CSV e processe cada um separadamente com intervalo entre eles. Alternativamente, aumente a RAM da VPS ou adicione swap (veja abaixo).
 
 **Verificar uso de memória disponível:**
 
