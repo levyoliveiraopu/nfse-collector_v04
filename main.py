@@ -26,17 +26,21 @@ from dotenv import load_dotenv
 
 def _validar_env() -> None:
     """Encerra com mensagem de erro se alguma variável obrigatória estiver ausente."""
-    storage_backend = os.getenv("STORAGE_BACKEND", "gdrive").strip().lower()
+    storage_backend = os.getenv("STORAGE_BACKEND", "local").strip().lower()
+    if storage_backend == "noop":
+        storage_backend = "local"
     vars_obrigatorias = ["NSU_ESTADO_PATH"]
     if storage_backend == "gdrive":
         vars_obrigatorias.extend([
             "GOOGLE_CREDENTIALS_JSON",
             "GOOGLE_DRIVE_FOLDER_ROOT_ID",
         ])
-    elif storage_backend != "noop":
+    elif storage_backend == "local":
+        vars_obrigatorias.append("LOCAL_OUTPUT_DIR")
+    else:
         print(
             "Erro: STORAGE_BACKEND inválido. "
-            "Use 'gdrive' ou 'noop'."
+            "Use 'local' ou 'gdrive'."
         )
         sys.exit(1)
 
