@@ -8,9 +8,9 @@
 Antes de iniciar, certifique-se de ter:
 
 - VPS com Ubuntu 22.04 LTS (mínimo 2 GB de RAM e 20 GB de disco)
-- 300 certificados digitais e-CNPJ A1, um arquivo `.pfx` por cliente
-- Conta Google com acesso ao Google Drive
-- Acesso ao Google Cloud Console (console.cloud.google.com)
+- Certificados digitais e-CNPJ A1, um arquivo `.pfx` por cliente listado em `config/clientes.csv`
+- (Opcional) Conta Google com acesso ao Google Drive
+- (Opcional) Acesso ao Google Cloud Console (console.cloud.google.com)
 
 ---
 
@@ -32,7 +32,7 @@ Cada arquivo deve ser nomeado com os **14 dígitos do CNPJ** (sem pontos, barras
 12345678000199.pfx
 ```
 
-### 2.3. Transferir os 300 arquivos via SCP
+### 2.3. Transferir os arquivos via SCP
 
 Na sua máquina local, execute o comando abaixo substituindo `usuario`, `ip` e `/caminho` pelos valores corretos da sua VPS:
 
@@ -81,7 +81,10 @@ echo "config/clientes.csv" >> .gitignore
 
 ---
 
-## 4. CONFIGURAR O GOOGLE DRIVE (SERVICE ACCOUNT)
+## 4. TRILHA OPCIONAL — CONFIGURAR GOOGLE DRIVE (SERVICE ACCOUNT)
+
+> Esta trilha só é necessária se você for usar `STORAGE_BACKEND=gdrive`.  
+> Se for usar apenas `STORAGE_BACKEND=local`, pode pular para a seção 5.
 
 Siga os passos abaixo no Google Cloud Console.
 
@@ -195,27 +198,38 @@ bash scripts/instalar.sh
 
 O script cria o ambiente virtual Python, instala todas as dependências e cria as pastas necessárias.
 
-### 5.6. Configurar o arquivo .env
+### 5.6. Configurar o arquivo .env (duas trilhas)
 
 ```bash
 cp config/.env.example config/.env
 nano config/.env
 ```
 
-Preencha cada variável conforme as instruções nos comentários do próprio arquivo. As principais são:
+Preencha cada variável conforme as instruções nos comentários do próprio arquivo.
+As variáveis abaixo estão organizadas por trilha de setup:
+
+#### Trilha 1 (mínima): `STORAGE_BACKEND=local`
 
 | Variável | Descrição |
 |---|---|
-| `STORAGE_BACKEND` | Backend de armazenamento: `local` (padrão) ou `gdrive`. |
-| `GOOGLE_CREDENTIALS_JSON` | Caminho para o JSON da Service Account |
-| `GOOGLE_DELEGATED_USER_EMAIL` | E-mail do usuário para Domain-Wide Delegation (opcional; usar quando não houver Shared Drive) |
-| `GOOGLE_DRIVE_FOLDER_ROOT_ID` | ID da pasta raiz no Google Drive (passo 4.7) |
+| `STORAGE_BACKEND` | Defina como `local` |
+| `LOCAL_OUTPUT_DIR` | Diretório real onde Excel/XML serão gravados em disco |
 | `RATE_LIMIT_DELAY` | Segundos entre chamadas à API (padrão: 3) |
 | `MAX_DOCUMENTOS_POR_EXECUCAO` | Limite de documentos por cliente em cada execução (`0` = sem limite). Útil para testes em produção (ex: `100`). |
 | `LOG_LEVEL` | Nível de log: DEBUG, INFO, WARNING, ERROR (padrão: INFO) |
 | `LOG_TO_CONSOLE` | Exibe logs no terminal (`true`/`false`, padrão: `true`) |
 | `HTTP_TIMEOUT_SECONDS` | Timeout HTTP por requisição à API ADN em segundos (padrão: 30) |
 | `NSU_ESTADO_PATH` | Caminho para o arquivo `ultimo_nsu.json` |
+
+#### Trilha 2 (adicional/opcional): `STORAGE_BACKEND=gdrive`
+
+Além da trilha mínima, configure também:
+
+| Variável | Descrição |
+|---|---|
+| `GOOGLE_CREDENTIALS_JSON` | Caminho para o JSON da Service Account |
+| `GOOGLE_DELEGATED_USER_EMAIL` | E-mail do usuário para Domain-Wide Delegation (opcional; usar quando não houver Shared Drive) |
+| `GOOGLE_DRIVE_FOLDER_ROOT_ID` | ID da pasta raiz no Google Drive (passo 4.7) |
 
 Salve o arquivo com `Ctrl+O`, `Enter`, `Ctrl+X`.
 
@@ -325,37 +339,41 @@ openssl pkcs12 -info -in config/certificados/12345678000199.pfx -noout
 
 ## 9. PRIMEIRA EXECUÇÃO
 
-### 9.1. Testar com um único cliente
+### 9.1. Testar com um único cliente (funciona em `local` e `gdrive`)
 
 ```bash
 python main.py --cnpj 12345678000199
 ```
 
-Verifique nos logs se a autenticação foi bem-sucedida e se os arquivos foram enviados ao Drive.
+Verifique nos logs se a autenticação foi bem-sucedida.
+- Em `STORAGE_BACKEND=local`, confirme os arquivos no `LOCAL_OUTPUT_DIR`.
+- Em `STORAGE_BACKEND=gdrive`, confirme também o envio ao Drive.
 
-### 9.2. Simular a execução completa (sem enviar ao Drive)
+### 9.2. Simular a execução completa (`--dry-run`)
 
 ```bash
 python main.py --dry-run
 ```
 
-O `--dry-run` processa tudo normalmente mas não faz upload para o Google Drive. Útil para validar o ambiente antes da execução real.
+O `--dry-run` processa tudo normalmente, sem persistir uploads externos. Útil para validar o ambiente antes da execução real.
 
-Para validar pipeline em CI/local dev sem dependências externas (Google Drive), use o backend `local`:
+### 9.3. Exemplo funcional no modo local (sem Google)
+
+Para validar pipeline em CI/local dev sem dependências externas, force o backend local:
 
 ```bash
 STORAGE_BACKEND=local python main.py --ano 2026 --mes 3
 ```
 
-Nesse modo, o sistema grava os arquivos apenas em disco local (`LOCAL_OUTPUT_DIR`) e não envia nada ao Google Drive.
+Nesse modo, o sistema grava os arquivos apenas em disco local (`LOCAL_OUTPUT_DIR`) e não envia nada para integrações externas.
 
-### 9.3. Execução real com todos os clientes
+### 9.4. Execução real para toda a base de clientes
 
 ```bash
 python main.py
 ```
 
-### 9.4. Verificar os resultados
+### 9.5. Verificar os resultados (modo local e modo gdrive)
 
 ```bash
 # Confirmar que o NSU foi salvo
@@ -386,17 +404,18 @@ Para aumentar a robustez operacional, mantenha a coleta e a sincronização em j
 - **Coleta primeiro** (gera arquivos localmente e registra em `logs/cron_YYYY-MM.log`)
 - **Sincronização depois** (envia os artefatos e registra em `logs/sync_YYYY-MM.log`)
 
-Exemplo (dia 5 de cada mês):
+Exemplo (dia 5 de cada mês, funcionando no modo local):
 
 ```cron
 # 08:00 - coleta
 0 8 5 * * /caminho/nfse-collector/scripts/executar_mensal.sh
 
 # 08:20 - sincronização (alvo rsync/local-remote)
-20 8 5 * * /caminho/nfse-collector/scripts/sync_output.sh --target local-remote --source output --dest usuario@host:/backup/nfse/output
+20 8 5 * * /caminho/nfse-collector/scripts/sync_output.sh --target local-remote --source /caminho/real/definido/no/LOCAL_OUTPUT_DIR --dest usuario@host:/backup/nfse/output
 ```
 
 > Ajuste o intervalo entre os jobs conforme o tempo médio de coleta do seu ambiente.
+> A sincronização externa com `scripts/sync_output.sh` depende do diretório **real** configurado em `LOCAL_OUTPUT_DIR`. Evite assumir `output/` se o seu `.env` aponta para outro caminho.
 
 Salve com `Ctrl+O`, `Enter`, `Ctrl+X`.
 
@@ -482,7 +501,7 @@ tar -czf backup_nfse_$(date +%Y-%m).tar.gz \
 ```
 VPS (cron todo dia 5 às 08h)
   |
-  +-- Lê clientes.csv (300 CNPJs + caminhos dos certificados)
+  +-- Lê clientes.csv (quantidade de CNPJs conforme `config/clientes.csv` + caminhos dos certificados)
   |
   +-- Para cada cliente:
   |     |
@@ -497,10 +516,12 @@ VPS (cron todo dia 5 às 08h)
   |     |     +-- Gera arquivo XML individual por nota
   |     |
   |     +-- Gera Excel resumo do cliente com os dados extraídos
-  |     +-- Envia XMLs + Excel para pasta do cliente no Google Drive
+  |     +-- Se `STORAGE_BACKEND=gdrive`: envia XMLs + Excel para pasta do cliente no Google Drive
+  |     +-- Se `STORAGE_BACKEND=local`: grava XMLs + Excel em `LOCAL_OUTPUT_DIR`
   |     +-- Salva o maior NSU encontrado no ultimo_nsu.json
   |
-  +-- Gera Excel CONSOLIDADO com todos os clientes
-  +-- Salva Excel consolidado na pasta raiz do Google Drive
+  +-- Gera Excel CONSOLIDADO com todos os clientes processados
+  +-- Se `gdrive`: salva consolidado na pasta raiz do Google Drive
+  +-- Se `local`: salva consolidado em `LOCAL_OUTPUT_DIR`
   +-- Grava log completo da execução
 ```
