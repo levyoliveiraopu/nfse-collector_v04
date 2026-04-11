@@ -24,6 +24,7 @@ import requests
 from cryptography import x509
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.serialization import pkcs12
+from cryptography.x509.oid import NameOID
 from requests.adapters import HTTPAdapter
 
 logger = logging.getLogger(__name__)
@@ -180,7 +181,13 @@ def extrair_cnpj_do_certificado(cert_pfx_path: str, cert_password: str) -> str:
 
     _verificar_validade(certificate, cert_pfx_path)
 
-    # Montar string com todos os atributos do Subject para facilitar a busca
+    # 1) Priorizar CN (Common Name), que costuma trazer o CNPJ do titular
+    #    no formato "RAZAO SOCIAL:12345678000199".
+    cnpj_cn = _extrair_cnpj_do_cn(certificate.subject)
+    if cnpj_cn:
+        return cnpj_cn
+
+    # 2) Fallback: buscar em todos os atributos do Subject
     subject_str = _subject_para_str(certificate.subject)
     logger.debug("Subject do certificado '%s': %s", os.path.basename(cert_pfx_path), subject_str)
 
@@ -360,6 +367,24 @@ def _subject_para_str(subject: x509.Name) -> str:
     for atributo in subject:
         partes.append(f"{atributo.oid.dotted_string}={atributo.value}")
     return " ".join(partes)
+
+
+def _extrair_cnpj_do_cn(subject: x509.Name) -> str:
+    """Extrai CNPJ a partir do atributo CN (Common Name), se presente.
+
+    Estratégia:
+    1) Tenta localizar CNPJ no valor do CN (ex.: "EMPRESA:12345678000199").
+    2) Se não encontrar em nenhum CN, retorna string vazia.
+    """
+    atributos_cn = subject.get_attributes_for_oid(NameOID.COMMON_NAME)
+    for atributo in atributos_cn:
+        valor_cn = (atributo.value or "").strip()
+        if not valor_cn:
+            continue
+        cnpj = _extrair_cnpj_da_string(valor_cn)
+        if cnpj:
+            return cnpj
+    return ""
 
 
 def _extrair_cnpj_da_string(texto: str) -> str:
