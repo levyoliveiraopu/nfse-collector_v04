@@ -18,15 +18,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from tqdm import tqdm
 
-from src import (
-    auth,
-    excel_builder,
-    gdrive_uploader,
-    local_uploader,
-    nfse_fetcher,
-    nsu_tracker,
-)
-from src.storage_backend import StorageBackend
+from src import auth, excel_builder, nfse_fetcher, nsu_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +26,20 @@ _COR_CABECALHO   = "1B5E20"
 _COR_LINHA_PAR   = "F1F8E9"
 _COR_LINHA_IMPAR = "FFFFFF"
 _STORAGE_BACKENDS_VALIDOS = {"local", "gdrive"}
+
+
+def _obter_storage_backend():
+    """Retorna backend de storage conforme STORAGE_BACKEND."""
+    backend = os.getenv("STORAGE_BACKEND", "gdrive").strip().lower()
+    if backend == "gdrive":
+        from src import gdrive_uploader as storage_uploader
+        return backend, storage_uploader
+    if backend == "noop":
+        from src import noop_uploader as storage_uploader
+        return backend, storage_uploader
+    raise ValueError(
+        f"STORAGE_BACKEND inválido: '{backend}'. Use 'gdrive' ou 'noop'."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -262,8 +268,7 @@ def _processar_cliente(
     max_documentos_por_execucao: int | None,
     nsu_estado_path: str,
     drive_root_id: str,
-    storage_backend: str,
-    local_output_dir: str,
+    storage_uploader,
     dry_run: bool,
     todas_competencias: bool = False,
 ) -> dict:
@@ -375,27 +380,16 @@ def _processar_cliente(
 
         # k. Persistir arquivos (backend configurado)
         if not dry_run:
-            if storage_backend == "gdrive":
-                gdrive_uploader.organizar_e_enviar_cliente(
-                    service,
-                    drive_root_id,
-                    cnpj,
-                    razao_social,
-                    ano,
-                    mes,
-                    lista_xmls,
-                    excel_bytes,
-                )
-            else:
-                _salvar_arquivos_local_cliente(
-                    base_dir=local_output_dir,
-                    cnpj=cnpj,
-                    razao_social=razao_social,
-                    ano=ano,
-                    mes=mes,
-                    lista_xmls=lista_xmls,
-                    excel_bytes=excel_bytes,
-                )
+            storage_uploader.organizar_e_enviar_cliente(
+                service,
+                drive_root_id,
+                cnpj,
+                razao_social,
+                ano,
+                mes,
+                lista_xmls,
+                excel_bytes,
+            )
 
         # l. Atualizar e salvar NSU
         if not dry_run:
@@ -504,6 +498,7 @@ def processar_todos_clientes(
     max_docs_env = _parse_int_env(os.getenv("MAX_DOCUMENTOS_POR_EXECUCAO"), 0)
     max_documentos_por_execucao = max_docs_env if max_docs_env > 0 else None
     nsu_estado_path  = os.getenv("NSU_ESTADO_PATH", "config/estado/ultimo_nsu.json")
+    storage_backend, storage_uploader = _obter_storage_backend()
 
     # 1. Logging
     _configurar_logging(log_level, log_to_console)
@@ -522,20 +517,9 @@ def processar_todos_clientes(
 
     # 2. Inicialização do backend
     service = None
-    if storage_backend == "gdrive":
-        if not credentials or not drive_root_id:
-            logger.error(
-                "STORAGE_BACKEND=gdrive exige GOOGLE_CREDENTIALS_JSON e "
-                "GOOGLE_DRIVE_FOLDER_ROOT_ID configurados."
-            )
-            return
-        if not dry_run:
-            logger.info("Inicializando Google Drive...")
-            service = gdrive_uploader.inicializar_drive(credentials)
-    else:
-        if not dry_run:
-            os.makedirs(local_output_dir, exist_ok=True)
-            logger.info("Saída local habilitada em: %s", local_output_dir)
+    if not dry_run:
+        logger.info("Inicializando storage backend: %s", storage_backend)
+        service = storage_uploader.inicializar_drive(credentials)
 
     # 3. Clientes
     clientes = _carregar_clientes("config/clientes.csv", cnpj_filtro)
@@ -578,8 +562,7 @@ def processar_todos_clientes(
             max_documentos_por_execucao=max_documentos_por_execucao,
             nsu_estado_path=nsu_estado_path,
             drive_root_id=drive_root_id,
-            storage_backend=storage_backend,
-            local_output_dir=local_output_dir,
+            storage_uploader=storage_uploader,
             dry_run=dry_run,
             todas_competencias=todas_competencias,
         )
@@ -593,27 +576,21 @@ def processar_todos_clientes(
     nome_consolidado = f"NFS-e_CONSOLIDADO_{periodo}.xlsx"
     consolidado_bytes = _gerar_excel_consolidado(resultados, ano, mes)
 
-    if not dry_run:
-        if storage_backend == "gdrive" and service:
-            try:
-                gdrive_uploader.upload_ou_substituir(
-                    service,
-                    nome_arquivo=nome_consolidado,
-                    conteudo=consolidado_bytes,
-                    mimetype=(
-                        "application/vnd.openxmlformats-officedocument"
-                        ".spreadsheetml.sheet"
-                    ),
-                    pasta_id=drive_root_id,
-                )
-                logger.info("Consolidado enviado: '%s'.", nome_consolidado)
-            except Exception as exc:  # noqa: BLE001
-                logger.error("Falha ao enviar consolidado: %s", exc)
-        elif storage_backend == "local":
-            caminho_consolidado = os.path.join(local_output_dir, nome_consolidado)
-            with open(caminho_consolidado, "wb") as f_consolidado:
-                f_consolidado.write(consolidado_bytes)
-            logger.info("Consolidado salvo localmente: '%s'.", caminho_consolidado)
+    if not dry_run and service:
+        try:
+            storage_uploader.upload_ou_substituir(
+                service,
+                nome_arquivo=nome_consolidado,
+                conteudo=consolidado_bytes,
+                mimetype=(
+                    "application/vnd.openxmlformats-officedocument"
+                    ".spreadsheetml.sheet"
+                ),
+                pasta_id=drive_root_id,
+            )
+            logger.info("Consolidado enviado: '%s'.", nome_consolidado)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Falha ao enviar consolidado: %s", exc)
 
     # 7. Resumo final
     ok     = [r for r in resultados if r["status"] == "OK"]
