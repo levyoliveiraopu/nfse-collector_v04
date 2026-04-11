@@ -42,6 +42,16 @@ def _parse_bool_env(valor: str | None, default: bool = True) -> bool:
     return default
 
 
+def _parse_int_env(valor: str | None, default: int) -> int:
+    """Converte variável de ambiente para int com fallback."""
+    if valor is None:
+        return default
+    try:
+        return int(valor.strip())
+    except ValueError:
+        return default
+
+
 def _configurar_logging(log_level: str, log_to_console: bool = True) -> None:
     """Configura logging em arquivo e opcionalmente no console."""
     os.makedirs("logs", exist_ok=True)
@@ -201,6 +211,7 @@ def _processar_cliente(
     estado: dict,
     service,
     rate_limit_delay: int,
+    max_documentos_por_execucao: int | None,
     nsu_estado_path: str,
     drive_root_id: str,
     dry_run: bool,
@@ -248,7 +259,11 @@ def _processar_cliente(
 
         # e. Buscar documentos
         lista_dfe, maior_nsu = nfse_fetcher.buscar_todos_dfe_novos(
-            session, cnpj, ultimo_nsu, rate_limit_delay
+            session,
+            cnpj,
+            ultimo_nsu,
+            rate_limit_delay,
+            max_documentos=max_documentos_por_execucao,
         )
 
         # e2. Filtrar apenas documentos do tipo NFSE
@@ -388,6 +403,8 @@ def processar_todos_clientes(
     credentials    = os.getenv("GOOGLE_CREDENTIALS_JSON", "")
     drive_root_id  = os.getenv("GOOGLE_DRIVE_FOLDER_ROOT_ID", "")
     rate_limit_delay = int(os.getenv("RATE_LIMIT_DELAY", "3"))
+    max_docs_env = _parse_int_env(os.getenv("MAX_DOCUMENTOS_POR_EXECUCAO"), 0)
+    max_documentos_por_execucao = max_docs_env if max_docs_env > 0 else None
     nsu_estado_path  = os.getenv("NSU_ESTADO_PATH", "config/estado/ultimo_nsu.json")
 
     # 1. Logging
@@ -418,6 +435,11 @@ def processar_todos_clientes(
         clientes = clientes[inicio:fim]
 
     logger.info("%d cliente(s) a processar.", len(clientes))
+    if max_documentos_por_execucao is not None:
+        logger.info(
+            "Limite de busca por cliente nesta execução: %d documento(s).",
+            max_documentos_por_execucao,
+        )
 
     # 4. Estado NSU
     estado = nsu_tracker.carregar_estado(nsu_estado_path)
@@ -433,6 +455,7 @@ def processar_todos_clientes(
             estado=estado,
             service=service,
             rate_limit_delay=rate_limit_delay,
+            max_documentos_por_execucao=max_documentos_por_execucao,
             nsu_estado_path=nsu_estado_path,
             drive_root_id=drive_root_id,
             dry_run=dry_run,
