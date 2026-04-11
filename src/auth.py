@@ -184,17 +184,37 @@ def extrair_cnpj_do_certificado(cert_pfx_path: str, cert_password: str) -> str:
 
     _verificar_validade(certificate, cert_pfx_path)
 
-    # 1) Priorizar CN (Common Name), que costuma trazer o CNPJ do titular
-    #    no formato "RAZAO SOCIAL:12345678000199".
-    cnpj_cn = _extrair_cnpj_do_cn(certificate.subject)
+    subject = certificate.subject
+
+    # 1) serialNumber (2.5.4.5) costuma carregar o documento do titular:
+    #    ex.: "CNPJ:12345678000199".
+    cnpj_serial = _extrair_cnpj_do_serial_number(subject)
+    if cnpj_serial:
+        logger.debug("CNPJ extraído do serialNumber do certificado: %s", cnpj_serial)
+        return cnpj_serial
+
+    # 2) CN (Common Name) do titular:
+    #    ex.: "RAZAO SOCIAL LTDA:12345678000199".
+    cnpj_cn = _extrair_cnpj_do_cn(subject)
     if cnpj_cn:
+        logger.debug("CNPJ extraído do CN do certificado: %s", cnpj_cn)
         return cnpj_cn
 
-    # 2) Fallback: buscar em todos os atributos do Subject
-    subject_str = _subject_para_str(certificate.subject)
-    logger.debug("Subject do certificado '%s': %s", origem, subject_str)
+    # 3) Fallback seguro:
+    #    procura apenas formatos explícitos de CNPJ em qualquer atributo
+    #    (não aceita "14 dígitos soltos", para evitar capturar OUs da cadeia).
+    cnpj_subject = _extrair_cnpj_do_subject_seguro(subject)
+    if cnpj_subject:
+        logger.debug("CNPJ extraído via fallback seguro do Subject: %s", cnpj_subject)
+        return cnpj_subject
 
-    return _extrair_cnpj_da_string(subject_str)
+    subject_str = _subject_para_str(subject)
+    logger.debug(
+        "Nenhum CNPJ identificado no Subject do certificado '%s': %s",
+        os.path.basename(cert_pfx_path),
+        subject_str,
+    )
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -385,13 +405,43 @@ def _extrair_cnpj_do_cn(subject: x509.Name) -> str:
         valor_cn = (atributo.value or "").strip()
         if not valor_cn:
             continue
-        cnpj = _extrair_cnpj_da_string(valor_cn)
+        cnpj = _extrair_cnpj_da_string(valor_cn, permitir_bruto=True)
         if cnpj:
             return cnpj
     return ""
 
 
-def _extrair_cnpj_da_string(texto: str) -> str:
+def _extrair_cnpj_do_serial_number(subject: x509.Name) -> str:
+    """Extrai CNPJ do atributo serialNumber (2.5.4.5), se presente."""
+    atributos_serial = subject.get_attributes_for_oid(NameOID.SERIAL_NUMBER)
+    for atributo in atributos_serial:
+        valor_serial = (atributo.value or "").strip()
+        if not valor_serial:
+            continue
+        # serialNumber normalmente vem como "CNPJ:XXXXXXXXXXXXXX"
+        cnpj = _extrair_cnpj_da_string(valor_serial, permitir_bruto=True)
+        if cnpj:
+            return cnpj
+    return ""
+
+
+def _extrair_cnpj_do_subject_seguro(subject: x509.Name) -> str:
+    """Fallback seguro: procura CNPJ explícito em qualquer atributo do Subject.
+
+    Não aceita sequência genérica de 14 dígitos para evitar confundir
+    identificadores de OUs da cadeia emissora com CNPJ do titular.
+    """
+    for atributo in subject:
+        valor = (atributo.value or "").strip()
+        if not valor:
+            continue
+        cnpj = _extrair_cnpj_da_string(valor, permitir_bruto=False)
+        if cnpj:
+            return cnpj
+    return ""
+
+
+def _extrair_cnpj_da_string(texto: str, permitir_bruto: bool = True) -> str:
     """Retorna os 14 dígitos do CNPJ encontrado em `texto`, ou string vazia.
 
     Formatos suportados (em ordem de prioridade):
@@ -415,9 +465,10 @@ def _extrair_cnpj_da_string(texto: str) -> str:
     if padrao_formatado:
         return re.sub(r"\D", "", padrao_formatado.group(0))
 
-    # 3) Sequência de exatamente 14 dígitos (com fronteira de não-dígito)
-    padrao_bruto = re.search(r"(?<!\d)(\d{14})(?!\d)", texto)
-    if padrao_bruto:
-        return padrao_bruto.group(1)
+    if permitir_bruto:
+        # 3) Sequência de exatamente 14 dígitos (com fronteira de não-dígito)
+        padrao_bruto = re.search(r"(?<!\d)(\d{14})(?!\d)", texto)
+        if padrao_bruto:
+            return padrao_bruto.group(1)
 
     return ""
