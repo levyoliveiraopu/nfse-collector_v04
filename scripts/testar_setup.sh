@@ -84,6 +84,14 @@ for VAR in GOOGLE_DRIVE_FOLDER_ROOT_ID; do
         VALOR=$(grep "^${VAR}=" config/.env | cut -d= -f2)
         if [ -n "$VALOR" ] && [ "$VALOR" != "cole_aqui_o_id_da_pasta_raiz" ]; then
             echo "✅ Variável $VAR configurada"
+
+            if [ "$VAR" = "NSU_ESTADO_PATH" ]; then
+                DIRETORIO_PAI=$(dirname "$VALOR")
+                if [ ! -d "$DIRETORIO_PAI" ]; then
+                    echo "⚠️  Diretório pai de NSU_ESTADO_PATH não existe: $DIRETORIO_PAI"
+                    echo "   Crie com: mkdir -p \"$DIRETORIO_PAI\""
+                fi
+            fi
         else
             echo "❌ Variável $VAR está vazia ou com valor padrão no .env"
             ERROS=$((ERROS+1))
