@@ -1,0 +1,7 @@
+# Dependências opcionais para habilitar STORAGE_BACKEND=gdrive
+# Instale junto ao requirements base:
+#   pip install -r requirements.txt -r requirements-gdrive.txt
+
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib

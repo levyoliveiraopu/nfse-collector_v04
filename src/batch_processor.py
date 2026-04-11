@@ -23,7 +23,6 @@ from tqdm import tqdm
 from src import (
     auth,
     excel_builder,
-    gdrive_uploader,
     local_uploader,
     nfse_fetcher,
     nsu_tracker,
@@ -491,14 +490,24 @@ def processar_todos_clientes(
 
     # 2. Inicialização do backend
     service = None
+    gdrive_uploader_module = None
     backend: StorageBackend | None = None
     if not dry_run:
         logger.info("Inicializando storage backend: %s", storage_backend)
         if storage_backend == "local":
             backend = local_uploader.LocalUploader(local_output_dir)
         else:
-            service = gdrive_uploader.inicializar_drive(credentials)
-            backend = gdrive_uploader.GDriveUploader(service, drive_root_id)
+            try:
+                from src import gdrive_uploader as gdrive_uploader_module
+            except ImportError as exc:
+                raise ImportError(
+                    "Backend 'gdrive' selecionado, mas as dependências Google "
+                    "não estão instaladas. Instale os pacotes de "
+                    "'requirements-gdrive.txt' para habilitar esse backend."
+                ) from exc
+
+            service = gdrive_uploader_module.inicializar_drive(credentials)
+            backend = gdrive_uploader_module.GDriveUploader(service, drive_root_id)
 
     # 3. Clientes
     clientes = _carregar_clientes("config/clientes.csv", cnpj_filtro)
@@ -562,7 +571,11 @@ def processar_todos_clientes(
                     f.write(consolidado_bytes)
                 logger.info("Consolidado salvo localmente: '%s'.", caminho_consolidado)
             elif service:
-                gdrive_uploader.upload_ou_substituir(
+                if gdrive_uploader_module is None:
+                    raise RuntimeError(
+                        "Módulo de upload Google Drive não inicializado."
+                    )
+                gdrive_uploader_module.upload_ou_substituir(
                     service,
                     nome_arquivo=nome_consolidado,
                     conteudo=consolidado_bytes,
