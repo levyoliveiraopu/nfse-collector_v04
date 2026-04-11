@@ -38,11 +38,25 @@ else
     ERROS=$((ERROS+1))
 fi
 
+# Extrai GOOGLE_CREDENTIALS_JSON do .env
+GOOGLE_CREDENTIALS_JSON=""
+if [ -f "config/.env" ]; then
+    LINHA_CREDENTIALS=$(grep "^GOOGLE_CREDENTIALS_JSON=" config/.env 2>/dev/null | tail -n 1)
+    if [ -n "$LINHA_CREDENTIALS" ]; then
+        GOOGLE_CREDENTIALS_JSON="${LINHA_CREDENTIALS#GOOGLE_CREDENTIALS_JSON=}"
+        GOOGLE_CREDENTIALS_JSON="${GOOGLE_CREDENTIALS_JSON%\"}"
+        GOOGLE_CREDENTIALS_JSON="${GOOGLE_CREDENTIALS_JSON#\"}"
+    fi
+fi
+
 # 5. Google credentials
-if [ -f "config/google_credentials.json" ]; then
-    echo "✅ Google credentials encontrado"
+if [ -z "$GOOGLE_CREDENTIALS_JSON" ]; then
+    echo "❌ Variável GOOGLE_CREDENTIALS_JSON está vazia no config/.env"
+    ERROS=$((ERROS+1))
+elif [ -f "$GOOGLE_CREDENTIALS_JSON" ]; then
+    echo "✅ Google credentials encontrado em: $GOOGLE_CREDENTIALS_JSON"
 else
-    echo "❌ config/google_credentials.json não encontrado — ver SETUP.md seção 4"
+    echo "❌ Arquivo Google credentials não encontrado no caminho informado em GOOGLE_CREDENTIALS_JSON: $GOOGLE_CREDENTIALS_JSON — ver SETUP.md seção 4"
     ERROS=$((ERROS+1))
 fi
 
@@ -65,7 +79,7 @@ else
 fi
 
 # 8. Variáveis obrigatórias no .env
-for VAR in GOOGLE_CREDENTIALS_JSON GOOGLE_DRIVE_FOLDER_ROOT_ID NSU_ESTADO_PATH; do
+for VAR in GOOGLE_DRIVE_FOLDER_ROOT_ID; do
     if grep -q "^${VAR}=" config/.env 2>/dev/null; then
         VALOR=$(grep "^${VAR}=" config/.env | cut -d= -f2)
         if [ -n "$VALOR" ] && [ "$VALOR" != "cole_aqui_o_id_da_pasta_raiz" ]; then
