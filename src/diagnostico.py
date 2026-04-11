@@ -41,8 +41,10 @@ def executar_diagnostico(cnpj: str, csv_path: str, nsu_estado_path: str) -> None
     cert_path = cliente["cert_path"]
     cert_password = cliente["cert_password"]
     razao_social = cliente["razao_social"]
+    ambiente = os.getenv("NFSE_AMBIENTE", "PRODUCAO").upper()
     print(f"[INFO]  Razão social  : {razao_social}")
     print(f"[INFO]  Certificado   : {cert_path}")
+    print(f"[INFO]  Ambiente      : {ambiente}")
 
     cert_tmp: str | None = None
     key_tmp: str | None = None

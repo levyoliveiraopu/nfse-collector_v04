@@ -27,6 +27,7 @@ Resposta da API (LoteDistribuicaoNSUResponse):
 import base64
 import gzip
 import logging
+import os
 import time
 import xml.etree.ElementTree as ET
 from datetime import datetime
@@ -41,7 +42,23 @@ from tenacity import (
 
 logger = logging.getLogger(__name__)
 
-_BASE_URL = "https://adn.nfse.gov.br/contribuintes"
+# URLs base por ambiente
+_URLS_BASE = {
+    "PRODUCAO": "https://adn.nfse.gov.br/contribuintes",
+    "HOMOLOGACAO": "https://adn.producaorestrita.nfse.gov.br/contribuintes",
+}
+
+
+def _get_base_url() -> str:
+    """Retorna a URL base conforme o ambiente configurado em NFSE_AMBIENTE."""
+    ambiente = os.getenv("NFSE_AMBIENTE", "PRODUCAO").upper()
+    url = _URLS_BASE.get(ambiente)
+    if url is None:
+        raise ValueError(
+            f"NFSE_AMBIENTE inválido: '{ambiente}'. "
+            f"Valores aceitos: {', '.join(_URLS_BASE.keys())}"
+        )
+    return url
 
 
 class _RateLimitError(Exception):
@@ -86,7 +103,7 @@ def buscar_lote_dfe(session: requests.Session, ultimo_nsu: int, cnpj: str) -> di
         requests.Timeout:   Após esgotamento das tentativas de retry.
         requests.ConnectionError: Após esgotamento das tentativas de retry.
     """
-    url = f"{_BASE_URL}/DFe/{ultimo_nsu}"
+    url = f"{_get_base_url()}/DFe/{ultimo_nsu}"
     params = {"cnpjConsulta": cnpj, "lote": "true"}
 
     @retry(
@@ -582,7 +599,7 @@ def buscar_eventos_nfse(session: requests.Session, chave_acesso: str) -> dict:
     Returns:
         Dicionário com a resposta JSON da API ADN (LoteDistribuicaoNSUResponse).
     """
-    url = f"{_BASE_URL}/NFSe/{chave_acesso}/Eventos"
+    url = f"{_get_base_url()}/NFSe/{chave_acesso}/Eventos"
 
     @retry(
         stop=stop_after_attempt(5),
