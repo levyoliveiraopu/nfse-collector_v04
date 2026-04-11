@@ -6,6 +6,8 @@ relatórios Excel e faz upload no Google Drive, atualizando o estado NSU
 a cada cliente processado com sucesso.
 """
 
+from __future__ import annotations
+
 import csv
 import logging
 import os

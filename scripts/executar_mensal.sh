@@ -1,8 +1,9 @@
 #!/bin/bash
 
 # ============================================================
+# Script dedicado à COLETA (não faz sincronização externa).
 # Para agendar no cron, execute: crontab -e
-# Cole a linha abaixo (ajuste o caminho):
+# Exemplo:
 # 0 8 5 * * /caminho/absoluto/nfse-collector/scripts/executar_mensal.sh
 # ============================================================
 
