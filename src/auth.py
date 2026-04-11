@@ -24,6 +24,7 @@ import requests
 from cryptography import x509
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.serialization import pkcs12
+from cryptography.x509.oid import NameOID
 from requests.adapters import HTTPAdapter
 
 logger = logging.getLogger(__name__)
@@ -180,11 +181,37 @@ def extrair_cnpj_do_certificado(cert_pfx_path: str, cert_password: str) -> str:
 
     _verificar_validade(certificate, cert_pfx_path)
 
-    # Montar string com todos os atributos do Subject para facilitar a busca
-    subject_str = _subject_para_str(certificate.subject)
-    logger.debug("Subject do certificado '%s': %s", os.path.basename(cert_pfx_path), subject_str)
+    subject = certificate.subject
 
-    return _extrair_cnpj_da_string(subject_str)
+    # 1) serialNumber (2.5.4.5) costuma carregar o documento do titular:
+    #    ex.: "CNPJ:12345678000199".
+    cnpj_serial = _extrair_cnpj_do_serial_number(subject)
+    if cnpj_serial:
+        logger.debug("CNPJ extraído do serialNumber do certificado: %s", cnpj_serial)
+        return cnpj_serial
+
+    # 2) CN (Common Name) do titular:
+    #    ex.: "RAZAO SOCIAL LTDA:12345678000199".
+    cnpj_cn = _extrair_cnpj_do_cn(subject)
+    if cnpj_cn:
+        logger.debug("CNPJ extraído do CN do certificado: %s", cnpj_cn)
+        return cnpj_cn
+
+    # 3) Fallback seguro:
+    #    procura apenas formatos explícitos de CNPJ em qualquer atributo
+    #    (não aceita "14 dígitos soltos", para evitar capturar OUs da cadeia).
+    cnpj_subject = _extrair_cnpj_do_subject_seguro(subject)
+    if cnpj_subject:
+        logger.debug("CNPJ extraído via fallback seguro do Subject: %s", cnpj_subject)
+        return cnpj_subject
+
+    subject_str = _subject_para_str(subject)
+    logger.debug(
+        "Nenhum CNPJ identificado no Subject do certificado '%s': %s",
+        os.path.basename(cert_pfx_path),
+        subject_str,
+    )
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -362,7 +389,55 @@ def _subject_para_str(subject: x509.Name) -> str:
     return " ".join(partes)
 
 
-def _extrair_cnpj_da_string(texto: str) -> str:
+def _extrair_cnpj_do_cn(subject: x509.Name) -> str:
+    """Extrai CNPJ a partir do atributo CN (Common Name), se presente.
+
+    Estratégia:
+    1) Tenta localizar CNPJ no valor do CN (ex.: "EMPRESA:12345678000199").
+    2) Se não encontrar em nenhum CN, retorna string vazia.
+    """
+    atributos_cn = subject.get_attributes_for_oid(NameOID.COMMON_NAME)
+    for atributo in atributos_cn:
+        valor_cn = (atributo.value or "").strip()
+        if not valor_cn:
+            continue
+        cnpj = _extrair_cnpj_da_string(valor_cn, permitir_bruto=True)
+        if cnpj:
+            return cnpj
+    return ""
+
+
+def _extrair_cnpj_do_serial_number(subject: x509.Name) -> str:
+    """Extrai CNPJ do atributo serialNumber (2.5.4.5), se presente."""
+    atributos_serial = subject.get_attributes_for_oid(NameOID.SERIAL_NUMBER)
+    for atributo in atributos_serial:
+        valor_serial = (atributo.value or "").strip()
+        if not valor_serial:
+            continue
+        # serialNumber normalmente vem como "CNPJ:XXXXXXXXXXXXXX"
+        cnpj = _extrair_cnpj_da_string(valor_serial, permitir_bruto=True)
+        if cnpj:
+            return cnpj
+    return ""
+
+
+def _extrair_cnpj_do_subject_seguro(subject: x509.Name) -> str:
+    """Fallback seguro: procura CNPJ explícito em qualquer atributo do Subject.
+
+    Não aceita sequência genérica de 14 dígitos para evitar confundir
+    identificadores de OUs da cadeia emissora com CNPJ do titular.
+    """
+    for atributo in subject:
+        valor = (atributo.value or "").strip()
+        if not valor:
+            continue
+        cnpj = _extrair_cnpj_da_string(valor, permitir_bruto=False)
+        if cnpj:
+            return cnpj
+    return ""
+
+
+def _extrair_cnpj_da_string(texto: str, permitir_bruto: bool = True) -> str:
     """Retorna os 14 dígitos do CNPJ encontrado em `texto`, ou string vazia.
 
     Formatos suportados (em ordem de prioridade):
@@ -386,9 +461,10 @@ def _extrair_cnpj_da_string(texto: str) -> str:
     if padrao_formatado:
         return re.sub(r"\D", "", padrao_formatado.group(0))
 
-    # 3) Sequência de exatamente 14 dígitos (com fronteira de não-dígito)
-    padrao_bruto = re.search(r"(?<!\d)(\d{14})(?!\d)", texto)
-    if padrao_bruto:
-        return padrao_bruto.group(1)
+    if permitir_bruto:
+        # 3) Sequência de exatamente 14 dígitos (com fronteira de não-dígito)
+        padrao_bruto = re.search(r"(?<!\d)(\d{14})(?!\d)", texto)
+        if padrao_bruto:
+            return padrao_bruto.group(1)
 
     return ""
