@@ -28,18 +28,6 @@ scripts/sync_output.sh --target local-remote --dest usuario@host:/backup/nfse/ou
    - Coleta: `logs/cron_YYYY-MM.log`
    - Sincronização: `logs/sync_YYYY-MM.log`
 
-## Backend de armazenamento
-
-Por padrão, o projeto usa `STORAGE_BACKEND=gdrive` para gravar no Google Drive.
-
-Para CI/local dev sem dependências externas, use:
-
-```bash
-STORAGE_BACKEND=noop python main.py --ano 2026 --mes 3
-```
-
-No modo `noop`, nenhum arquivo é enviado/gravação externa é feita. O sistema apenas registra no log os nomes dos arquivos e contagens (Excel/XML) para validar o pipeline.
-
 ## Documentação
 Ver SETUP.md para instalação detalhada.
 Ver TROUBLESHOOTING.md para solução de erros.

@@ -159,6 +159,29 @@ else
     echo "⚠️  config/estado/ultimo_nsu.json não existe — será criado na primeira execução"
 fi
 
+# 10. Scripts operacionais (coleta + sincronização)
+if [ -x "scripts/executar_mensal.sh" ]; then
+    echo "✅ Script de coleta mensal encontrado: scripts/executar_mensal.sh"
+else
+    echo "❌ Script de coleta mensal ausente ou sem permissão de execução: scripts/executar_mensal.sh"
+    ERROS=$((ERROS+1))
+fi
+
+if [ -x "scripts/sync_output.sh" ]; then
+    echo "✅ Script de sincronização encontrado: scripts/sync_output.sh"
+else
+    echo "❌ Script de sincronização ausente ou sem permissão de execução: scripts/sync_output.sh"
+    ERROS=$((ERROS+1))
+fi
+
+# 11. Dependência do target local-remote (rsync)
+if command -v rsync >/dev/null 2>&1; then
+    echo "✅ rsync disponível para sincronização local-remote"
+else
+    echo "⚠️  rsync não encontrado. A coleta funciona, mas o target local-remote do sync falhará."
+    echo "   Instale com: sudo apt install rsync"
+fi
+
 # Resultado final
 echo ""
 if [ "$ERROS" -eq 0 ]; then
