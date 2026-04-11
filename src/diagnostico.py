@@ -41,8 +41,10 @@ def executar_diagnostico(cnpj: str, csv_path: str, nsu_estado_path: str) -> None
     cert_path = cliente["cert_path"]
     cert_password = cliente["cert_password"]
     razao_social = cliente["razao_social"]
+    ambiente = os.getenv("NFSE_AMBIENTE", "PRODUCAO").upper()
     print(f"[INFO]  Razão social  : {razao_social}")
     print(f"[INFO]  Certificado   : {cert_path}")
+    print(f"[INFO]  Ambiente      : {ambiente}")
 
     cert_tmp: str | None = None
     key_tmp: str | None = None
@@ -94,24 +96,20 @@ def executar_diagnostico(cnpj: str, csv_path: str, nsu_estado_path: str) -> None
             return
 
         chaves_resposta = list(lote.keys())
-        max_nsu = lote.get("maxNSU", "?")
-        print(f"[OK]    Resposta recebida.")
-        print(f"[INFO]  Chaves top-level: {chaves_resposta}")
-        print(f"[INFO]  maxNSU da API   : {max_nsu}")
+        status_proc = lote.get("StatusProcessamento", "?")
+        tipo_ambiente = lote.get("TipoAmbiente", "?")
+        print("[OK]    Resposta recebida.")
+        print(f"[INFO]  Chaves top-level      : {chaves_resposta}")
+        print(f"[INFO]  StatusProcessamento   : {status_proc}")
+        print(f"[INFO]  TipoAmbiente          : {tipo_ambiente}")
+
+        if lote.get("Erros"):
+            print(f"[AVISO] Erros na resposta: {lote['Erros']}")
+        if lote.get("Alertas"):
+            print(f"[INFO]  Alertas: {lote['Alertas']}")
 
         # 6. Inspecionar documentos
-        documentos = lote.get("loteNfse", [])
-        if "loteNfse" not in lote:
-            print(
-                "[AVISO] Chave 'loteNfse' ausente na resposta. "
-                "A resposta pode usar um campo diferente."
-            )
-            # Tentar encontrar campo que contenha lista
-            for chave, valor in lote.items():
-                if isinstance(valor, list) and chave != "loteNfse":
-                    print(f"[INFO]  Lista encontrada na chave '{chave}' ({len(valor)} itens).")
-                    documentos = valor
-                    break
+        documentos = lote.get("LoteDFe") or []
 
         print(f"[INFO]  Documentos no lote: {len(documentos)}")
 
@@ -121,44 +119,64 @@ def executar_diagnostico(cnpj: str, csv_path: str, nsu_estado_path: str) -> None
                 "       Possíveis causas:\n"
                 "         1. O CNPJ não tem NFS-e emitidas/tomadas no ADN.\n"
                 "         2. O parâmetro cnpjConsulta não está sendo aceito.\n"
-                "         3. A chave da resposta não é 'loteNfse' (verifique acima)."
+                f"         3. StatusProcessamento = {status_proc}"
             )
             return
 
         # 7. Inspecionar primeiro documento
-        print("\n--- Primeiro documento ---")
+        print("\n--- Primeiro documento (DistribuicaoNSU) ---")
         primeiro = documentos[0]
         chaves_doc = list(primeiro.keys())
-        nsu_doc = primeiro.get("nsu", "?")
-        print(f"[INFO]  NSU do documento: {nsu_doc}")
-        print(f"[INFO]  Campos presentes: {chaves_doc}")
+        nsu_doc = primeiro.get("NSU", "?")
+        tipo_doc = primeiro.get("TipoDocumento", "?")
+        chave_acesso = primeiro.get("ChaveAcesso", "?")
+        data_geracao = primeiro.get("DataHoraGeracao", "?")
+        print(f"[INFO]  NSU             : {nsu_doc}")
+        print(f"[INFO]  TipoDocumento   : {tipo_doc}")
+        print(f"[INFO]  ChaveAcesso     : {chave_acesso}")
+        print(f"[INFO]  DataHoraGeracao  : {data_geracao}")
+        print(f"[INFO]  Campos presentes : {chaves_doc}")
 
         # 8. Extrair XML
         print("\n--- Extração de XML ---")
         xml_content = None
 
-        doc_zip = primeiro.get("docZip")
-        if isinstance(doc_zip, str) and doc_zip.strip():
+        arquivo_xml = primeiro.get("ArquivoXml")
+        if isinstance(arquivo_xml, str) and arquivo_xml.strip():
             import base64
             import gzip
             try:
-                xml_content = gzip.decompress(base64.b64decode(doc_zip)).decode("utf-8")
-                print("[OK]    XML decodificado via 'docZip' (base64+gzip).")
+                xml_content = gzip.decompress(base64.b64decode(arquivo_xml)).decode("utf-8")
+                print("[OK]    XML decodificado via 'ArquivoXml' (base64+gzip).")
             except Exception as exc:
-                print(f"[ERRO]  Falha ao decodificar 'docZip': {exc}")
+                print(f"[ERRO]  Falha ao decodificar 'ArquivoXml': {exc}")
         else:
-            for campo in ("xmlNfse", "xml", "xmlNFSe", "nfseXml", "documento"):
-                valor = primeiro.get(campo)
-                if isinstance(valor, str) and valor.strip():
-                    xml_content = valor
-                    print(f"[OK]    XML encontrado em campo de texto '{campo}'.")
+            # Fallback para campos legados
+            for campo in ("docZip",):
+                valor_zip = primeiro.get(campo)
+                if isinstance(valor_zip, str) and valor_zip.strip():
+                    import base64
+                    import gzip
+                    try:
+                        xml_content = gzip.decompress(base64.b64decode(valor_zip)).decode("utf-8")
+                        print(f"[OK]    XML decodificado via '{campo}' (base64+gzip).")
+                    except Exception as exc:
+                        print(f"[ERRO]  Falha ao decodificar '{campo}': {exc}")
                     break
+
+            if xml_content is None:
+                for campo in ("xmlNfse", "xml", "xmlNFSe", "nfseXml", "documento"):
+                    valor = primeiro.get(campo)
+                    if isinstance(valor, str) and valor.strip():
+                        xml_content = valor
+                        print(f"[OK]    XML encontrado em campo de texto '{campo}'.")
+                        break
 
         if xml_content is None:
             print("[ERRO]  XML não encontrado em nenhum campo conhecido.")
             print(f"        Campos disponíveis no documento: {chaves_doc}")
             print(
-                "        Campos tentados: docZip, xmlNfse, xml, xmlNFSe, nfseXml, documento"
+                "        Campos tentados: ArquivoXml, docZip, xmlNfse, xml, xmlNFSe, nfseXml, documento"
             )
         else:
             print(f"[OK]    Tamanho do XML: {len(xml_content)} caracteres")

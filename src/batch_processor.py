@@ -232,6 +232,9 @@ def _processar_cliente(
             session, cnpj, ultimo_nsu, rate_limit_delay
         )
 
+        # e2. Filtrar apenas documentos do tipo NFSE
+        lista_dfe = nfse_fetcher.filtrar_por_tipo_documento(lista_dfe)
+
         # f. Filtrar pelo mês
         lista_mes = nfse_fetcher.filtrar_por_competencia(lista_dfe, ano, mes)
 
@@ -258,14 +261,19 @@ def _processar_cliente(
             if not xml_content:
                 logger.warning(
                     "Documento sem XML identificável — NSU=%s. Ignorado.",
-                    dfe.get("nsu", "?"),
+                    dfe.get("NSU", "?"),
                 )
                 continue
 
             dados = nfse_fetcher.extrair_dados_nfse(xml_content)
             lista_dados.append(dados)
 
-            chave = dados.get("chave_acesso") or dfe.get("nsu", "sem_chave")
+            # ChaveAcesso pode vir no envelope DistribuicaoNSU ou extraída do XML
+            chave = (
+                dfe.get("ChaveAcesso")
+                or dados.get("chave_acesso")
+                or str(dfe.get("NSU", "sem_chave"))
+            )
             nome_xml = f"nfse_{chave}.xml"
             lista_xmls.append((nome_xml, xml_content.encode("utf-8")))
 

@@ -29,8 +29,23 @@ from requests.adapters import HTTPAdapter
 
 logger = logging.getLogger(__name__)
 
-# URL base da API ADN — Sistema Nacional NFS-e
-_URL_TESTE_AUTENTICACAO = "https://adn.nfse.gov.br/contribuintes/DFe/1"
+# URLs base por ambiente — Sistema Nacional NFS-e
+_URLS_BASE = {
+    "PRODUCAO": "https://adn.nfse.gov.br/contribuintes",
+    "HOMOLOGACAO": "https://adn.producaorestrita.nfse.gov.br/contribuintes",
+}
+
+
+def _get_base_url() -> str:
+    """Retorna a URL base conforme o ambiente configurado em NFSE_AMBIENTE."""
+    ambiente = os.getenv("NFSE_AMBIENTE", "PRODUCAO").upper()
+    url = _URLS_BASE.get(ambiente)
+    if url is None:
+        raise ValueError(
+            f"NFSE_AMBIENTE inválido: '{ambiente}'. "
+            f"Valores aceitos: {', '.join(_URLS_BASE.keys())}"
+        )
+    return url
 
 # Timeout padrão para todas as requisições (segundos)
 _TIMEOUT_PADRAO = 30
@@ -283,7 +298,8 @@ def testar_autenticacao(session: requests.Session) -> dict:
             "mensagem"    → str, descrição legível do resultado
     """
     try:
-        resposta = session.get(_URL_TESTE_AUTENTICACAO)
+        url_teste = f"{_get_base_url()}/DFe/1"
+        resposta = session.get(url_teste)
         codigo = resposta.status_code
 
         if codigo in (200, 404, 400, 422):
