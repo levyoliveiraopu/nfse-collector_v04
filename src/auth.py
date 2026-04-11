@@ -218,6 +218,51 @@ def extrair_cnpj_do_certificado(cert_pfx_path: str, cert_password: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Função 2b: extrair_cnpj_do_certificado_obj
+# ---------------------------------------------------------------------------
+
+def extrair_cnpj_do_certificado_obj(certificate: x509.Certificate, cert_pfx_path: str) -> str:
+    """Extrai o CNPJ de um objeto certificate já carregado em memória.
+
+    Mesma lógica de ``extrair_cnpj_do_certificado``, mas evita recarregar
+    o .pfx do disco quando o chamador já possui o objeto certificate
+    (ex.: retornado por ``criar_session_cliente``).
+
+    Args:
+        certificate: Objeto x509.Certificate já carregado.
+        cert_pfx_path: Caminho do .pfx (usado apenas para logging).
+
+    Returns:
+        String com os 14 dígitos do CNPJ, sem formatação.
+        Retorna string vazia se nenhum CNPJ for encontrado.
+    """
+    subject = certificate.subject
+
+    cnpj_serial = _extrair_cnpj_do_serial_number(subject)
+    if cnpj_serial:
+        logger.debug("CNPJ extraído do serialNumber do certificado: %s", cnpj_serial)
+        return cnpj_serial
+
+    cnpj_cn = _extrair_cnpj_do_cn(subject)
+    if cnpj_cn:
+        logger.debug("CNPJ extraído do CN do certificado: %s", cnpj_cn)
+        return cnpj_cn
+
+    cnpj_subject = _extrair_cnpj_do_subject_seguro(subject)
+    if cnpj_subject:
+        logger.debug("CNPJ extraído via fallback seguro do Subject: %s", cnpj_subject)
+        return cnpj_subject
+
+    subject_str = _subject_para_str(subject)
+    logger.debug(
+        "Nenhum CNPJ identificado no Subject do certificado '%s': %s",
+        os.path.basename(cert_pfx_path),
+        subject_str,
+    )
+    return ""
+
+
+# ---------------------------------------------------------------------------
 # Função 3: testar_autenticacao
 # ---------------------------------------------------------------------------
 
