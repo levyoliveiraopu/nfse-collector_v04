@@ -365,7 +365,8 @@ Para validar pipeline em CI/local dev sem dependências externas, force o backen
 STORAGE_BACKEND=local python main.py --ano 2026 --mes 3
 ```
 
-Nesse modo, o sistema grava os arquivos apenas em disco local (`LOCAL_OUTPUT_DIR`) e não envia nada para integrações externas.
+Nesse modo, o sistema grava os arquivos apenas em disco local (`LOCAL_OUTPUT_DIR`) e não envia nada ao Google Drive.
+No `config/.env.example`, o valor padrão é `/var/lib/nfse-collector/output`.
 
 ### 9.4. Execução real para toda a base de clientes
 
@@ -411,11 +412,11 @@ Exemplo (dia 5 de cada mês, funcionando no modo local):
 0 8 5 * * /caminho/nfse-collector/scripts/executar_mensal.sh
 
 # 08:20 - sincronização (alvo rsync/local-remote)
-20 8 5 * * /caminho/nfse-collector/scripts/sync_output.sh --target local-remote --source /caminho/real/definido/no/LOCAL_OUTPUT_DIR --dest usuario@host:/backup/nfse/output
+20 8 5 * * /caminho/nfse-collector/scripts/sync_output.sh --target local-remote --dest usuario@host:/backup/nfse/output
 ```
 
 > Ajuste o intervalo entre os jobs conforme o tempo médio de coleta do seu ambiente.
-> A sincronização externa com `scripts/sync_output.sh` depende do diretório **real** configurado em `LOCAL_OUTPUT_DIR`. Evite assumir `output/` se o seu `.env` aponta para outro caminho.
+> Sem `--source`, o script usa `LOCAL_OUTPUT_DIR` do `config/.env` (ou `config/.env.example` como fallback). Use `--source` apenas para sobrescrever esse caminho.
 
 Salve com `Ctrl+O`, `Enter`, `Ctrl+X`.
 

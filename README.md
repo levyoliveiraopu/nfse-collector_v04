@@ -33,6 +33,7 @@ python main.py --cnpj 12345678000199 --ano 2026 --mes 03      # filtra competên
 python main.py --dry-run                                      # simula sem fazer uploads
 python main.py --reset-nsu 12345678000199                     # reseta NSU de um cliente
 scripts/sync_output.sh --target local-remote --dest usuario@host:/backup/nfse/output  # sincroniza saída após coleta
+scripts/sync_output.sh --target local-remote --source output --dest usuario@host:/backup/nfse/output  # override manual da origem
 
 ### Exemplo com backend Google Drive
 STORAGE_BACKEND=gdrive python main.py                         # processa todos os CNPJs de config/clientes.csv enviando para o Drive
@@ -40,6 +41,7 @@ STORAGE_BACKEND=gdrive python main.py                         # processa todos o
 ## Operação recomendada (robustez)
 1. Execute a coleta mensal (`scripts/executar_mensal.sh`).
 2. Em um segundo passo (cron separado), execute a sincronização (`scripts/sync_output.sh`).
+   - Sem `--source`, o script usa `LOCAL_OUTPUT_DIR` do `config/.env` (ou `config/.env.example` como fallback).
 3. Consulte os logs:
    - Coleta: `logs/cron_YYYY-MM.log`
    - Sincronização: `logs/sync_YYYY-MM.log`
