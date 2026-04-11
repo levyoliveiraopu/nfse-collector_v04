@@ -175,6 +175,7 @@ def buscar_todos_dfe_novos(
     cnpj: str,
     ultimo_nsu_salvo: int,
     rate_limit_delay: int,
+    max_documentos: int | None = None,
 ) -> tuple[list[dict], int]:
     """Pagina a API ADN até esgotar os documentos disponíveis para o CNPJ.
 
@@ -188,6 +189,8 @@ def buscar_todos_dfe_novos(
         cnpj:              CNPJ de 14 dígitos do contribuinte.
         ultimo_nsu_salvo:  NSU registrado na última execução bem-sucedida.
         rate_limit_delay:  Segundos a aguardar entre chamadas de paginação.
+        max_documentos:    Limite máximo de documentos a buscar nesta execução.
+                           ``None`` (padrão) significa sem limite.
 
     Returns:
         Tupla ``(lista_dfe, maior_nsu)`` onde:
@@ -200,9 +203,13 @@ def buscar_todos_dfe_novos(
     maior_nsu = ultimo_nsu_salvo
 
     logger.info(
-        "Iniciando busca de DFe — CNPJ=%s | NSU inicial=%d", cnpj, nsu_atual
+        "Iniciando busca de DFe — CNPJ=%s | NSU inicial=%d | limite=%s",
+        cnpj,
+        nsu_atual,
+        max_documentos if max_documentos is not None else "sem limite",
     )
 
+    limite_atingido = False
     while True:
         lote = buscar_lote_dfe(session, nsu_atual, cnpj)
 
@@ -228,13 +235,22 @@ def buscar_todos_dfe_novos(
             )
             break
 
-        todos_dfe.extend(documentos)
+        for doc in documentos:
+            todos_dfe.append(doc)
+            nsu_doc = doc.get("NSU")
+            try:
+                nsu_doc_int = int(nsu_doc) if nsu_doc is not None else 0
+            except (TypeError, ValueError):
+                nsu_doc_int = 0
+            if nsu_doc_int > maior_nsu:
+                maior_nsu = nsu_doc_int
+
+            if max_documentos is not None and len(todos_dfe) >= max_documentos:
+                limite_atingido = True
+                break
 
         # Determinar o maior NSU do lote para avançar a paginação
         max_nsu_lote = _max_nsu_do_lote(documentos)
-        if max_nsu_lote > maior_nsu:
-            maior_nsu = max_nsu_lote
-
         logger.debug(
             "Lote recebido — CNPJ=%s | NSU consultado=%d | maior NSU lote=%d | docs=%d",
             cnpj,
@@ -242,6 +258,15 @@ def buscar_todos_dfe_novos(
             max_nsu_lote,
             len(documentos),
         )
+
+        if limite_atingido:
+            logger.info(
+                "Limite de documentos atingido — CNPJ=%s | limite=%d | NSU até=%d",
+                cnpj,
+                max_documentos,
+                maior_nsu,
+            )
+            break
 
         if max_nsu_lote <= nsu_atual:
             logger.debug(
@@ -659,19 +684,21 @@ def _parsear_data(valor: str) -> datetime | None:
     """Tenta parsear uma string de data nos formatos comuns da NFS-e Nacional.
 
     Formatos tentados (em ordem):
-    - ISO 8601 com timezone:   "2025-01-15T10:30:00-03:00"
-    - ISO 8601 sem timezone:   "2025-01-15T10:30:00"
+    - ISO 8601 com/sem milissegundos e com/sem timezone
+      (ex.: "2025-01-15T10:30:00-03:00", "2025-01-15T10:30:00.973")
     - Data simples:            "2025-01-15"
     - Data brasileira:         "15/01/2025"
     """
-    formatos = (
-        "%Y-%m-%dT%H:%M:%S%z",
-        "%Y-%m-%dT%H:%M:%S",
-        "%Y-%m-%d",
-        "%d/%m/%Y",
-    )
     valor_norm = valor.strip()
 
+    # Cobrir variações ISO 8601 (com fração de segundos e timezone opcional).
+    try:
+        return datetime.fromisoformat(valor_norm.replace("Z", "+00:00"))
+    except ValueError:
+        pass
+
+    # Fallback para formatos legados/alternativos.
+    formatos = ("%Y-%m-%d", "%d/%m/%Y")
     for fmt in formatos:
         try:
             return datetime.strptime(valor_norm, fmt)

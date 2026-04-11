@@ -30,8 +30,30 @@ _COR_LINHA_IMPAR = "FFFFFF"
 # Configuração de logging
 # ---------------------------------------------------------------------------
 
-def _configurar_logging(log_level: str) -> None:
-    """Configura logging em arquivo e console com timestamp e nível."""
+def _parse_bool_env(valor: str | None, default: bool = True) -> bool:
+    """Converte valores textuais de ambiente para bool."""
+    if valor is None:
+        return default
+    valor_norm = valor.strip().lower()
+    if valor_norm in {"1", "true", "t", "yes", "y", "on"}:
+        return True
+    if valor_norm in {"0", "false", "f", "no", "n", "off"}:
+        return False
+    return default
+
+
+def _parse_int_env(valor: str | None, default: int) -> int:
+    """Converte variável de ambiente para int com fallback."""
+    if valor is None:
+        return default
+    try:
+        return int(valor.strip())
+    except ValueError:
+        return default
+
+
+def _configurar_logging(log_level: str, log_to_console: bool = True) -> None:
+    """Configura logging em arquivo e opcionalmente no console."""
     os.makedirs("logs", exist_ok=True)
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
     log_path  = f"logs/execucao_{timestamp}.log"
@@ -41,16 +63,23 @@ def _configurar_logging(log_level: str) -> None:
     fmt = "%(asctime)s | %(levelname)-8s | %(message)s"
     datefmt = "%Y-%m-%d %H:%M:%S"
 
+    handlers: list[logging.Handler] = [
+        logging.FileHandler(log_path, encoding="utf-8"),
+    ]
+    if log_to_console:
+        handlers.append(logging.StreamHandler())
+
     logging.basicConfig(
         level=nivel,
         format=fmt,
         datefmt=datefmt,
-        handlers=[
-            logging.FileHandler(log_path, encoding="utf-8"),
-            logging.StreamHandler(),
-        ],
+        handlers=handlers,
     )
-    logger.debug("Log iniciado em '%s'.", log_path)
+    logger.debug(
+        "Log iniciado em '%s' (console=%s).",
+        log_path,
+        "on" if log_to_console else "off",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -182,9 +211,11 @@ def _processar_cliente(
     estado: dict,
     service,
     rate_limit_delay: int,
+    max_documentos_por_execucao: int | None,
     nsu_estado_path: str,
     drive_root_id: str,
     dry_run: bool,
+    todas_competencias: bool = False,
 ) -> dict:
     """Processa um único cliente. Retorna dict de resultado.
 
@@ -229,18 +260,28 @@ def _processar_cliente(
 
         # e. Buscar documentos
         lista_dfe, maior_nsu = nfse_fetcher.buscar_todos_dfe_novos(
-            session, cnpj, ultimo_nsu, rate_limit_delay
+            session,
+            cnpj,
+            ultimo_nsu,
+            rate_limit_delay,
+            max_documentos=max_documentos_por_execucao,
         )
 
         # e2. Filtrar apenas documentos do tipo NFSE
         lista_dfe = nfse_fetcher.filtrar_por_tipo_documento(lista_dfe)
 
-        # f. Filtrar pelo mês
-        lista_mes = nfse_fetcher.filtrar_por_competencia(lista_dfe, ano, mes)
+        # f. Filtrar por competência (ou manter tudo, se solicitado)
+        if todas_competencias:
+            lista_mes = lista_dfe
+        else:
+            lista_mes = nfse_fetcher.filtrar_por_competencia(lista_dfe, ano, mes)
 
         # g. Sem notas no período
         if not lista_mes:
-            logger.info("CNPJ %s: 0 notas em %02d/%d.", cnpj, mes, ano)
+            if todas_competencias:
+                logger.info("CNPJ %s: 0 notas (sem filtro de competência).", cnpj)
+            else:
+                logger.info("CNPJ %s: 0 notas em %02d/%d.", cnpj, mes, ano)
             if not dry_run and maior_nsu > ultimo_nsu:
                 nsu_tracker.atualizar_nsu(estado, cnpj, maior_nsu)
                 nsu_tracker.salvar_estado(estado, nsu_estado_path)
@@ -353,6 +394,7 @@ def processar_todos_clientes(
     cnpj_filtro: str | None = None,
     lote: int | None = None,
     total_lotes: int | None = None,
+    todas_competencias: bool = False,
 ) -> None:
     """Processa o lote completo de clientes para o período informado.
 
@@ -363,15 +405,19 @@ def processar_todos_clientes(
         cnpj_filtro:  Se informado, processa apenas esse CNPJ.
         lote:         Número do lote a processar (1-based). Requer total_lotes.
         total_lotes:  Total de lotes em que os clientes serão divididos.
+        todas_competencias: Se True, não filtra por mês/ano (usa todos os docs).
     """
     log_level      = os.getenv("LOG_LEVEL", "INFO")
+    log_to_console = _parse_bool_env(os.getenv("LOG_TO_CONSOLE"), default=True)
     credentials    = os.getenv("GOOGLE_CREDENTIALS_JSON", "")
     drive_root_id  = os.getenv("GOOGLE_DRIVE_FOLDER_ROOT_ID", "")
     rate_limit_delay = int(os.getenv("RATE_LIMIT_DELAY", "3"))
+    max_docs_env = _parse_int_env(os.getenv("MAX_DOCUMENTOS_POR_EXECUCAO"), 0)
+    max_documentos_por_execucao = max_docs_env if max_docs_env > 0 else None
     nsu_estado_path  = os.getenv("NSU_ESTADO_PATH", "config/estado/ultimo_nsu.json")
 
     # 1. Logging
-    _configurar_logging(log_level)
+    _configurar_logging(log_level, log_to_console)
 
     inicio = time.time()
     periodo = f"{ano:04d}-{mes:02d}"
@@ -398,6 +444,13 @@ def processar_todos_clientes(
         clientes = clientes[inicio:fim]
 
     logger.info("%d cliente(s) a processar.", len(clientes))
+    if max_documentos_por_execucao is not None:
+        logger.info(
+            "Limite de busca por cliente nesta execução: %d documento(s).",
+            max_documentos_por_execucao,
+        )
+    if todas_competencias:
+        logger.info("Filtro de competência desativado (todas as competências).")
 
     # 4. Estado NSU
     estado = nsu_tracker.carregar_estado(nsu_estado_path)
@@ -413,9 +466,11 @@ def processar_todos_clientes(
             estado=estado,
             service=service,
             rate_limit_delay=rate_limit_delay,
+            max_documentos_por_execucao=max_documentos_por_execucao,
             nsu_estado_path=nsu_estado_path,
             drive_root_id=drive_root_id,
             dry_run=dry_run,
+            todas_competencias=todas_competencias,
         )
         resultados.append(resultado)
 
