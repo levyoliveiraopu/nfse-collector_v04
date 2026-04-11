@@ -659,19 +659,21 @@ def _parsear_data(valor: str) -> datetime | None:
     """Tenta parsear uma string de data nos formatos comuns da NFS-e Nacional.
 
     Formatos tentados (em ordem):
-    - ISO 8601 com timezone:   "2025-01-15T10:30:00-03:00"
-    - ISO 8601 sem timezone:   "2025-01-15T10:30:00"
+    - ISO 8601 com/sem milissegundos e com/sem timezone
+      (ex.: "2025-01-15T10:30:00-03:00", "2025-01-15T10:30:00.973")
     - Data simples:            "2025-01-15"
     - Data brasileira:         "15/01/2025"
     """
-    formatos = (
-        "%Y-%m-%dT%H:%M:%S%z",
-        "%Y-%m-%dT%H:%M:%S",
-        "%Y-%m-%d",
-        "%d/%m/%Y",
-    )
     valor_norm = valor.strip()
 
+    # Cobrir variações ISO 8601 (com fração de segundos e timezone opcional).
+    try:
+        return datetime.fromisoformat(valor_norm.replace("Z", "+00:00"))
+    except ValueError:
+        pass
+
+    # Fallback para formatos legados/alternativos.
+    formatos = ("%Y-%m-%d", "%d/%m/%Y")
     for fmt in formatos:
         try:
             return datetime.strptime(valor_norm, fmt)
