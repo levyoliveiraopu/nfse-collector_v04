@@ -359,13 +359,24 @@ crontab -e
 
 Se for a primeira vez, escolha o editor `nano` quando solicitado.
 
-### 10.2. Adicionar o agendamento
+### 10.2. Adicionar agendamentos separados (coleta -> sincronização)
 
-Cole a linha de agendamento presente no arquivo `scripts/executar_mensal.sh`. O agendamento padrão é todo dia 5 do mês às 08h:
+Para aumentar a robustez operacional, mantenha a coleta e a sincronização em jobs independentes:
 
+- **Coleta primeiro** (gera arquivos localmente e registra em `logs/cron_YYYY-MM.log`)
+- **Sincronização depois** (envia os artefatos e registra em `logs/sync_YYYY-MM.log`)
+
+Exemplo (dia 5 de cada mês):
+
+```cron
+# 08:00 - coleta
+0 8 5 * * /caminho/nfse-collector/scripts/executar_mensal.sh
+
+# 08:20 - sincronização (alvo rsync/local-remote)
+20 8 5 * * /caminho/nfse-collector/scripts/sync_output.sh --target local-remote --source output --dest usuario@host:/backup/nfse/output
 ```
-0 8 5 * * /caminho/nfse-collector/scripts/executar_mensal.sh >> /caminho/nfse-collector/logs/cron_$(date +\%Y-\%m).log 2>&1
-```
+
+> Ajuste o intervalo entre os jobs conforme o tempo médio de coleta do seu ambiente.
 
 Salve com `Ctrl+O`, `Enter`, `Ctrl+X`.
 
@@ -379,7 +390,16 @@ crontab -l
 
 ```bash
 cat logs/cron_$(date +%Y-%m).log
+cat logs/sync_$(date +%Y-%m).log
 ```
+
+### 10.5. Targets de sincronização
+
+O script `scripts/sync_output.sh` usa `--target` para escolher o backend de sincronização.
+
+- `local-remote` (implementado): sincroniza com `rsync`.
+- `drive-api` (reservado para implementação futura).
+- `s3` (reservado para implementação futura).
 
 ---
 
