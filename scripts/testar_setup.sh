@@ -22,11 +22,18 @@ else
     ERROS=$((ERROS+1))
 fi
 
-# 3. Dependências
-if venv/bin/pip show requests &>/dev/null; then
-    echo "✅ Dependências Python instaladas"
+# 3. Ambiente Python (interpretador + imports críticos)
+if [ -x "venv/bin/python" ]; then
+    echo "✅ venv/bin/python encontrado"
+
+    if venv/bin/python -c "import requests, dotenv, openpyxl, cryptography, tenacity, googleapiclient, tqdm" &>/dev/null; then
+        echo "✅ Dependências críticas Python importadas com sucesso"
+    else
+        echo "❌ Falha ao importar dependências críticas — execute: venv/bin/pip install -r requirements.txt"
+        ERROS=$((ERROS+1))
+    fi
 else
-    echo "❌ Dependências não instaladas — execute: venv/bin/pip install -r requirements.txt"
+    echo "❌ venv/bin/python não encontrado — execute: bash scripts/instalar.sh"
     ERROS=$((ERROS+1))
 fi
 
