@@ -2,6 +2,22 @@
 
 cd "$(dirname "$0")/.."
 ERROS=0
+STORAGE_BACKEND="local"
+BACKEND_NOME_EXIBICAO="local"
+
+obter_valor_env() {
+    local chave="$1"
+    local linha
+    linha=$(grep "^${chave}=" config/.env 2>/dev/null | tail -n 1)
+    if [ -z "$linha" ]; then
+        return 1
+    fi
+
+    local valor="${linha#*=}"
+    valor="${valor%\"}"
+    valor="${valor#\"}"
+    echo "$valor"
+}
 
 echo "=== Testando configuração do nfse-collector ==="
 echo ""
@@ -40,6 +56,31 @@ fi
 # 4. Arquivo .env
 if [ -f "config/.env" ]; then
     echo "✅ Arquivo config/.env encontrado"
+
+    STORAGE_BACKEND_RAW=$(obter_valor_env "STORAGE_BACKEND")
+    STORAGE_BACKEND_NORMALIZADO=$(echo "$STORAGE_BACKEND_RAW" | tr '[:upper:]' '[:lower:]')
+    case "$STORAGE_BACKEND_NORMALIZADO" in
+        ""|"local")
+            STORAGE_BACKEND="local"
+            BACKEND_NOME_EXIBICAO="local"
+            ;;
+        "noop")
+            STORAGE_BACKEND="local"
+            BACKEND_NOME_EXIBICAO="local (compat noop)"
+            ;;
+        "gdrive")
+            STORAGE_BACKEND="gdrive"
+            BACKEND_NOME_EXIBICAO="gdrive"
+            ;;
+        *)
+            echo "❌ STORAGE_BACKEND inválido no config/.env: '$STORAGE_BACKEND_RAW' (use local, gdrive ou noop)"
+            ERROS=$((ERROS+1))
+            STORAGE_BACKEND="local"
+            BACKEND_NOME_EXIBICAO="local"
+            ;;
+    esac
+
+    echo "✅ STORAGE_BACKEND detectado: $BACKEND_NOME_EXIBICAO"
 else
     echo "❌ config/.env não encontrado — execute: cp config/.env.example config/.env"
     ERROS=$((ERROS+1))
@@ -48,23 +89,61 @@ fi
 # Extrai GOOGLE_CREDENTIALS_JSON do .env
 GOOGLE_CREDENTIALS_JSON=""
 if [ -f "config/.env" ]; then
-    LINHA_CREDENTIALS=$(grep "^GOOGLE_CREDENTIALS_JSON=" config/.env 2>/dev/null | tail -n 1)
-    if [ -n "$LINHA_CREDENTIALS" ]; then
-        GOOGLE_CREDENTIALS_JSON="${LINHA_CREDENTIALS#GOOGLE_CREDENTIALS_JSON=}"
-        GOOGLE_CREDENTIALS_JSON="${GOOGLE_CREDENTIALS_JSON%\"}"
-        GOOGLE_CREDENTIALS_JSON="${GOOGLE_CREDENTIALS_JSON#\"}"
+    GOOGLE_CREDENTIALS_JSON=$(obter_valor_env "GOOGLE_CREDENTIALS_JSON")
+fi
+
+# 5. Backend local/gdrive
+LOCAL_OUTPUT_DIR=""
+NSU_ESTADO_PATH=""
+if [ -f "config/.env" ]; then
+    LOCAL_OUTPUT_DIR=$(obter_valor_env "LOCAL_OUTPUT_DIR")
+    NSU_ESTADO_PATH=$(obter_valor_env "NSU_ESTADO_PATH")
+fi
+
+if [ -z "$LOCAL_OUTPUT_DIR" ]; then
+    echo "❌ Variável LOCAL_OUTPUT_DIR está vazia ou ausente no config/.env"
+    ERROS=$((ERROS+1))
+else
+    echo "✅ Variável LOCAL_OUTPUT_DIR configurada"
+    if [ -d "$LOCAL_OUTPUT_DIR" ]; then
+        echo "✅ Diretório LOCAL_OUTPUT_DIR existe: $LOCAL_OUTPUT_DIR"
+    else
+        echo "⚠️  Diretório LOCAL_OUTPUT_DIR não existe: $LOCAL_OUTPUT_DIR (será criado na execução)"
     fi
 fi
 
-# 5. Google credentials
-if [ -z "$GOOGLE_CREDENTIALS_JSON" ]; then
-    echo "❌ Variável GOOGLE_CREDENTIALS_JSON está vazia no config/.env"
+if [ -z "$NSU_ESTADO_PATH" ]; then
+    echo "❌ Variável NSU_ESTADO_PATH está vazia ou ausente no config/.env"
     ERROS=$((ERROS+1))
-elif [ -f "$GOOGLE_CREDENTIALS_JSON" ]; then
-    echo "✅ Google credentials encontrado em: $GOOGLE_CREDENTIALS_JSON"
 else
-    echo "❌ Arquivo Google credentials não encontrado no caminho informado em GOOGLE_CREDENTIALS_JSON: $GOOGLE_CREDENTIALS_JSON — ver SETUP.md seção 4"
-    ERROS=$((ERROS+1))
+    echo "✅ Variável NSU_ESTADO_PATH configurada"
+    DIRETORIO_PAI_NSU=$(dirname "$NSU_ESTADO_PATH")
+    if [ ! -d "$DIRETORIO_PAI_NSU" ]; then
+        echo "⚠️  Diretório pai de NSU_ESTADO_PATH não existe: $DIRETORIO_PAI_NSU"
+        echo "   Crie com: mkdir -p \"$DIRETORIO_PAI_NSU\""
+    fi
+fi
+
+if [ "$STORAGE_BACKEND" = "gdrive" ]; then
+    if [ -z "$GOOGLE_CREDENTIALS_JSON" ]; then
+        echo "❌ Variável GOOGLE_CREDENTIALS_JSON está vazia no config/.env"
+        ERROS=$((ERROS+1))
+    elif [ -f "$GOOGLE_CREDENTIALS_JSON" ]; then
+        echo "✅ Google credentials encontrado em: $GOOGLE_CREDENTIALS_JSON"
+    else
+        echo "❌ Arquivo Google credentials não encontrado no caminho informado em GOOGLE_CREDENTIALS_JSON: $GOOGLE_CREDENTIALS_JSON — ver SETUP.md seção 4"
+        ERROS=$((ERROS+1))
+    fi
+
+    GOOGLE_DRIVE_FOLDER_ROOT_ID=$(obter_valor_env "GOOGLE_DRIVE_FOLDER_ROOT_ID")
+    if [ -n "$GOOGLE_DRIVE_FOLDER_ROOT_ID" ] && [ "$GOOGLE_DRIVE_FOLDER_ROOT_ID" != "cole_aqui_o_id_da_pasta_raiz" ]; then
+        echo "✅ Variável GOOGLE_DRIVE_FOLDER_ROOT_ID configurada"
+    else
+        echo "❌ Variável GOOGLE_DRIVE_FOLDER_ROOT_ID está vazia ou com valor padrão no .env"
+        ERROS=$((ERROS+1))
+    fi
+else
+    echo "ℹ️  Backend local: validações de Google Drive ignoradas"
 fi
 
 # 6. Pasta de certificados (informativo)
@@ -128,38 +207,14 @@ else
     ERROS=$((ERROS+1))
 fi
 
-# 8. Variáveis obrigatórias no .env
-for VAR in GOOGLE_DRIVE_FOLDER_ROOT_ID; do
-    if grep -q "^${VAR}=" config/.env 2>/dev/null; then
-        VALOR=$(grep "^${VAR}=" config/.env | cut -d= -f2)
-        if [ -n "$VALOR" ] && [ "$VALOR" != "cole_aqui_o_id_da_pasta_raiz" ]; then
-            echo "✅ Variável $VAR configurada"
-
-            if [ "$VAR" = "NSU_ESTADO_PATH" ]; then
-                DIRETORIO_PAI=$(dirname "$VALOR")
-                if [ ! -d "$DIRETORIO_PAI" ]; then
-                    echo "⚠️  Diretório pai de NSU_ESTADO_PATH não existe: $DIRETORIO_PAI"
-                    echo "   Crie com: mkdir -p \"$DIRETORIO_PAI\""
-                fi
-            fi
-        else
-            echo "❌ Variável $VAR está vazia ou com valor padrão no .env"
-            ERROS=$((ERROS+1))
-        fi
-    else
-        echo "❌ Variável $VAR não encontrada no .env"
-        ERROS=$((ERROS+1))
-    fi
-done
-
-# 9. Arquivo de estado
+# 8. Arquivo de estado
 if [ -f "config/estado/ultimo_nsu.json" ]; then
     echo "✅ Arquivo de estado NSU encontrado"
 else
     echo "⚠️  config/estado/ultimo_nsu.json não existe — será criado na primeira execução"
 fi
 
-# 10. Scripts operacionais (coleta + sincronização)
+# 9. Scripts operacionais (coleta + sincronização)
 if [ -x "scripts/executar_mensal.sh" ]; then
     echo "✅ Script de coleta mensal encontrado: scripts/executar_mensal.sh"
 else
@@ -174,7 +229,7 @@ else
     ERROS=$((ERROS+1))
 fi
 
-# 11. Dependência do target local-remote (rsync)
+# 10. Dependência do target local-remote (rsync)
 if command -v rsync >/dev/null 2>&1; then
     echo "✅ rsync disponível para sincronização local-remote"
 else
@@ -185,7 +240,11 @@ fi
 # Resultado final
 echo ""
 if [ "$ERROS" -eq 0 ]; then
-    echo "✅ SETUP OK — pronto para executar: python main.py --dry-run"
+    if [ "$STORAGE_BACKEND" = "gdrive" ]; then
+        echo "✅ setup ok para backend gdrive — pronto para executar: python main.py --dry-run"
+    else
+        echo "✅ setup ok para backend local — pronto para executar: python main.py --dry-run"
+    fi
 else
     echo "❌ $ERROS problema(s) encontrado(s). Corrija antes de executar."
 fi
