@@ -192,10 +192,10 @@ def resetar_cnpj(estado_path: str, cnpj: str) -> None:
             cnpj,
             nsu_anterior,
         )
+        print(f"NSU do CNPJ {cnpj} resetado para 0 (era {nsu_anterior}).")
     else:
         logger.info(
             "CNPJ %s não encontrado no estado — nenhuma alteração necessária.",
             cnpj,
         )
-
-    print(f"NSU do CNPJ {cnpj} resetado para 0.")
+        print(f"CNPJ {cnpj} não encontrado no estado — já está em 0.")

@@ -59,7 +59,7 @@ class _TimeoutAdapter(HTTPAdapter):
 def criar_session_cliente(
     cert_pfx_path: str,
     cert_password: str,
-) -> tuple[requests.Session, str, str]:
+) -> tuple[requests.Session, str, str, x509.Certificate]:
     """Cria uma requests.Session autenticada via mTLS usando o certificado .pfx.
 
     O certificado e a chave privada são extraídos do .pfx e gravados em
@@ -73,7 +73,10 @@ def criar_session_cliente(
         cert_password: Senha do arquivo .pfx.
 
     Returns:
-        Tupla (session, caminho_cert_pem_tmp, caminho_key_pem_tmp).
+        Tupla (session, caminho_cert_pem_tmp, caminho_key_pem_tmp, certificate).
+        O objeto certificate pode ser passado a
+        ``extrair_cnpj_do_certificado_obj`` para obter o CNPJ sem recarregar
+        o .pfx.
 
     Raises:
         FileNotFoundError: Se o arquivo .pfx não existir no caminho informado.
@@ -135,7 +138,7 @@ def criar_session_cliente(
     logger.debug(
         "Session mTLS criada para o certificado '%s'.", os.path.basename(cert_pfx_path)
     )
-    return session, cert_tmp, key_tmp
+    return session, cert_tmp, key_tmp, certificate
 
 
 # ---------------------------------------------------------------------------
@@ -378,6 +381,7 @@ def _gravar_temporario(dados_pem: bytes, sufixo: str) -> str:
         delete=False, suffix=sufixo, mode="wb"
     ) as tmp:
         tmp.write(dados_pem)
+        os.fchmod(tmp.fileno(), 0o600)
         return tmp.name
 
 

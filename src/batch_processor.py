@@ -158,9 +158,9 @@ def _gerar_excel_consolidado(
             else:
                 cell.alignment = alin_esq
 
+    from openpyxl.utils import get_column_letter
     larguras = [18, 42, 12, 22, 14]
     for col_idx, largura in enumerate(larguras, start=1):
-        from openpyxl.utils import get_column_letter
         ws.column_dimensions[get_column_letter(col_idx)].width = largura
 
     ws.freeze_panes = "A2"
@@ -202,10 +202,10 @@ def _processar_cliente(
         logger.info("Processando %s (%s)", razao_social, cnpj)
 
         # b. Criar session mTLS
-        session, cert_tmp, key_tmp = auth.criar_session_cliente(cert_path, cert_password)
+        session, cert_tmp, key_tmp, certificate = auth.criar_session_cliente(cert_path, cert_password)
 
-        # c. Validar CNPJ do certificado
-        cnpj_cert = auth.extrair_cnpj_do_certificado(cert_path, cert_password)
+        # c. Validar CNPJ do certificado (usa o objeto já carregado, sem reabrir o .pfx)
+        cnpj_cert = auth.extrair_cnpj_do_certificado_obj(certificate, cert_path)
         if cnpj_cert != cnpj:
             logger.error(
                 "CNPJ do certificado (%s) difere do CSV (%s). Cliente ignorado.",
@@ -249,17 +249,25 @@ def _processar_cliente(
                 "total": 0.0,
             }
 
-        # h. Extrair dados de cada nota
-        lista_dados = [
-            nfse_fetcher.extrair_dados_nfse(dfe["xml"]) for dfe in lista_mes
-        ]
-
-        # i. Preparar XMLs para upload
+        # h. Extrair dados de cada nota e preparar XMLs para upload
+        lista_dados: list[dict] = []
         lista_xmls: list[tuple[str, bytes]] = []
-        for dado, dfe in zip(lista_dados, lista_mes):
-            chave = dado.get("chave_acesso") or dfe.get("nsu", "sem_chave")
+
+        for dfe in lista_mes:
+            xml_content = nfse_fetcher.extrair_xml_do_doc(dfe)
+            if not xml_content:
+                logger.warning(
+                    "Documento sem XML identificável — NSU=%s. Ignorado.",
+                    dfe.get("nsu", "?"),
+                )
+                continue
+
+            dados = nfse_fetcher.extrair_dados_nfse(xml_content)
+            lista_dados.append(dados)
+
+            chave = dados.get("chave_acesso") or dfe.get("nsu", "sem_chave")
             nome_xml = f"nfse_{chave}.xml"
-            lista_xmls.append((nome_xml, dfe["xml"].encode("utf-8")))
+            lista_xmls.append((nome_xml, xml_content.encode("utf-8")))
 
         # j. Gerar Excel
         excel_bytes = excel_builder.gerar_excel_cliente(
@@ -335,6 +343,8 @@ def processar_todos_clientes(
     mes: int,
     dry_run: bool = False,
     cnpj_filtro: str | None = None,
+    lote: int | None = None,
+    total_lotes: int | None = None,
 ) -> None:
     """Processa o lote completo de clientes para o período informado.
 
@@ -343,11 +353,9 @@ def processar_todos_clientes(
         mes:          Mês de competência (1–12).
         dry_run:      Se True, não faz uploads nem salva estado NSU.
         cnpj_filtro:  Se informado, processa apenas esse CNPJ.
+        lote:         Número do lote a processar (1-based). Requer total_lotes.
+        total_lotes:  Total de lotes em que os clientes serão divididos.
     """
-    # Importação local para evitar importação circular no topo
-    from dotenv import load_dotenv
-    load_dotenv("config/.env")
-
     log_level      = os.getenv("LOG_LEVEL", "INFO")
     credentials    = os.getenv("GOOGLE_CREDENTIALS_JSON", "")
     drive_root_id  = os.getenv("GOOGLE_DRIVE_FOLDER_ROOT_ID", "")
@@ -368,7 +376,20 @@ def processar_todos_clientes(
 
     # 3. Clientes
     clientes = _carregar_clientes("config/clientes.csv", cnpj_filtro)
-    logger.info("%d cliente(s) carregado(s).", len(clientes))
+
+    # 3b. Fatiar por lote se solicitado
+    if lote and total_lotes:
+        import math
+        tamanho_lote = math.ceil(len(clientes) / total_lotes)
+        inicio = (lote - 1) * tamanho_lote
+        fim = min(lote * tamanho_lote, len(clientes))
+        logger.info(
+            "Lote %d/%d: clientes %d–%d de %d total.",
+            lote, total_lotes, inicio + 1, fim, len(clientes),
+        )
+        clientes = clientes[inicio:fim]
+
+    logger.info("%d cliente(s) a processar.", len(clientes))
 
     # 4. Estado NSU
     estado = nsu_tracker.carregar_estado(nsu_estado_path)
@@ -376,7 +397,7 @@ def processar_todos_clientes(
     # 5. Processar cada cliente
     resultados: list[dict] = []
 
-    for cliente in tqdm(clientes, desc="Clientes", unit="cliente", ncols=80):
+    for idx, cliente in enumerate(tqdm(clientes, desc="Clientes", unit="cliente", ncols=80)):
         resultado = _processar_cliente(
             cliente=cliente,
             ano=ano,
@@ -391,7 +412,7 @@ def processar_todos_clientes(
         resultados.append(resultado)
 
         # o. Aguardar antes do próximo cliente
-        if cliente is not clientes[-1]:
+        if idx < len(clientes) - 1:
             time.sleep(rate_limit_delay)
 
     # 6. Excel consolidado
