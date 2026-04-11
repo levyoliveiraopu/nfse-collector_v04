@@ -37,9 +37,17 @@ def carregar_estado(estado_path: str) -> dict:
     """
     if not os.path.isfile(estado_path):
         logger.debug(
-            "Arquivo de estado não encontrado em '%s'. Iniciando com estado vazio.",
+            "Arquivo de estado não encontrado em '%s'. Criando com estado vazio.",
             estado_path,
         )
+        try:
+            salvar_estado({}, estado_path)
+        except OSError as exc:
+            logger.warning(
+                "Não foi possível criar arquivo de estado em '%s': %s",
+                estado_path,
+                exc,
+            )
         return {}
 
     try:

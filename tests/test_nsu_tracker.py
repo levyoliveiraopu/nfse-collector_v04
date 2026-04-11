@@ -7,9 +7,12 @@ from src import nsu_tracker
 
 
 class TestCarregarEstado:
-    def test_arquivo_inexistente_retorna_vazio(self, tmp_path):
-        resultado = nsu_tracker.carregar_estado(str(tmp_path / "nao_existe.json"))
+    def test_arquivo_inexistente_retorna_vazio_e_cria_arquivo(self, tmp_path):
+        estado_path = tmp_path / "nao_existe.json"
+        resultado = nsu_tracker.carregar_estado(str(estado_path))
         assert resultado == {}
+        assert estado_path.exists()
+        assert json.loads(estado_path.read_text()) == {}
 
     def test_arquivo_valido(self, tmp_path):
         estado_path = tmp_path / "estado.json"
