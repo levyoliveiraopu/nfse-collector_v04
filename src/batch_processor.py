@@ -17,13 +17,27 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from tqdm import tqdm
 
-from src import auth, excel_builder, gdrive_uploader, nfse_fetcher, nsu_tracker
+from src import auth, excel_builder, nfse_fetcher, nsu_tracker
 
 logger = logging.getLogger(__name__)
 
 _COR_CABECALHO   = "1B5E20"
 _COR_LINHA_PAR   = "F1F8E9"
 _COR_LINHA_IMPAR = "FFFFFF"
+
+
+def _obter_storage_backend():
+    """Retorna backend de storage conforme STORAGE_BACKEND."""
+    backend = os.getenv("STORAGE_BACKEND", "gdrive").strip().lower()
+    if backend == "gdrive":
+        from src import gdrive_uploader as storage_uploader
+        return backend, storage_uploader
+    if backend == "noop":
+        from src import noop_uploader as storage_uploader
+        return backend, storage_uploader
+    raise ValueError(
+        f"STORAGE_BACKEND inválido: '{backend}'. Use 'gdrive' ou 'noop'."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -214,6 +228,7 @@ def _processar_cliente(
     max_documentos_por_execucao: int | None,
     nsu_estado_path: str,
     drive_root_id: str,
+    storage_uploader,
     dry_run: bool,
     todas_competencias: bool = False,
 ) -> dict:
@@ -325,7 +340,7 @@ def _processar_cliente(
 
         # k. Upload no Drive
         if not dry_run:
-            gdrive_uploader.organizar_e_enviar_cliente(
+            storage_uploader.organizar_e_enviar_cliente(
                 service,
                 drive_root_id,
                 cnpj,
@@ -415,6 +430,7 @@ def processar_todos_clientes(
     max_docs_env = _parse_int_env(os.getenv("MAX_DOCUMENTOS_POR_EXECUCAO"), 0)
     max_documentos_por_execucao = max_docs_env if max_docs_env > 0 else None
     nsu_estado_path  = os.getenv("NSU_ESTADO_PATH", "config/estado/ultimo_nsu.json")
+    storage_backend, storage_uploader = _obter_storage_backend()
 
     # 1. Logging
     _configurar_logging(log_level, log_to_console)
@@ -425,8 +441,8 @@ def processar_todos_clientes(
     # 2. Google Drive
     service = None
     if not dry_run:
-        logger.info("Inicializando Google Drive...")
-        service = gdrive_uploader.inicializar_drive(credentials)
+        logger.info("Inicializando storage backend: %s", storage_backend)
+        service = storage_uploader.inicializar_drive(credentials)
 
     # 3. Clientes
     clientes = _carregar_clientes("config/clientes.csv", cnpj_filtro)
@@ -469,6 +485,7 @@ def processar_todos_clientes(
             max_documentos_por_execucao=max_documentos_por_execucao,
             nsu_estado_path=nsu_estado_path,
             drive_root_id=drive_root_id,
+            storage_uploader=storage_uploader,
             dry_run=dry_run,
             todas_competencias=todas_competencias,
         )
@@ -484,7 +501,7 @@ def processar_todos_clientes(
 
     if not dry_run and service:
         try:
-            gdrive_uploader.upload_ou_substituir(
+            storage_uploader.upload_ou_substituir(
                 service,
                 nome_arquivo=nome_consolidado,
                 conteudo=consolidado_bytes,
