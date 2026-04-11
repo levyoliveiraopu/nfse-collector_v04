@@ -7,7 +7,7 @@ Uso:
   python main.py --cnpj 12345678000199        # sem --ano/--mes: todas as competências
   python main.py --ano 2026 --mes 03          # mês específico, todos
   python main.py --cnpj 12345678000199 --ano 2026 --mes 03
-  python main.py --dry-run                    # simula sem uploads nem NSU
+  python main.py --dry-run                    # simula sem gravar em storage nem NSU
   python main.py --reset-nsu 12345678000199   # zera NSU e encerra
   python main.py --lote 1 --total-lotes 6     # processa lote 1 de 6
 """
@@ -72,7 +72,10 @@ def _mes_anterior() -> tuple[int, int]:
 def _construir_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="nfse-collector",
-        description="Coleta NFS-e da API ADN Nacional e organiza no Google Drive.",
+        description=(
+            "Coleta NFS-e da API ADN Nacional e organiza no storage configurado "
+            "(local ou Google Drive)."
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
@@ -96,7 +99,7 @@ def _construir_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Simula o processamento sem fazer uploads nem salvar estado NSU.",
+        help="Simula o processamento sem gravar arquivos no storage nem salvar estado NSU.",
     )
     parser.add_argument(
         "--reset-nsu",
@@ -194,13 +197,18 @@ def main() -> None:
         total_clientes = len(linhas)
 
     # --- Banner inicial ---
-    modo = "DRY-RUN" if args.dry_run else "PRODUÇÃO"
+    storage_backend = os.getenv("STORAGE_BACKEND", "local").strip().lower()
+    if storage_backend == "noop":
+        storage_backend = "local"
+    destino_storage = "Google Drive" if storage_backend == "gdrive" else "Local"
+    modo = "DRY-RUN (sem escrita em storage/NSU)" if args.dry_run else "PRODUÇÃO"
     print("nfse-collector — iniciando")
     if todas_competencias:
         print("Competência   : TODAS (sem filtro)")
     else:
         print(f"Competência   : {mes:02d}/{ano}")
     print(f"Clientes carregados: {total_clientes}")
+    print(f"Storage       : {destino_storage}")
     print(f"Modo          : {modo}")
     if args.lote:
         print(f"Lote          : {args.lote}/{args.total_lotes}")
