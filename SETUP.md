@@ -219,6 +219,15 @@ Preencha cada variável conforme as instruções nos comentários do próprio ar
 
 Salve o arquivo com `Ctrl+O`, `Enter`, `Ctrl+X`.
 
+### 5.7. Matriz de configuração por backend
+
+| Backend | `STORAGE_BACKEND` | Variáveis obrigatórias | Comportamento |
+|---|---|---|---|
+| Local (disco) | `local` | `LOCAL_OUTPUT_DIR` | Salva Excel/XML em disco local. **Não** inicializa Google Drive. |
+| Google Drive | `gdrive` | `GOOGLE_CREDENTIALS_JSON`, `GOOGLE_DRIVE_FOLDER_ROOT_ID` | Inicializa integração com Drive e envia arquivos para a pasta raiz configurada. |
+
+> Se `STORAGE_BACKEND` tiver valor diferente de `local` ou `gdrive`, a execução é encerrada com erro explícito no log.
+
 ---
 
 ## 6. PREPARAR O clientes.csv
