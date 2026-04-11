@@ -20,7 +20,15 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from tqdm import tqdm
 
-from src import auth, excel_builder, nfse_fetcher, nsu_tracker
+from src import (
+    auth,
+    excel_builder,
+    gdrive_uploader,
+    local_uploader,
+    nfse_fetcher,
+    nsu_tracker,
+)
+from src.storage_backend import StorageBackend
 
 logger = logging.getLogger(__name__)
 
@@ -30,18 +38,15 @@ _COR_LINHA_IMPAR = "FFFFFF"
 _STORAGE_BACKENDS_VALIDOS = {"local", "gdrive"}
 
 
-def _obter_storage_backend():
-    """Retorna backend de storage conforme STORAGE_BACKEND."""
-    backend = os.getenv("STORAGE_BACKEND", "gdrive").strip().lower()
-    if backend == "gdrive":
-        from src import gdrive_uploader as storage_uploader
-        return backend, storage_uploader
+def _normalizar_storage_backend(valor: str) -> str:
+    """Normaliza valor de STORAGE_BACKEND, mantendo compatibilidade."""
+    backend = (valor or "local").strip().lower()
     if backend == "noop":
-        from src import noop_uploader as storage_uploader
-        return backend, storage_uploader
-    raise ValueError(
-        f"STORAGE_BACKEND inválido: '{backend}'. Use 'gdrive' ou 'noop'."
-    )
+        logger.warning(
+            "STORAGE_BACKEND=noop está obsoleto e será tratado como 'local'."
+        )
+        return "local"
+    return backend
 
 
 # ---------------------------------------------------------------------------
@@ -269,8 +274,6 @@ def _processar_cliente(
     rate_limit_delay: int,
     max_documentos_por_execucao: int | None,
     nsu_estado_path: str,
-    drive_root_id: str,
-    storage_uploader,
     dry_run: bool,
     todas_competencias: bool = False,
 ) -> dict:
@@ -381,16 +384,13 @@ def _processar_cliente(
         )
 
         # k. Persistir arquivos (backend configurado)
-        if not dry_run:
-            storage_uploader.organizar_e_enviar_cliente(
-                service,
-                drive_root_id,
-                cnpj,
-                razao_social,
-                ano,
-                mes,
-                lista_xmls,
-                excel_bytes,
+        if not dry_run and backend is not None:
+            backend.salvar_cliente(
+                cnpj=cnpj,
+                razao_social=razao_social,
+                periodo=f"{ano:04d}-{mes:02d}",
+                lista_xmls=lista_xmls,
+                excel_bytes=excel_bytes,
             )
 
         # l. Atualizar e salvar NSU
@@ -444,32 +444,6 @@ def _processar_cliente(
 # Função principal
 # ---------------------------------------------------------------------------
 
-def _criar_backend_armazenamento(
-    dry_run: bool,
-    credentials: str,
-    drive_root_id: str,
-) -> tuple[StorageBackend | None, object | None, str]:
-    """Cria backend de armazenamento com base em variável de ambiente."""
-    backend_nome = os.getenv("OUTPUT_BACKEND", "gdrive").strip().lower()
-
-    if dry_run:
-        return None, None, backend_nome
-
-    if backend_nome == "local":
-        base_dir = os.getenv("OUTPUT_LOCAL_BASE_DIR", "output")
-        logger.info("Inicializando backend local em '%s'...", base_dir)
-        return local_uploader.LocalUploader(base_dir), None, backend_nome
-
-    if backend_nome == "gdrive":
-        logger.info("Inicializando Google Drive...")
-        service = gdrive_uploader.inicializar_drive(credentials)
-        return gdrive_uploader.GDriveUploader(service, drive_root_id), service, backend_nome
-
-    raise ValueError(
-        f"OUTPUT_BACKEND inválido: '{backend_nome}'. Use 'gdrive' ou 'local'."
-    )
-
-
 def processar_todos_clientes(
     ano: int,
     mes: int,
@@ -494,14 +468,12 @@ def processar_todos_clientes(
     log_to_console = _parse_bool_env(os.getenv("LOG_TO_CONSOLE"), default=True)
     credentials    = os.getenv("GOOGLE_CREDENTIALS_JSON", "")
     drive_root_id  = os.getenv("GOOGLE_DRIVE_FOLDER_ROOT_ID", "")
-    storage_backend = os.getenv("STORAGE_BACKEND", "local").strip().lower()
+    storage_backend = _normalizar_storage_backend(os.getenv("STORAGE_BACKEND", "local"))
     local_output_dir = os.getenv("LOCAL_OUTPUT_DIR", "/var/lib/nfse-collector/output").strip()
     rate_limit_delay = int(os.getenv("RATE_LIMIT_DELAY", "3"))
     max_docs_env = _parse_int_env(os.getenv("MAX_DOCUMENTOS_POR_EXECUCAO"), 0)
     max_documentos_por_execucao = max_docs_env if max_docs_env > 0 else None
     nsu_estado_path  = os.getenv("NSU_ESTADO_PATH", "config/estado/ultimo_nsu.json")
-    storage_backend, storage_uploader = _obter_storage_backend()
-
     # 1. Logging
     _configurar_logging(log_level, log_to_console)
 
@@ -519,9 +491,14 @@ def processar_todos_clientes(
 
     # 2. Inicialização do backend
     service = None
+    backend: StorageBackend | None = None
     if not dry_run:
         logger.info("Inicializando storage backend: %s", storage_backend)
-        service = storage_uploader.inicializar_drive(credentials)
+        if storage_backend == "local":
+            backend = local_uploader.LocalUploader(local_output_dir)
+        else:
+            service = gdrive_uploader.inicializar_drive(credentials)
+            backend = gdrive_uploader.GDriveUploader(service, drive_root_id)
 
     # 3. Clientes
     clientes = _carregar_clientes("config/clientes.csv", cnpj_filtro)
@@ -563,8 +540,6 @@ def processar_todos_clientes(
             rate_limit_delay=rate_limit_delay,
             max_documentos_por_execucao=max_documentos_por_execucao,
             nsu_estado_path=nsu_estado_path,
-            drive_root_id=drive_root_id,
-            storage_uploader=storage_uploader,
             dry_run=dry_run,
             todas_competencias=todas_competencias,
         )
@@ -578,21 +553,28 @@ def processar_todos_clientes(
     nome_consolidado = f"NFS-e_CONSOLIDADO_{periodo}.xlsx"
     consolidado_bytes = _gerar_excel_consolidado(resultados, ano, mes)
 
-    if not dry_run and service:
+    if not dry_run:
         try:
-            storage_uploader.upload_ou_substituir(
-                service,
-                nome_arquivo=nome_consolidado,
-                conteudo=consolidado_bytes,
-                mimetype=(
-                    "application/vnd.openxmlformats-officedocument"
-                    ".spreadsheetml.sheet"
-                ),
-                pasta_id=drive_root_id,
-            )
-            logger.info("Consolidado enviado: '%s'.", nome_consolidado)
+            if storage_backend == "local":
+                os.makedirs(local_output_dir, exist_ok=True)
+                caminho_consolidado = os.path.join(local_output_dir, nome_consolidado)
+                with open(caminho_consolidado, "wb") as f:
+                    f.write(consolidado_bytes)
+                logger.info("Consolidado salvo localmente: '%s'.", caminho_consolidado)
+            elif service:
+                gdrive_uploader.upload_ou_substituir(
+                    service,
+                    nome_arquivo=nome_consolidado,
+                    conteudo=consolidado_bytes,
+                    mimetype=(
+                        "application/vnd.openxmlformats-officedocument"
+                        ".spreadsheetml.sheet"
+                    ),
+                    pasta_id=drive_root_id,
+                )
+                logger.info("Consolidado enviado: '%s'.", nome_consolidado)
         except Exception as exc:  # noqa: BLE001
-            logger.error("Falha ao enviar consolidado: %s", exc)
+            logger.error("Falha ao persistir consolidado: %s", exc)
 
     # 7. Resumo final
     ok     = [r for r in resultados if r["status"] == "OK"]

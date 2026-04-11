@@ -206,7 +206,7 @@ Preencha cada variável conforme as instruções nos comentários do próprio ar
 
 | Variável | Descrição |
 |---|---|
-| `STORAGE_BACKEND` | Backend de armazenamento: `gdrive` (padrão) ou `noop` (não envia/grava arquivos, apenas loga). |
+| `STORAGE_BACKEND` | Backend de armazenamento: `local` (padrão) ou `gdrive`. |
 | `GOOGLE_CREDENTIALS_JSON` | Caminho para o JSON da Service Account |
 | `GOOGLE_DELEGATED_USER_EMAIL` | E-mail do usuário para Domain-Wide Delegation (opcional; usar quando não houver Shared Drive) |
 | `GOOGLE_DRIVE_FOLDER_ROOT_ID` | ID da pasta raiz no Google Drive (passo 4.7) |
@@ -227,6 +227,8 @@ Salve o arquivo com `Ctrl+O`, `Enter`, `Ctrl+X`.
 | Google Drive | `gdrive` | `GOOGLE_CREDENTIALS_JSON`, `GOOGLE_DRIVE_FOLDER_ROOT_ID` | Inicializa integração com Drive e envia arquivos para a pasta raiz configurada. |
 
 > Se `STORAGE_BACKEND` tiver valor diferente de `local` ou `gdrive`, a execução é encerrada com erro explícito no log.
+> Compatibilidade: `noop` ainda é aceito, mas será tratado como `local`.
+> Atenção: use a variável `STORAGE_BACKEND` (com **D** no final).
 
 ---
 
@@ -339,13 +341,13 @@ python main.py --dry-run
 
 O `--dry-run` processa tudo normalmente mas não faz upload para o Google Drive. Útil para validar o ambiente antes da execução real.
 
-Para validar pipeline em CI/local dev sem dependências externas (Google Drive), use o backend `noop`:
+Para validar pipeline em CI/local dev sem dependências externas (Google Drive), use o backend `local`:
 
 ```bash
-STORAGE_BACKEND=noop python main.py --ano 2026 --mes 3
+STORAGE_BACKEND=local python main.py --ano 2026 --mes 3
 ```
 
-Nesse modo, o sistema não envia nem grava arquivos externamente; apenas registra em log os nomes de arquivos processados e suas contagens.
+Nesse modo, o sistema grava os arquivos apenas em disco local (`LOCAL_OUTPUT_DIR`) e não envia nada ao Google Drive.
 
 ### 9.3. Execução real com todos os clientes
 

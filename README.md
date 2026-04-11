@@ -12,6 +12,12 @@ Coleta XMLs e gera planilhas Excel para 300 clientes, organizando tudo no Google
 ## Instalação
 bash scripts/instalar.sh
 
+## Backend de armazenamento
+- Padrão: `STORAGE_BACKEND=local` (salva os arquivos em disco).
+- Valores aceitos: `local` e `gdrive`.
+- Compatibilidade: `noop` é tratado como `local`.
+- Atenção: a variável correta é `STORAGE_BACKEND` (com **D** no final).
+
 ## Execução
 python main.py                          # processa todos os clientes (mês anterior)
 python main.py --cnpj 12345678000199    # processa 1 cliente em todas as competências (sem --ano/--mes)
