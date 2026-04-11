@@ -56,11 +56,55 @@ else
 fi
 
 # 7. clientes.csv
-LINHAS=$(tail -n +2 config/clientes.csv 2>/dev/null | wc -l)
-if [ "$LINHAS" -gt 0 ]; then
-    echo "✅ clientes.csv com $LINHAS cliente(s)"
+if [ -f "config/clientes.csv" ]; then
+    HEADER=$(head -n 1 config/clientes.csv)
+    CAMPOS_OBRIGATORIOS=("cnpj" "razao_social" "cert_path" "cert_password")
+    HEADER_OK=1
+
+    for CAMPO in "${CAMPOS_OBRIGATORIOS[@]}"; do
+        if [[ ",$HEADER," != *",$CAMPO,"* ]]; then
+            HEADER_OK=0
+            break
+        fi
+    done
+
+    if [ "$HEADER_OK" -eq 1 ]; then
+        echo "✅ Cabeçalho de clientes.csv contém os campos obrigatórios"
+    else
+        echo "❌ Cabeçalho inválido em clientes.csv. Esperado conter: cnpj,razao_social,cert_path,cert_password"
+        ERROS=$((ERROS+1))
+    fi
+
+    LINHAS=$(tail -n +2 config/clientes.csv | wc -l)
+    if [ "$LINHAS" -gt 0 ]; then
+        echo "✅ clientes.csv com $LINHAS cliente(s)"
+    else
+        echo "❌ clientes.csv sem linhas de cliente"
+        ERROS=$((ERROS+1))
+    fi
+
+    CNPJ_INVALIDOS=$(awk -F',' '
+        NR == 1 { next }
+        {
+            cnpj = $1
+            gsub(/^ +| +$/, "", cnpj)
+            if (cnpj == "" || cnpj !~ /^[0-9]{14}$/) {
+                print NR
+            }
+        }
+    ' config/clientes.csv)
+
+    if [ -n "$CNPJ_INVALIDOS" ]; then
+        echo "❌ Linhas inválidas em clientes.csv (cnpj vazio ou fora do padrão de 14 dígitos):"
+        while IFS= read -r LINHA; do
+            echo "   - linha $LINHA"
+            ERROS=$((ERROS+1))
+        done <<< "$CNPJ_INVALIDOS"
+    else
+        echo "✅ Todos os CNPJs de clientes.csv estão preenchidos e com 14 dígitos"
+    fi
 else
-    echo "❌ clientes.csv vazio ou não encontrado"
+    echo "❌ clientes.csv não encontrado"
     ERROS=$((ERROS+1))
 fi
 
