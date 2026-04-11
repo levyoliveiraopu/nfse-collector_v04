@@ -14,8 +14,9 @@ bash scripts/instalar.sh
 
 ## Execução
 python main.py                          # processa todos os clientes (mês anterior)
-python main.py --cnpj 12345678000199    # processa apenas 1 cliente
+python main.py --cnpj 12345678000199    # processa 1 cliente em todas as competências (sem --ano/--mes)
 python main.py --ano 2026 --mes 03      # processa mês específico
+python main.py --cnpj 12345678000199 --ano 2026 --mes 03  # filtra competência
 python main.py --dry-run                # simula sem fazer uploads
 python main.py --reset-nsu 12345678000199  # reseta NSU de um cliente
 

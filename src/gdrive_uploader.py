@@ -18,6 +18,7 @@ compartilhada, ou a pasta deve ser de propriedade dela.
 """
 
 import logging
+import os
 from io import BytesIO
 
 from google.oauth2 import service_account
@@ -63,6 +64,14 @@ def inicializar_drive(credentials_path: str):
     credenciais = service_account.Credentials.from_service_account_file(
         credentials_path, scopes=_SCOPES
     )
+    delegated_user = os.getenv("GOOGLE_DELEGATED_USER_EMAIL", "").strip()
+    if delegated_user:
+        credenciais = credenciais.with_subject(delegated_user)
+        logger.info(
+            "Google Drive com Domain-Wide Delegation habilitada (usuário delegado: %s).",
+            delegated_user,
+        )
+
     service = build("drive", "v3", credentials=credenciais, cache_discovery=False)
     logger.debug(
         "Service Google Drive inicializado com credenciais de '%s'.",
