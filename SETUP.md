@@ -206,6 +206,8 @@ Preencha cada variável conforme as instruções nos comentários do próprio ar
 
 | Variável | Descrição |
 |---|---|
+| `STORAGE_BACKEND` | Backend de destino dos arquivos: `local` ou `gdrive` |
+| `LOCAL_OUTPUT_DIR` | Pasta base de saída quando `STORAGE_BACKEND=local` |
 | `GOOGLE_CREDENTIALS_JSON` | Caminho para o JSON da Service Account |
 | `GOOGLE_DELEGATED_USER_EMAIL` | E-mail do usuário para Domain-Wide Delegation (opcional; usar quando não houver Shared Drive) |
 | `GOOGLE_DRIVE_FOLDER_ROOT_ID` | ID da pasta raiz no Google Drive (passo 4.7) |
@@ -217,6 +219,15 @@ Preencha cada variável conforme as instruções nos comentários do próprio ar
 | `NSU_ESTADO_PATH` | Caminho para o arquivo `ultimo_nsu.json` |
 
 Salve o arquivo com `Ctrl+O`, `Enter`, `Ctrl+X`.
+
+### 5.7. Matriz de configuração por backend
+
+| Backend | `STORAGE_BACKEND` | Variáveis obrigatórias | Comportamento |
+|---|---|---|---|
+| Local (disco) | `local` | `LOCAL_OUTPUT_DIR` | Salva Excel/XML em disco local. **Não** inicializa Google Drive. |
+| Google Drive | `gdrive` | `GOOGLE_CREDENTIALS_JSON`, `GOOGLE_DRIVE_FOLDER_ROOT_ID` | Inicializa integração com Drive e envia arquivos para a pasta raiz configurada. |
+
+> Se `STORAGE_BACKEND` tiver valor diferente de `local` ou `gdrive`, a execução é encerrada com erro explícito no log.
 
 ---
 
