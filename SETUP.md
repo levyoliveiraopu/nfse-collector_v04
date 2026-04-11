@@ -206,6 +206,7 @@ Preencha cada variável conforme as instruções nos comentários do próprio ar
 
 | Variável | Descrição |
 |---|---|
+| `STORAGE_BACKEND` | Backend de armazenamento: `gdrive` (padrão) ou `noop` (não envia/grava arquivos, apenas loga). |
 | `GOOGLE_CREDENTIALS_JSON` | Caminho para o JSON da Service Account |
 | `GOOGLE_DELEGATED_USER_EMAIL` | E-mail do usuário para Domain-Wide Delegation (opcional; usar quando não houver Shared Drive) |
 | `GOOGLE_DRIVE_FOLDER_ROOT_ID` | ID da pasta raiz no Google Drive (passo 4.7) |
@@ -217,6 +218,15 @@ Preencha cada variável conforme as instruções nos comentários do próprio ar
 | `NSU_ESTADO_PATH` | Caminho para o arquivo `ultimo_nsu.json` |
 
 Salve o arquivo com `Ctrl+O`, `Enter`, `Ctrl+X`.
+
+### 5.7. Matriz de configuração por backend
+
+| Backend | `STORAGE_BACKEND` | Variáveis obrigatórias | Comportamento |
+|---|---|---|---|
+| Local (disco) | `local` | `LOCAL_OUTPUT_DIR` | Salva Excel/XML em disco local. **Não** inicializa Google Drive. |
+| Google Drive | `gdrive` | `GOOGLE_CREDENTIALS_JSON`, `GOOGLE_DRIVE_FOLDER_ROOT_ID` | Inicializa integração com Drive e envia arquivos para a pasta raiz configurada. |
+
+> Se `STORAGE_BACKEND` tiver valor diferente de `local` ou `gdrive`, a execução é encerrada com erro explícito no log.
 
 ---
 
@@ -328,6 +338,14 @@ python main.py --dry-run
 ```
 
 O `--dry-run` processa tudo normalmente mas não faz upload para o Google Drive. Útil para validar o ambiente antes da execução real.
+
+Para validar pipeline em CI/local dev sem dependências externas (Google Drive), use o backend `noop`:
+
+```bash
+STORAGE_BACKEND=noop python main.py --ano 2026 --mes 3
+```
+
+Nesse modo, o sistema não envia nem grava arquivos externamente; apenas registra em log os nomes de arquivos processados e suas contagens.
 
 ### 9.3. Execução real com todos os clientes
 

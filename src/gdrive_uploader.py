@@ -25,6 +25,8 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseUpload
+from src.storage_backend import StorageBackend
+
 from tenacity import (
     retry,
     retry_if_exception,
@@ -213,6 +215,34 @@ def upload_ou_substituir(
         return arquivo_id
 
     return _executar()
+
+
+class GDriveUploader(StorageBackend):
+    """Backend de armazenamento usando Google Drive."""
+
+    def __init__(self, service, root_folder_id: str):
+        self.service = service
+        self.root_folder_id = root_folder_id
+
+    def salvar_cliente(
+        self,
+        cnpj: str,
+        razao_social: str,
+        periodo: str,
+        lista_xmls: list[tuple[str, bytes]],
+        excel_bytes: bytes,
+    ) -> None:
+        ano_str, mes_str = periodo.split("-", maxsplit=1)
+        organizar_e_enviar_cliente(
+            self.service,
+            self.root_folder_id,
+            cnpj,
+            razao_social,
+            int(ano_str),
+            int(mes_str),
+            lista_xmls,
+            excel_bytes,
+        )
 
 
 # ---------------------------------------------------------------------------

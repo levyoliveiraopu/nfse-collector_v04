@@ -2,13 +2,14 @@
 Orquestrador do processamento em lote de NFS-e para todos os clientes.
 
 Lê os clientes do CSV, busca os documentos fiscais na API ADN, gera os
-relatórios Excel e faz upload no Google Drive, atualizando o estado NSU
-a cada cliente processado com sucesso.
+relatórios Excel e delega a persistência para um backend de armazenamento,
+atualizando o estado NSU a cada cliente processado com sucesso.
 """
 
 import csv
 import logging
 import os
+import re
 import time
 from datetime import datetime
 from io import BytesIO
@@ -17,13 +18,28 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from tqdm import tqdm
 
-from src import auth, excel_builder, gdrive_uploader, nfse_fetcher, nsu_tracker
+from src import auth, excel_builder, nfse_fetcher, nsu_tracker
 
 logger = logging.getLogger(__name__)
 
 _COR_CABECALHO   = "1B5E20"
 _COR_LINHA_PAR   = "F1F8E9"
 _COR_LINHA_IMPAR = "FFFFFF"
+_STORAGE_BACKENDS_VALIDOS = {"local", "gdrive"}
+
+
+def _obter_storage_backend():
+    """Retorna backend de storage conforme STORAGE_BACKEND."""
+    backend = os.getenv("STORAGE_BACKEND", "gdrive").strip().lower()
+    if backend == "gdrive":
+        from src import gdrive_uploader as storage_uploader
+        return backend, storage_uploader
+    if backend == "noop":
+        from src import noop_uploader as storage_uploader
+        return backend, storage_uploader
+    raise ValueError(
+        f"STORAGE_BACKEND inválido: '{backend}'. Use 'gdrive' ou 'noop'."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -200,6 +216,44 @@ def _gerar_excel_consolidado(
     return buffer.read()
 
 
+def _sanitizar_nome_pasta(valor: str) -> str:
+    """Remove caracteres inválidos para uso em nome de pasta/arquivo."""
+    return re.sub(r'[\\/*?:"<>|]', "_", valor).strip()
+
+
+def _salvar_arquivos_local_cliente(
+    base_dir: str,
+    cnpj: str,
+    razao_social: str,
+    ano: int,
+    mes: int,
+    lista_xmls: list[tuple[str, bytes]],
+    excel_bytes: bytes,
+) -> None:
+    """Salva os arquivos do cliente em disco local."""
+    periodo = f"{ano:04d}-{mes:02d}"
+    nome_cliente = _sanitizar_nome_pasta(f"{cnpj} - {razao_social}")
+    pasta_destino = os.path.join(base_dir, nome_cliente, periodo)
+    os.makedirs(pasta_destino, exist_ok=True)
+
+    nome_excel = f"NFSe_{cnpj}_{periodo}.xlsx"
+    caminho_excel = os.path.join(pasta_destino, nome_excel)
+    with open(caminho_excel, "wb") as f_excel:
+        f_excel.write(excel_bytes)
+
+    for nome_xml, conteudo_xml in lista_xmls:
+        caminho_xml = os.path.join(pasta_destino, _sanitizar_nome_pasta(nome_xml))
+        with open(caminho_xml, "wb") as f_xml:
+            f_xml.write(conteudo_xml)
+
+    logger.debug(
+        "Arquivos locais salvos em '%s' (cliente=%s, xmls=%d).",
+        pasta_destino,
+        cnpj,
+        len(lista_xmls),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Processamento de um cliente
 # ---------------------------------------------------------------------------
@@ -209,11 +263,12 @@ def _processar_cliente(
     ano: int,
     mes: int,
     estado: dict,
-    service,
+    backend: StorageBackend | None,
     rate_limit_delay: int,
     max_documentos_por_execucao: int | None,
     nsu_estado_path: str,
     drive_root_id: str,
+    storage_uploader,
     dry_run: bool,
     todas_competencias: bool = False,
 ) -> dict:
@@ -323,9 +378,9 @@ def _processar_cliente(
             lista_dados, cnpj, razao_social, ano, mes
         )
 
-        # k. Upload no Drive
+        # k. Persistir arquivos (backend configurado)
         if not dry_run:
-            gdrive_uploader.organizar_e_enviar_cliente(
+            storage_uploader.organizar_e_enviar_cliente(
                 service,
                 drive_root_id,
                 cnpj,
@@ -387,6 +442,32 @@ def _processar_cliente(
 # Função principal
 # ---------------------------------------------------------------------------
 
+def _criar_backend_armazenamento(
+    dry_run: bool,
+    credentials: str,
+    drive_root_id: str,
+) -> tuple[StorageBackend | None, object | None, str]:
+    """Cria backend de armazenamento com base em variável de ambiente."""
+    backend_nome = os.getenv("OUTPUT_BACKEND", "gdrive").strip().lower()
+
+    if dry_run:
+        return None, None, backend_nome
+
+    if backend_nome == "local":
+        base_dir = os.getenv("OUTPUT_LOCAL_BASE_DIR", "output")
+        logger.info("Inicializando backend local em '%s'...", base_dir)
+        return local_uploader.LocalUploader(base_dir), None, backend_nome
+
+    if backend_nome == "gdrive":
+        logger.info("Inicializando Google Drive...")
+        service = gdrive_uploader.inicializar_drive(credentials)
+        return gdrive_uploader.GDriveUploader(service, drive_root_id), service, backend_nome
+
+    raise ValueError(
+        f"OUTPUT_BACKEND inválido: '{backend_nome}'. Use 'gdrive' ou 'local'."
+    )
+
+
 def processar_todos_clientes(
     ano: int,
     mes: int,
@@ -411,10 +492,13 @@ def processar_todos_clientes(
     log_to_console = _parse_bool_env(os.getenv("LOG_TO_CONSOLE"), default=True)
     credentials    = os.getenv("GOOGLE_CREDENTIALS_JSON", "")
     drive_root_id  = os.getenv("GOOGLE_DRIVE_FOLDER_ROOT_ID", "")
+    storage_backend = os.getenv("STORAGE_BACKEND", "local").strip().lower()
+    local_output_dir = os.getenv("LOCAL_OUTPUT_DIR", "/var/lib/nfse-collector/output").strip()
     rate_limit_delay = int(os.getenv("RATE_LIMIT_DELAY", "3"))
     max_docs_env = _parse_int_env(os.getenv("MAX_DOCUMENTOS_POR_EXECUCAO"), 0)
     max_documentos_por_execucao = max_docs_env if max_docs_env > 0 else None
     nsu_estado_path  = os.getenv("NSU_ESTADO_PATH", "config/estado/ultimo_nsu.json")
+    storage_backend, storage_uploader = _obter_storage_backend()
 
     # 1. Logging
     _configurar_logging(log_level, log_to_console)
@@ -422,11 +506,20 @@ def processar_todos_clientes(
     inicio = time.time()
     periodo = f"{ano:04d}-{mes:02d}"
 
-    # 2. Google Drive
+    if storage_backend not in _STORAGE_BACKENDS_VALIDOS:
+        logger.error(
+            "Valor inválido para STORAGE_BACKEND='%s'. Valores aceitos: local, gdrive.",
+            storage_backend,
+        )
+        return
+
+    logger.info("Backend de armazenamento selecionado: %s.", storage_backend)
+
+    # 2. Inicialização do backend
     service = None
     if not dry_run:
-        logger.info("Inicializando Google Drive...")
-        service = gdrive_uploader.inicializar_drive(credentials)
+        logger.info("Inicializando storage backend: %s", storage_backend)
+        service = storage_uploader.inicializar_drive(credentials)
 
     # 3. Clientes
     clientes = _carregar_clientes("config/clientes.csv", cnpj_filtro)
@@ -464,11 +557,12 @@ def processar_todos_clientes(
             ano=ano,
             mes=mes,
             estado=estado,
-            service=service,
+            backend=backend,
             rate_limit_delay=rate_limit_delay,
             max_documentos_por_execucao=max_documentos_por_execucao,
             nsu_estado_path=nsu_estado_path,
             drive_root_id=drive_root_id,
+            storage_uploader=storage_uploader,
             dry_run=dry_run,
             todas_competencias=todas_competencias,
         )
@@ -484,7 +578,7 @@ def processar_todos_clientes(
 
     if not dry_run and service:
         try:
-            gdrive_uploader.upload_ou_substituir(
+            storage_uploader.upload_ou_substituir(
                 service,
                 nome_arquivo=nome_consolidado,
                 conteudo=consolidado_bytes,
