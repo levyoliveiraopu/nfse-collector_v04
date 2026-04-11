@@ -19,6 +19,14 @@ python main.py --ano 2026 --mes 03      # processa mês específico
 python main.py --cnpj 12345678000199 --ano 2026 --mes 03  # filtra competência
 python main.py --dry-run                # simula sem fazer uploads
 python main.py --reset-nsu 12345678000199  # reseta NSU de um cliente
+scripts/sync_output.sh --target local-remote --dest usuario@host:/backup/nfse/output  # sincroniza saída após coleta
+
+## Operação recomendada (robustez)
+1. Execute a coleta mensal (`scripts/executar_mensal.sh`).
+2. Em um segundo passo (cron separado), execute a sincronização (`scripts/sync_output.sh`).
+3. Consulte os logs:
+   - Coleta: `logs/cron_YYYY-MM.log`
+   - Sincronização: `logs/sync_YYYY-MM.log`
 
 ## Backend de armazenamento
 
