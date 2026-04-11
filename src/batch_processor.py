@@ -30,8 +30,20 @@ _COR_LINHA_IMPAR = "FFFFFF"
 # Configuração de logging
 # ---------------------------------------------------------------------------
 
-def _configurar_logging(log_level: str) -> None:
-    """Configura logging em arquivo e console com timestamp e nível."""
+def _parse_bool_env(valor: str | None, default: bool = True) -> bool:
+    """Converte valores textuais de ambiente para bool."""
+    if valor is None:
+        return default
+    valor_norm = valor.strip().lower()
+    if valor_norm in {"1", "true", "t", "yes", "y", "on"}:
+        return True
+    if valor_norm in {"0", "false", "f", "no", "n", "off"}:
+        return False
+    return default
+
+
+def _configurar_logging(log_level: str, log_to_console: bool = True) -> None:
+    """Configura logging em arquivo e opcionalmente no console."""
     os.makedirs("logs", exist_ok=True)
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
     log_path  = f"logs/execucao_{timestamp}.log"
@@ -41,16 +53,23 @@ def _configurar_logging(log_level: str) -> None:
     fmt = "%(asctime)s | %(levelname)-8s | %(message)s"
     datefmt = "%Y-%m-%d %H:%M:%S"
 
+    handlers: list[logging.Handler] = [
+        logging.FileHandler(log_path, encoding="utf-8"),
+    ]
+    if log_to_console:
+        handlers.append(logging.StreamHandler())
+
     logging.basicConfig(
         level=nivel,
         format=fmt,
         datefmt=datefmt,
-        handlers=[
-            logging.FileHandler(log_path, encoding="utf-8"),
-            logging.StreamHandler(),
-        ],
+        handlers=handlers,
     )
-    logger.debug("Log iniciado em '%s'.", log_path)
+    logger.debug(
+        "Log iniciado em '%s' (console=%s).",
+        log_path,
+        "on" if log_to_console else "off",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -365,13 +384,14 @@ def processar_todos_clientes(
         total_lotes:  Total de lotes em que os clientes serão divididos.
     """
     log_level      = os.getenv("LOG_LEVEL", "INFO")
+    log_to_console = _parse_bool_env(os.getenv("LOG_TO_CONSOLE"), default=True)
     credentials    = os.getenv("GOOGLE_CREDENTIALS_JSON", "")
     drive_root_id  = os.getenv("GOOGLE_DRIVE_FOLDER_ROOT_ID", "")
     rate_limit_delay = int(os.getenv("RATE_LIMIT_DELAY", "3"))
     nsu_estado_path  = os.getenv("NSU_ESTADO_PATH", "config/estado/ultimo_nsu.json")
 
     # 1. Logging
-    _configurar_logging(log_level)
+    _configurar_logging(log_level, log_to_console)
 
     inicio = time.time()
     periodo = f"{ano:04d}-{mes:02d}"

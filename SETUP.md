@@ -210,6 +210,8 @@ Preencha cada variável conforme as instruções nos comentários do próprio ar
 | `GOOGLE_DRIVE_FOLDER_ROOT_ID` | ID da pasta raiz no Google Drive (passo 4.7) |
 | `RATE_LIMIT_DELAY` | Segundos entre chamadas à API (padrão: 3) |
 | `LOG_LEVEL` | Nível de log: DEBUG, INFO, WARNING, ERROR (padrão: INFO) |
+| `LOG_TO_CONSOLE` | Exibe logs no terminal (`true`/`false`, padrão: `true`) |
+| `HTTP_TIMEOUT_SECONDS` | Timeout HTTP por requisição à API ADN em segundos (padrão: 30) |
 | `NSU_ESTADO_PATH` | Caminho para o arquivo `ultimo_nsu.json` |
 
 Salve o arquivo com `Ctrl+O`, `Enter`, `Ctrl+X`.
