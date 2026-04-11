@@ -23,6 +23,9 @@ echo "✅ Dependências Python instaladas"
 
 # Criar pastas necessárias
 mkdir -p logs config/estado config/certificados
+if [ ! -f config/estado/ultimo_nsu.json ]; then
+    echo '{}' > config/estado/ultimo_nsu.json
+fi
 echo "✅ Pastas criadas"
 
 # Permissões de segurança

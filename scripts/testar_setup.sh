@@ -80,6 +80,13 @@ for VAR in GOOGLE_CREDENTIALS_JSON GOOGLE_DRIVE_FOLDER_ROOT_ID; do
     fi
 done
 
+# 9. Arquivo de estado
+if [ -f "config/estado/ultimo_nsu.json" ]; then
+    echo "✅ Arquivo de estado NSU encontrado"
+else
+    echo "⚠️  config/estado/ultimo_nsu.json não existe — será criado na primeira execução"
+fi
+
 # Resultado final
 echo ""
 if [ "$ERROS" -eq 0 ]; then
