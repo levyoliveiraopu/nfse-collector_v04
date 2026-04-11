@@ -215,6 +215,7 @@ def _processar_cliente(
     nsu_estado_path: str,
     drive_root_id: str,
     dry_run: bool,
+    todas_competencias: bool = False,
 ) -> dict:
     """Processa um único cliente. Retorna dict de resultado.
 
@@ -269,12 +270,18 @@ def _processar_cliente(
         # e2. Filtrar apenas documentos do tipo NFSE
         lista_dfe = nfse_fetcher.filtrar_por_tipo_documento(lista_dfe)
 
-        # f. Filtrar pelo mês
-        lista_mes = nfse_fetcher.filtrar_por_competencia(lista_dfe, ano, mes)
+        # f. Filtrar por competência (ou manter tudo, se solicitado)
+        if todas_competencias:
+            lista_mes = lista_dfe
+        else:
+            lista_mes = nfse_fetcher.filtrar_por_competencia(lista_dfe, ano, mes)
 
         # g. Sem notas no período
         if not lista_mes:
-            logger.info("CNPJ %s: 0 notas em %02d/%d.", cnpj, mes, ano)
+            if todas_competencias:
+                logger.info("CNPJ %s: 0 notas (sem filtro de competência).", cnpj)
+            else:
+                logger.info("CNPJ %s: 0 notas em %02d/%d.", cnpj, mes, ano)
             if not dry_run and maior_nsu > ultimo_nsu:
                 nsu_tracker.atualizar_nsu(estado, cnpj, maior_nsu)
                 nsu_tracker.salvar_estado(estado, nsu_estado_path)
@@ -387,6 +394,7 @@ def processar_todos_clientes(
     cnpj_filtro: str | None = None,
     lote: int | None = None,
     total_lotes: int | None = None,
+    todas_competencias: bool = False,
 ) -> None:
     """Processa o lote completo de clientes para o período informado.
 
@@ -397,6 +405,7 @@ def processar_todos_clientes(
         cnpj_filtro:  Se informado, processa apenas esse CNPJ.
         lote:         Número do lote a processar (1-based). Requer total_lotes.
         total_lotes:  Total de lotes em que os clientes serão divididos.
+        todas_competencias: Se True, não filtra por mês/ano (usa todos os docs).
     """
     log_level      = os.getenv("LOG_LEVEL", "INFO")
     log_to_console = _parse_bool_env(os.getenv("LOG_TO_CONSOLE"), default=True)
@@ -440,6 +449,8 @@ def processar_todos_clientes(
             "Limite de busca por cliente nesta execução: %d documento(s).",
             max_documentos_por_execucao,
         )
+    if todas_competencias:
+        logger.info("Filtro de competência desativado (todas as competências).")
 
     # 4. Estado NSU
     estado = nsu_tracker.carregar_estado(nsu_estado_path)
@@ -459,6 +470,7 @@ def processar_todos_clientes(
             nsu_estado_path=nsu_estado_path,
             drive_root_id=drive_root_id,
             dry_run=dry_run,
+            todas_competencias=todas_competencias,
         )
         resultados.append(resultado)
 

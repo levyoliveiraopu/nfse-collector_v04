@@ -4,6 +4,7 @@ nfse-collector — ponto de entrada da linha de comando.
 Uso:
   python main.py                              # mês anterior, todos os clientes
   python main.py --cnpj 12345678000199        # um CNPJ específico
+  python main.py --cnpj 12345678000199        # sem --ano/--mes: todas as competências
   python main.py --ano 2026 --mes 03          # mês específico, todos
   python main.py --cnpj 12345678000199 --ano 2026 --mes 03
   python main.py --dry-run                    # simula sem uploads nem NSU
@@ -72,14 +73,14 @@ def _construir_parser() -> argparse.ArgumentParser:
         "--ano",
         type=int,
         metavar="AAAA",
-        help="Ano de competência (ex.: 2026). Padrão: mês anterior.",
+        help="Ano de competência (ex.: 2026).",
     )
     parser.add_argument(
         "--mes",
         type=int,
         metavar="MM",
         choices=range(1, 13),
-        help="Mês de competência (1–12). Padrão: mês anterior.",
+        help="Mês de competência (1–12).",
     )
     parser.add_argument(
         "--dry-run",
@@ -157,6 +158,7 @@ def main() -> None:
             parser.error("--total-lotes deve ser no mínimo 2.")
 
     # --- Determinar competência ---
+    todas_competencias = False
     if args.ano and args.mes:
         ano, mes = args.ano, args.mes
     elif args.ano or args.mes:
@@ -164,6 +166,8 @@ def main() -> None:
         return  # inalcançável; satisfaz o type checker
     else:
         ano, mes = _mes_anterior()
+        if args.cnpj:
+            todas_competencias = True
 
     # --- Carregar lista de clientes apenas para exibir o total ---
     csv_path = "config/clientes.csv"
@@ -181,7 +185,10 @@ def main() -> None:
     # --- Banner inicial ---
     modo = "DRY-RUN" if args.dry_run else "PRODUÇÃO"
     print("nfse-collector — iniciando")
-    print(f"Competência   : {mes:02d}/{ano}")
+    if todas_competencias:
+        print("Competência   : TODAS (sem filtro)")
+    else:
+        print(f"Competência   : {mes:02d}/{ano}")
     print(f"Clientes carregados: {total_clientes}")
     print(f"Modo          : {modo}")
     if args.lote:
@@ -198,6 +205,7 @@ def main() -> None:
         cnpj_filtro=args.cnpj,
         lote=args.lote,
         total_lotes=args.total_lotes,
+        todas_competencias=todas_competencias,
     )
 
 
