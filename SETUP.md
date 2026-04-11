@@ -348,6 +348,7 @@ STORAGE_BACKEND=local python main.py --ano 2026 --mes 3
 ```
 
 Nesse modo, o sistema grava os arquivos apenas em disco local (`LOCAL_OUTPUT_DIR`) e não envia nada ao Google Drive.
+No `config/.env.example`, o valor padrão é `/var/lib/nfse-collector/output`.
 
 ### 9.3. Execução real com todos os clientes
 
@@ -393,10 +394,11 @@ Exemplo (dia 5 de cada mês):
 0 8 5 * * /caminho/nfse-collector/scripts/executar_mensal.sh
 
 # 08:20 - sincronização (alvo rsync/local-remote)
-20 8 5 * * /caminho/nfse-collector/scripts/sync_output.sh --target local-remote --source output --dest usuario@host:/backup/nfse/output
+20 8 5 * * /caminho/nfse-collector/scripts/sync_output.sh --target local-remote --dest usuario@host:/backup/nfse/output
 ```
 
 > Ajuste o intervalo entre os jobs conforme o tempo médio de coleta do seu ambiente.
+> Sem `--source`, o script usa `LOCAL_OUTPUT_DIR` do `config/.env` (ou `config/.env.example` como fallback). Use `--source` apenas para sobrescrever esse caminho.
 
 Salve com `Ctrl+O`, `Enter`, `Ctrl+X`.
 
