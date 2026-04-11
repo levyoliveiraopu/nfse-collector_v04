@@ -60,21 +60,54 @@ else
     ERROS=$((ERROS+1))
 fi
 
-# 6. Pasta de certificados
+# 6. Pasta de certificados (informativo)
 QTD_PFX=$(find config/certificados -name "*.pfx" 2>/dev/null | wc -l)
 if [ "$QTD_PFX" -gt 0 ]; then
-    echo "✅ $QTD_PFX certificado(s) .pfx encontrado(s)"
+    echo "ℹ️  $QTD_PFX certificado(s) .pfx encontrado(s) em config/certificados/"
 else
-    echo "❌ Nenhum .pfx em config/certificados/ — copie os certificados dos clientes"
-    ERROS=$((ERROS+1))
+    echo "ℹ️  Nenhum .pfx em config/certificados/ (checagem apenas informativa)"
 fi
 
-# 7. clientes.csv
-LINHAS=$(tail -n +2 config/clientes.csv 2>/dev/null | wc -l)
-if [ "$LINHAS" -gt 0 ]; then
-    echo "✅ clientes.csv com $LINHAS cliente(s)"
+# 7. clientes.csv e caminhos de certificado
+if [ -f "config/clientes.csv" ]; then
+    TOTAL_CLIENTES=0
+    CERT_VALIDOS=0
+    INVALIDOS=()
+
+    while IFS=, read -r CNPJ RAZAO CERT_PATH CERT_PASSWORD; do
+        # Ignora linhas vazias
+        if [ -z "$CNPJ" ] && [ -z "$CERT_PATH" ]; then
+            continue
+        fi
+
+        TOTAL_CLIENTES=$((TOTAL_CLIENTES+1))
+        CNPJ_CLEAN=$(echo "$CNPJ" | tr -d '\r')
+        CERT_PATH_CLEAN=$(echo "$CERT_PATH" | tr -d '\r')
+
+        if [ -n "$CERT_PATH_CLEAN" ] && [ -f "$CERT_PATH_CLEAN" ]; then
+            CERT_VALIDOS=$((CERT_VALIDOS+1))
+        else
+            INVALIDOS+=("$CNPJ_CLEAN")
+        fi
+    done < <(tail -n +2 config/clientes.csv)
+
+    if [ "$TOTAL_CLIENTES" -gt 0 ]; then
+        echo "✅ clientes.csv com $TOTAL_CLIENTES cliente(s)"
+        echo "✅ Certificados válidos: $CERT_VALIDOS/$TOTAL_CLIENTES"
+
+        if [ "${#INVALIDOS[@]}" -gt 0 ]; then
+            echo "❌ CNPJ(s) com cert_path inválido:"
+            for CNPJ_INVALIDO in "${INVALIDOS[@]}"; do
+                echo "   - $CNPJ_INVALIDO"
+            done
+            ERROS=$((ERROS+1))
+        fi
+    else
+        echo "❌ clientes.csv vazio (sem linhas de cliente)"
+        ERROS=$((ERROS+1))
+    fi
 else
-    echo "❌ clientes.csv vazio ou não encontrado"
+    echo "❌ config/clientes.csv não encontrado"
     ERROS=$((ERROS+1))
 fi
 
