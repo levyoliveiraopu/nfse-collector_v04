@@ -9,6 +9,7 @@ a cada cliente processado com sucesso.
 import csv
 import logging
 import os
+import re
 import time
 from datetime import datetime
 from io import BytesIO
@@ -24,6 +25,7 @@ logger = logging.getLogger(__name__)
 _COR_CABECALHO   = "1B5E20"
 _COR_LINHA_PAR   = "F1F8E9"
 _COR_LINHA_IMPAR = "FFFFFF"
+_STORAGE_BACKENDS_VALIDOS = {"local", "gdrive"}
 
 
 # ---------------------------------------------------------------------------
@@ -200,6 +202,44 @@ def _gerar_excel_consolidado(
     return buffer.read()
 
 
+def _sanitizar_nome_pasta(valor: str) -> str:
+    """Remove caracteres inválidos para uso em nome de pasta/arquivo."""
+    return re.sub(r'[\\/*?:"<>|]', "_", valor).strip()
+
+
+def _salvar_arquivos_local_cliente(
+    base_dir: str,
+    cnpj: str,
+    razao_social: str,
+    ano: int,
+    mes: int,
+    lista_xmls: list[tuple[str, bytes]],
+    excel_bytes: bytes,
+) -> None:
+    """Salva os arquivos do cliente em disco local."""
+    periodo = f"{ano:04d}-{mes:02d}"
+    nome_cliente = _sanitizar_nome_pasta(f"{cnpj} - {razao_social}")
+    pasta_destino = os.path.join(base_dir, nome_cliente, periodo)
+    os.makedirs(pasta_destino, exist_ok=True)
+
+    nome_excel = f"NFSe_{cnpj}_{periodo}.xlsx"
+    caminho_excel = os.path.join(pasta_destino, nome_excel)
+    with open(caminho_excel, "wb") as f_excel:
+        f_excel.write(excel_bytes)
+
+    for nome_xml, conteudo_xml in lista_xmls:
+        caminho_xml = os.path.join(pasta_destino, _sanitizar_nome_pasta(nome_xml))
+        with open(caminho_xml, "wb") as f_xml:
+            f_xml.write(conteudo_xml)
+
+    logger.debug(
+        "Arquivos locais salvos em '%s' (cliente=%s, xmls=%d).",
+        pasta_destino,
+        cnpj,
+        len(lista_xmls),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Processamento de um cliente
 # ---------------------------------------------------------------------------
@@ -214,6 +254,8 @@ def _processar_cliente(
     max_documentos_por_execucao: int | None,
     nsu_estado_path: str,
     drive_root_id: str,
+    storage_backend: str,
+    local_output_dir: str,
     dry_run: bool,
     todas_competencias: bool = False,
 ) -> dict:
@@ -323,18 +365,29 @@ def _processar_cliente(
             lista_dados, cnpj, razao_social, ano, mes
         )
 
-        # k. Upload no Drive
+        # k. Persistir arquivos (backend configurado)
         if not dry_run:
-            gdrive_uploader.organizar_e_enviar_cliente(
-                service,
-                drive_root_id,
-                cnpj,
-                razao_social,
-                ano,
-                mes,
-                lista_xmls,
-                excel_bytes,
-            )
+            if storage_backend == "gdrive":
+                gdrive_uploader.organizar_e_enviar_cliente(
+                    service,
+                    drive_root_id,
+                    cnpj,
+                    razao_social,
+                    ano,
+                    mes,
+                    lista_xmls,
+                    excel_bytes,
+                )
+            else:
+                _salvar_arquivos_local_cliente(
+                    base_dir=local_output_dir,
+                    cnpj=cnpj,
+                    razao_social=razao_social,
+                    ano=ano,
+                    mes=mes,
+                    lista_xmls=lista_xmls,
+                    excel_bytes=excel_bytes,
+                )
 
         # l. Atualizar e salvar NSU
         if not dry_run:
@@ -411,6 +464,8 @@ def processar_todos_clientes(
     log_to_console = _parse_bool_env(os.getenv("LOG_TO_CONSOLE"), default=True)
     credentials    = os.getenv("GOOGLE_CREDENTIALS_JSON", "")
     drive_root_id  = os.getenv("GOOGLE_DRIVE_FOLDER_ROOT_ID", "")
+    storage_backend = os.getenv("STORAGE_BACKEND", "local").strip().lower()
+    local_output_dir = os.getenv("LOCAL_OUTPUT_DIR", "/var/lib/nfse-collector/output").strip()
     rate_limit_delay = int(os.getenv("RATE_LIMIT_DELAY", "3"))
     max_docs_env = _parse_int_env(os.getenv("MAX_DOCUMENTOS_POR_EXECUCAO"), 0)
     max_documentos_por_execucao = max_docs_env if max_docs_env > 0 else None
@@ -422,11 +477,31 @@ def processar_todos_clientes(
     inicio = time.time()
     periodo = f"{ano:04d}-{mes:02d}"
 
-    # 2. Google Drive
+    if storage_backend not in _STORAGE_BACKENDS_VALIDOS:
+        logger.error(
+            "Valor inválido para STORAGE_BACKEND='%s'. Valores aceitos: local, gdrive.",
+            storage_backend,
+        )
+        return
+
+    logger.info("Backend de armazenamento selecionado: %s.", storage_backend)
+
+    # 2. Inicialização do backend
     service = None
-    if not dry_run:
-        logger.info("Inicializando Google Drive...")
-        service = gdrive_uploader.inicializar_drive(credentials)
+    if storage_backend == "gdrive":
+        if not credentials or not drive_root_id:
+            logger.error(
+                "STORAGE_BACKEND=gdrive exige GOOGLE_CREDENTIALS_JSON e "
+                "GOOGLE_DRIVE_FOLDER_ROOT_ID configurados."
+            )
+            return
+        if not dry_run:
+            logger.info("Inicializando Google Drive...")
+            service = gdrive_uploader.inicializar_drive(credentials)
+    else:
+        if not dry_run:
+            os.makedirs(local_output_dir, exist_ok=True)
+            logger.info("Saída local habilitada em: %s", local_output_dir)
 
     # 3. Clientes
     clientes = _carregar_clientes("config/clientes.csv", cnpj_filtro)
@@ -469,6 +544,8 @@ def processar_todos_clientes(
             max_documentos_por_execucao=max_documentos_por_execucao,
             nsu_estado_path=nsu_estado_path,
             drive_root_id=drive_root_id,
+            storage_backend=storage_backend,
+            local_output_dir=local_output_dir,
             dry_run=dry_run,
             todas_competencias=todas_competencias,
         )
@@ -482,21 +559,27 @@ def processar_todos_clientes(
     nome_consolidado = f"NFS-e_CONSOLIDADO_{periodo}.xlsx"
     consolidado_bytes = _gerar_excel_consolidado(resultados, ano, mes)
 
-    if not dry_run and service:
-        try:
-            gdrive_uploader.upload_ou_substituir(
-                service,
-                nome_arquivo=nome_consolidado,
-                conteudo=consolidado_bytes,
-                mimetype=(
-                    "application/vnd.openxmlformats-officedocument"
-                    ".spreadsheetml.sheet"
-                ),
-                pasta_id=drive_root_id,
-            )
-            logger.info("Consolidado enviado: '%s'.", nome_consolidado)
-        except Exception as exc:  # noqa: BLE001
-            logger.error("Falha ao enviar consolidado: %s", exc)
+    if not dry_run:
+        if storage_backend == "gdrive" and service:
+            try:
+                gdrive_uploader.upload_ou_substituir(
+                    service,
+                    nome_arquivo=nome_consolidado,
+                    conteudo=consolidado_bytes,
+                    mimetype=(
+                        "application/vnd.openxmlformats-officedocument"
+                        ".spreadsheetml.sheet"
+                    ),
+                    pasta_id=drive_root_id,
+                )
+                logger.info("Consolidado enviado: '%s'.", nome_consolidado)
+            except Exception as exc:  # noqa: BLE001
+                logger.error("Falha ao enviar consolidado: %s", exc)
+        elif storage_backend == "local":
+            caminho_consolidado = os.path.join(local_output_dir, nome_consolidado)
+            with open(caminho_consolidado, "wb") as f_consolidado:
+                f_consolidado.write(consolidado_bytes)
+            logger.info("Consolidado salvo localmente: '%s'.", caminho_consolidado)
 
     # 7. Resumo final
     ok     = [r for r in resultados if r["status"] == "OK"]
