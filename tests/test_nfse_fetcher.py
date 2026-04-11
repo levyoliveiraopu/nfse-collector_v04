@@ -1,11 +1,37 @@
 """Testes para o módulo nfse_fetcher."""
 
+import base64
+import gzip
 from datetime import datetime
 
 from src import nfse_fetcher
 
 
+def _doc_zip(xml: str) -> dict:
+    """Cria um doc com campo docZip (base64+gzip) a partir de um XML string."""
+    compressed = gzip.compress(xml.encode("utf-8"))
+    return {"docZip": base64.b64encode(compressed).decode("ascii"), "nsu": 1}
+
+
 class TestExtrairXmlDoDoc:
+    def test_campo_doczip(self):
+        """docZip deve ser decodificado com prioridade sobre campos de texto."""
+        xml = "<nfse>doczip</nfse>"
+        doc = _doc_zip(xml)
+        assert nfse_fetcher.extrair_xml_do_doc(doc) == xml
+
+    def test_campo_doczip_prioridade_sobre_texto(self):
+        """docZip tem prioridade — mesmo com xmlNfse presente."""
+        xml_zip = "<nfse>via-zip</nfse>"
+        doc = _doc_zip(xml_zip)
+        doc["xmlNfse"] = "<nfse>via-texto</nfse>"
+        assert nfse_fetcher.extrair_xml_do_doc(doc) == xml_zip
+
+    def test_campo_doczip_invalido_cai_no_fallback(self):
+        """Se docZip não puder ser decodificado, usa campo de texto."""
+        doc = {"docZip": "nao-e-base64-valido!!!@@@", "xmlNfse": "<nfse>ok</nfse>", "nsu": 1}
+        assert nfse_fetcher.extrair_xml_do_doc(doc) == "<nfse>ok</nfse>"
+
     def test_campo_xml(self):
         doc = {"xml": "<nfse>conteudo</nfse>"}
         assert nfse_fetcher.extrair_xml_do_doc(doc) == "<nfse>conteudo</nfse>"
@@ -152,7 +178,7 @@ class TestExtrairDadosNfse:
 class TestFiltrarPorCompetencia:
     def _doc_com_data(self, data_str: str) -> dict:
         xml = f'<nfse><dhEmi>{data_str}</dhEmi></nfse>'
-        return {"xmlNfse": xml, "nsu": 1}
+        return _doc_zip(xml)
 
     def test_filtra_corretamente(self):
         docs = [

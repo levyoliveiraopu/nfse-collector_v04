@@ -11,9 +11,11 @@ A autenticação mTLS é realizada externamente pelo módulo auth.py, que fornec
 a requests.Session já configurada com o certificado do cliente.
 
 BASE URL de produção: https://adn.nfse.gov.br/contribuintes
-Endpoint: GET /nfse/DFe/{UltimoNSU}?cnpjConsulta={CNPJ}
+Endpoint: GET /DFe/{UltimoNSU}?cnpjConsulta={CNPJ}
 """
 
+import base64
+import gzip
 import logging
 import time
 import xml.etree.ElementTree as ET
@@ -74,7 +76,7 @@ def buscar_lote_dfe(session: requests.Session, ultimo_nsu: int, cnpj: str) -> di
         requests.Timeout:   Após esgotamento das tentativas de retry.
         requests.ConnectionError: Após esgotamento das tentativas de retry.
     """
-    url = f"{_BASE_URL}/nfse/DFe/{ultimo_nsu}"
+    url = f"{_BASE_URL}/DFe/{ultimo_nsu}"
     params = {"cnpjConsulta": cnpj}
 
     @retry(
@@ -101,7 +103,13 @@ def buscar_lote_dfe(session: requests.Session, ultimo_nsu: int, cnpj: str) -> di
             )
 
         if resposta.status_code == 200:
-            return resposta.json()
+            dados = resposta.json()
+            logger.debug(
+                "HTTP 200 — chaves da resposta ADN (NSU=%d): %s",
+                ultimo_nsu,
+                list(dados.keys()),
+            )
+            return dados
 
         if resposta.status_code == 404:
             # Nenhum documento encontrado a partir deste NSU
@@ -159,6 +167,12 @@ def buscar_todos_dfe_novos(
 
         max_nsu_resposta: int = lote.get("maxNSU", nsu_atual)
         documentos: list[dict] = lote.get("loteNfse", [])
+        if not documentos and "loteNfse" not in lote:
+            logger.warning(
+                "Chave 'loteNfse' ausente na resposta — chaves disponíveis: %s | NSU=%d",
+                list(lote.keys()),
+                nsu_atual,
+            )
 
         todos_dfe.extend(documentos)
 
@@ -422,13 +436,32 @@ def extrair_dados_nfse(xml_content: str) -> dict:
 def extrair_xml_do_doc(doc: dict) -> str | None:
     """Retorna o conteúdo XML de um documento DFe retornado pela API ADN.
 
-    A API pode entregar o XML em diferentes campos dependendo da versão.
-    Tentamos os campos mais prováveis em ordem.
+    Tenta primeiro o campo ``docZip`` (base64+gzip, padrão ADN atual) e depois
+    campos de texto plano como fallback para versões antigas ou municipais.
     """
+    # 1. Campo docZip — padrão ADN: XML comprimido em gzip e codificado em base64
+    doc_zip = doc.get("docZip")
+    if isinstance(doc_zip, str) and doc_zip.strip():
+        try:
+            xml = gzip.decompress(base64.b64decode(doc_zip)).decode("utf-8")
+            if xml.strip():
+                return xml
+        except Exception as exc:
+            logger.warning("Falha ao decodificar docZip (NSU=%s): %s", doc.get("nsu", "?"), exc)
+
+    # 2. Fallback: campos de texto plano (versões antigas ou sistemas municipais)
     for campo in ("xmlNfse", "xml", "xmlNFSe", "nfseXml", "documento"):
         valor = doc.get(campo)
         if isinstance(valor, str) and valor.strip():
             return valor
+
+    logger.warning(
+        "XML não encontrado no documento — campos tentados: docZip + %s | "
+        "campos presentes: %s | NSU=%s",
+        ("xmlNfse", "xml", "xmlNFSe", "nfseXml", "documento"),
+        list(doc.keys()),
+        doc.get("nsu", "?"),
+    )
     return None
 
 

@@ -92,6 +92,14 @@ def _construir_parser() -> argparse.ArgumentParser:
         help="Reseta o NSU do CNPJ informado para 0 e encerra.",
     )
     parser.add_argument(
+        "--diagnostico",
+        metavar="CNPJ",
+        help=(
+            "Testa autenticação mTLS e exibe estrutura da resposta da API ADN "
+            "para o CNPJ informado. Não altera nenhum estado."
+        ),
+    )
+    parser.add_argument(
         "--lote",
         type=int,
         metavar="N",
@@ -116,6 +124,13 @@ def main() -> None:
 
     parser = _construir_parser()
     args = parser.parse_args()
+
+    # --- Diagnóstico (ação isolada, encerra após executar) ---
+    if args.diagnostico:
+        nsu_estado_path = os.getenv("NSU_ESTADO_PATH", "config/estado/ultimo_nsu.json")
+        from src.diagnostico import executar_diagnostico
+        executar_diagnostico(args.diagnostico, "config/clientes.csv", nsu_estado_path)
+        sys.exit(0)
 
     # --- Reset NSU (ação isolada, encerra após executar) ---
     if args.reset_nsu:

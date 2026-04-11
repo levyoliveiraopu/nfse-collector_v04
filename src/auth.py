@@ -30,7 +30,7 @@ from requests.adapters import HTTPAdapter
 logger = logging.getLogger(__name__)
 
 # URL base da API ADN — Sistema Nacional NFS-e
-_URL_TESTE_AUTENTICACAO = "https://adn.nfse.gov.br/contribuintes/nfse/DFe/1"
+_URL_TESTE_AUTENTICACAO = "https://adn.nfse.gov.br/contribuintes/DFe/1"
 
 # Timeout padrão para todas as requisições (segundos)
 _TIMEOUT_PADRAO = 30
