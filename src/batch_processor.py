@@ -2,8 +2,8 @@
 Orquestrador do processamento em lote de NFS-e para todos os clientes.
 
 Lê os clientes do CSV, busca os documentos fiscais na API ADN, gera os
-relatórios Excel e faz upload no Google Drive, atualizando o estado NSU
-a cada cliente processado com sucesso.
+relatórios Excel e delega a persistência para um backend de armazenamento,
+atualizando o estado NSU a cada cliente processado com sucesso.
 """
 
 import csv
@@ -17,7 +17,15 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from tqdm import tqdm
 
-from src import auth, excel_builder, gdrive_uploader, nfse_fetcher, nsu_tracker
+from src import (
+    auth,
+    excel_builder,
+    gdrive_uploader,
+    local_uploader,
+    nfse_fetcher,
+    nsu_tracker,
+)
+from src.storage_backend import StorageBackend
 
 logger = logging.getLogger(__name__)
 
@@ -209,11 +217,10 @@ def _processar_cliente(
     ano: int,
     mes: int,
     estado: dict,
-    service,
+    backend: StorageBackend | None,
     rate_limit_delay: int,
     max_documentos_por_execucao: int | None,
     nsu_estado_path: str,
-    drive_root_id: str,
     dry_run: bool,
     todas_competencias: bool = False,
 ) -> dict:
@@ -323,17 +330,17 @@ def _processar_cliente(
             lista_dados, cnpj, razao_social, ano, mes
         )
 
-        # k. Upload no Drive
+        # k. Persistência no backend configurado
         if not dry_run:
-            gdrive_uploader.organizar_e_enviar_cliente(
-                service,
-                drive_root_id,
-                cnpj,
-                razao_social,
-                ano,
-                mes,
-                lista_xmls,
-                excel_bytes,
+            periodo = f"{ano:04d}-{mes:02d}"
+            if backend is None:
+                raise RuntimeError("Backend de armazenamento não inicializado.")
+            backend.salvar_cliente(
+                cnpj=cnpj,
+                razao_social=razao_social,
+                periodo=periodo,
+                lista_xmls=lista_xmls,
+                excel_bytes=excel_bytes,
             )
 
         # l. Atualizar e salvar NSU
@@ -387,6 +394,32 @@ def _processar_cliente(
 # Função principal
 # ---------------------------------------------------------------------------
 
+def _criar_backend_armazenamento(
+    dry_run: bool,
+    credentials: str,
+    drive_root_id: str,
+) -> tuple[StorageBackend | None, object | None, str]:
+    """Cria backend de armazenamento com base em variável de ambiente."""
+    backend_nome = os.getenv("OUTPUT_BACKEND", "gdrive").strip().lower()
+
+    if dry_run:
+        return None, None, backend_nome
+
+    if backend_nome == "local":
+        base_dir = os.getenv("OUTPUT_LOCAL_BASE_DIR", "output")
+        logger.info("Inicializando backend local em '%s'...", base_dir)
+        return local_uploader.LocalUploader(base_dir), None, backend_nome
+
+    if backend_nome == "gdrive":
+        logger.info("Inicializando Google Drive...")
+        service = gdrive_uploader.inicializar_drive(credentials)
+        return gdrive_uploader.GDriveUploader(service, drive_root_id), service, backend_nome
+
+    raise ValueError(
+        f"OUTPUT_BACKEND inválido: '{backend_nome}'. Use 'gdrive' ou 'local'."
+    )
+
+
 def processar_todos_clientes(
     ano: int,
     mes: int,
@@ -422,11 +455,12 @@ def processar_todos_clientes(
     inicio = time.time()
     periodo = f"{ano:04d}-{mes:02d}"
 
-    # 2. Google Drive
-    service = None
-    if not dry_run:
-        logger.info("Inicializando Google Drive...")
-        service = gdrive_uploader.inicializar_drive(credentials)
+    # 2. Backend de armazenamento
+    backend, service, backend_nome = _criar_backend_armazenamento(
+        dry_run=dry_run,
+        credentials=credentials,
+        drive_root_id=drive_root_id,
+    )
 
     # 3. Clientes
     clientes = _carregar_clientes("config/clientes.csv", cnpj_filtro)
@@ -464,11 +498,10 @@ def processar_todos_clientes(
             ano=ano,
             mes=mes,
             estado=estado,
-            service=service,
+            backend=backend,
             rate_limit_delay=rate_limit_delay,
             max_documentos_por_execucao=max_documentos_por_execucao,
             nsu_estado_path=nsu_estado_path,
-            drive_root_id=drive_root_id,
             dry_run=dry_run,
             todas_competencias=todas_competencias,
         )
@@ -497,6 +530,12 @@ def processar_todos_clientes(
             logger.info("Consolidado enviado: '%s'.", nome_consolidado)
         except Exception as exc:  # noqa: BLE001
             logger.error("Falha ao enviar consolidado: %s", exc)
+    elif not dry_run:
+        logger.info(
+            "Consolidado '%s' não enviado (backend atual: %s).",
+            nome_consolidado,
+            backend_nome,
+        )
 
     # 7. Resumo final
     ok     = [r for r in resultados if r["status"] == "OK"]
