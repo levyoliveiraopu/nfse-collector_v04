@@ -22,11 +22,18 @@ else
     ERROS=$((ERROS+1))
 fi
 
-# 3. Dependências
-if venv/bin/pip show requests &>/dev/null; then
-    echo "✅ Dependências Python instaladas"
+# 3. Ambiente Python (interpretador + imports críticos)
+if [ -x "venv/bin/python" ]; then
+    echo "✅ venv/bin/python encontrado"
+
+    if venv/bin/python -c "import requests, dotenv, openpyxl, cryptography, tenacity, googleapiclient, tqdm" &>/dev/null; then
+        echo "✅ Dependências críticas Python importadas com sucesso"
+    else
+        echo "❌ Falha ao importar dependências críticas — execute: venv/bin/pip install -r requirements.txt"
+        ERROS=$((ERROS+1))
+    fi
 else
-    echo "❌ Dependências não instaladas — execute: venv/bin/pip install -r requirements.txt"
+    echo "❌ venv/bin/python não encontrado — execute: bash scripts/instalar.sh"
     ERROS=$((ERROS+1))
 fi
 
@@ -38,21 +45,34 @@ else
     ERROS=$((ERROS+1))
 fi
 
+# Extrai GOOGLE_CREDENTIALS_JSON do .env
+GOOGLE_CREDENTIALS_JSON=""
+if [ -f "config/.env" ]; then
+    LINHA_CREDENTIALS=$(grep "^GOOGLE_CREDENTIALS_JSON=" config/.env 2>/dev/null | tail -n 1)
+    if [ -n "$LINHA_CREDENTIALS" ]; then
+        GOOGLE_CREDENTIALS_JSON="${LINHA_CREDENTIALS#GOOGLE_CREDENTIALS_JSON=}"
+        GOOGLE_CREDENTIALS_JSON="${GOOGLE_CREDENTIALS_JSON%\"}"
+        GOOGLE_CREDENTIALS_JSON="${GOOGLE_CREDENTIALS_JSON#\"}"
+    fi
+fi
+
 # 5. Google credentials
-if [ -f "config/google_credentials.json" ]; then
-    echo "✅ Google credentials encontrado"
+if [ -z "$GOOGLE_CREDENTIALS_JSON" ]; then
+    echo "❌ Variável GOOGLE_CREDENTIALS_JSON está vazia no config/.env"
+    ERROS=$((ERROS+1))
+elif [ -f "$GOOGLE_CREDENTIALS_JSON" ]; then
+    echo "✅ Google credentials encontrado em: $GOOGLE_CREDENTIALS_JSON"
 else
-    echo "❌ config/google_credentials.json não encontrado — ver SETUP.md seção 4"
+    echo "❌ Arquivo Google credentials não encontrado no caminho informado em GOOGLE_CREDENTIALS_JSON: $GOOGLE_CREDENTIALS_JSON — ver SETUP.md seção 4"
     ERROS=$((ERROS+1))
 fi
 
-# 6. Pasta de certificados
+# 6. Pasta de certificados (informativo)
 QTD_PFX=$(find config/certificados -name "*.pfx" 2>/dev/null | wc -l)
 if [ "$QTD_PFX" -gt 0 ]; then
-    echo "✅ $QTD_PFX certificado(s) .pfx encontrado(s)"
+    echo "ℹ️  $QTD_PFX certificado(s) .pfx encontrado(s) em config/certificados/"
 else
-    echo "❌ Nenhum .pfx em config/certificados/ — copie os certificados dos clientes"
-    ERROS=$((ERROS+1))
+    echo "ℹ️  Nenhum .pfx em config/certificados/ (checagem apenas informativa)"
 fi
 
 # 7. clientes.csv
@@ -109,11 +129,19 @@ else
 fi
 
 # 8. Variáveis obrigatórias no .env
-for VAR in GOOGLE_CREDENTIALS_JSON GOOGLE_DRIVE_FOLDER_ROOT_ID; do
+for VAR in GOOGLE_DRIVE_FOLDER_ROOT_ID; do
     if grep -q "^${VAR}=" config/.env 2>/dev/null; then
         VALOR=$(grep "^${VAR}=" config/.env | cut -d= -f2)
         if [ -n "$VALOR" ] && [ "$VALOR" != "cole_aqui_o_id_da_pasta_raiz" ]; then
             echo "✅ Variável $VAR configurada"
+
+            if [ "$VAR" = "NSU_ESTADO_PATH" ]; then
+                DIRETORIO_PAI=$(dirname "$VALOR")
+                if [ ! -d "$DIRETORIO_PAI" ]; then
+                    echo "⚠️  Diretório pai de NSU_ESTADO_PATH não existe: $DIRETORIO_PAI"
+                    echo "   Crie com: mkdir -p \"$DIRETORIO_PAI\""
+                fi
+            fi
         else
             echo "❌ Variável $VAR está vazia ou com valor padrão no .env"
             ERROS=$((ERROS+1))
