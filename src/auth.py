@@ -24,6 +24,7 @@ import requests
 from cryptography import x509
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.serialization import pkcs12
+from cryptography.x509.oid import NameOID
 from requests.adapters import HTTPAdapter
 
 logger = logging.getLogger(__name__)
@@ -183,24 +184,13 @@ def extrair_cnpj_do_certificado(cert_pfx_path: str, cert_password: str) -> str:
 
     _verificar_validade(certificate, cert_pfx_path)
 
-    return extrair_cnpj_do_certificado_obj(certificate, cert_pfx_path)
+    # 1) Priorizar CN (Common Name), que costuma trazer o CNPJ do titular
+    #    no formato "RAZAO SOCIAL:12345678000199".
+    cnpj_cn = _extrair_cnpj_do_cn(certificate.subject)
+    if cnpj_cn:
+        return cnpj_cn
 
-
-def extrair_cnpj_do_certificado_obj(
-    certificate: x509.Certificate, origem: str = ""
-) -> str:
-    """Extrai o CNPJ de um objeto certificado já carregado em memória.
-
-    Útil quando o certificado já foi carregado por ``criar_session_cliente``,
-    evitando reabrir e decodificar o .pfx uma segunda vez.
-
-    Args:
-        certificate: Objeto x509.Certificate já carregado.
-        origem:      Identificador opcional para mensagens de log.
-
-    Returns:
-        String com os 14 dígitos do CNPJ, ou string vazia se não encontrado.
-    """
+    # 2) Fallback: buscar em todos os atributos do Subject
     subject_str = _subject_para_str(certificate.subject)
     logger.debug("Subject do certificado '%s': %s", origem, subject_str)
 
@@ -381,6 +371,24 @@ def _subject_para_str(subject: x509.Name) -> str:
     for atributo in subject:
         partes.append(f"{atributo.oid.dotted_string}={atributo.value}")
     return " ".join(partes)
+
+
+def _extrair_cnpj_do_cn(subject: x509.Name) -> str:
+    """Extrai CNPJ a partir do atributo CN (Common Name), se presente.
+
+    Estratégia:
+    1) Tenta localizar CNPJ no valor do CN (ex.: "EMPRESA:12345678000199").
+    2) Se não encontrar em nenhum CN, retorna string vazia.
+    """
+    atributos_cn = subject.get_attributes_for_oid(NameOID.COMMON_NAME)
+    for atributo in atributos_cn:
+        valor_cn = (atributo.value or "").strip()
+        if not valor_cn:
+            continue
+        cnpj = _extrair_cnpj_da_string(valor_cn)
+        if cnpj:
+            return cnpj
+    return ""
 
 
 def _extrair_cnpj_da_string(texto: str) -> str:
