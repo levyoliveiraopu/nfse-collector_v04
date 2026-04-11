@@ -51,6 +51,27 @@ def _get_base_url() -> str:
 _TIMEOUT_PADRAO = 30
 
 
+def _obter_timeout_http() -> int:
+    """Lê timeout HTTP do .env com fallback seguro.
+
+    Variável suportada:
+        - HTTP_TIMEOUT_SECONDS (int > 0)
+    """
+    valor = os.getenv("HTTP_TIMEOUT_SECONDS", str(_TIMEOUT_PADRAO)).strip()
+    try:
+        timeout = int(valor)
+        if timeout <= 0:
+            raise ValueError
+        return timeout
+    except ValueError:
+        logger.warning(
+            "HTTP_TIMEOUT_SECONDS inválido ('%s'). Usando padrão de %ds.",
+            valor,
+            _TIMEOUT_PADRAO,
+        )
+        return _TIMEOUT_PADRAO
+
+
 # ---------------------------------------------------------------------------
 # HTTPAdapter com timeout fixo
 # ---------------------------------------------------------------------------
@@ -146,7 +167,8 @@ def criar_session_cliente(
         "Accept": "application/json",
     })
 
-    adapter = _TimeoutAdapter(timeout=_TIMEOUT_PADRAO)
+    timeout_http = _obter_timeout_http()
+    adapter = _TimeoutAdapter(timeout=timeout_http)
     session.mount("https://", adapter)
     session.mount("http://", adapter)
 
@@ -369,7 +391,7 @@ def testar_autenticacao(session: requests.Session) -> dict:
             "ok": False,
             "status_code": None,
             "mensagem": (
-                f"Timeout após {_TIMEOUT_PADRAO}s aguardando resposta do servidor ADN. "
+                f"Timeout após {_obter_timeout_http()}s aguardando resposta do servidor ADN. "
                 "Verifique a conectividade da VPS."
             ),
         }
