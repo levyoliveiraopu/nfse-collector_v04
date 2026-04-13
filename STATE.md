@@ -15,11 +15,13 @@
 
 ## Em Andamento
 
-- **CORE-01** — Extrair pacote `worker-core` a partir de `src/`
-  (PR aberto, aguardando merge).
+_Nenhuma tarefa ativa._
 
 ## Concluidos
 
+- **CORE-01** — Motor ADN legado extraido de `src/` para pacote Python
+  instalavel em `packages/worker-core/`; `src/` vira shim retro-compativel
+  (PR #80).
 - **INFRA-06** — Bucket S3 (Backblaze B2): template de lifecycle,
   `.env.example`, runbook manual e smoke test prontos; aplicacao no
   console/CLI da Backblaze e geracao da Application Key ficam a cargo
@@ -55,7 +57,7 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-13
-- PR: CORE-01 (motor ADN extraido para `packages/worker-core/`; `src/` vira shim)
+- PR: #80 — CORE-01 (motor ADN extraido para `packages/worker-core/`; `src/` vira shim)
 - Autor: @LevyOliveirabr
 - Nota: workflow `pr-guardrail` exige STATE.md + CHANGELOG.md + `Closes #N` em todo PR para main.
 
