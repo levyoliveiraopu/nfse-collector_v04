@@ -26,10 +26,14 @@ _Nenhuma tarefa ativa._
   `.env.example`, runbook manual e smoke test prontos; aplicacao no
   console/CLI da Backblaze e geracao da Application Key ficam a cargo
   do owner (ver `infra/s3-bucket.md` secao 2).
+- **INFRA-01** — Hardening inicial da VPS Hostinger: runbook completo
+  em `infra/vps-hardening.md` (usuario `deploy`, SSH chave-only, UFW,
+  fail2ban, unattended-upgrades, TZ `America/Sao_Paulo`). Execucao na
+  VPS real fica a cargo do owner — DoD dos checks `ssh`/`ufw`/`fail2ban`/
+  `timedatectl` e validado apos aplicacao manual.
 
 ## Proximas Destravadas (prontas para iniciar)
 
-- **INFRA-01** — Hardening inicial da VPS Hostinger
 - **DOCS-01** — Termos de Uso (clausula de retencao 90d)
 - **DOCS-02** — Politica de Privacidade + LGPD
 - **DATA-01** — Schema inicial: tenants, users, tenant_users (depende de `apps/api` inicializado; ver API-01)
@@ -57,7 +61,7 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-13
-- PR: #80 — CORE-01 (motor ADN extraido para `packages/worker-core/`; `src/` vira shim)
+- PR: INFRA-01 — runbook de hardening da VPS Hostinger em `infra/vps-hardening.md`
 - Autor: @LevyOliveirabr
 - Nota: workflow `pr-guardrail` exige STATE.md + CHANGELOG.md + `Closes #N` em todo PR para main.
 
