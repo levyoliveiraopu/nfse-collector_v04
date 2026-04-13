@@ -1,11 +1,46 @@
+# --- Legacy collector ---
 config/clientes.csv
 config/certificados/
 config/estado/
 config/.env
 config/google_credentials.json
 logs/
+
+# --- Python ---
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 venv/
 .venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# --- Node / Monorepo ---
+node_modules/
+.pnpm-store/
+.turbo/
+.next/
+.cache/
+coverage/
+
+# --- Env & secrets ---
+.env
+.env.*
+!.env.example
+*.pem
+*.pfx
+*.key
+
+# --- Editor / OS ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# --- Deploy ---
 deploy_homologacao.sh
