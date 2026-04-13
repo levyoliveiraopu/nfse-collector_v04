@@ -44,8 +44,9 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-13
-- PR: setup inicial (GOV-01 + GOV-02 + GOV-03)
+- PR: setup inicial (GOV-01 + GOV-02 + GOV-03 + GOV-07)
 - Autor: @LevyOliveirabr
+- Nota: workflow `pr-guardrail` exige STATE.md + CHANGELOG.md + `Closes #N` em todo PR para main.
 
 ## Links Rapidos
 

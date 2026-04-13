@@ -1,0 +1,91 @@
+name: pr-guardrail
+
+# Bloqueia PR para main se STATE.md ou CHANGELOG.md nao forem alterados.
+# Protecao contra agente (Claude, Codex, etc.) esquecer de atualizar a fonte
+# de verdade do projeto. Ver docs/tasks/GOV-07.md.
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  require-state-changelog:
+    name: Require STATE.md + CHANGELOG.md update
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if PR is exempt
+        id: exempt
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_LABELS: ${{ toJson(github.event.pull_request.labels) }}
+        run: |
+          if echo "$PR_LABELS" | grep -q '"name": *"skip-guardrail"'; then
+            echo "exempt=true" >> "$GITHUB_OUTPUT"
+            echo "PR tem label skip-guardrail - exempto."
+            exit 0
+          fi
+          case "$PR_TITLE" in
+            "chore(release):"*|"docs:"*|"ci:"*)
+              echo "exempt=true" >> "$GITHUB_OUTPUT"
+              echo "Titulo comeca com prefixo exempto ($PR_TITLE)."
+              ;;
+            *)
+              echo "exempt=false" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+      - name: Get changed files
+        id: diff
+        if: steps.exempt.outputs.exempt != 'true'
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          changed=$(git diff --name-only "$base" "$head")
+          echo "Changed files:"
+          echo "$changed"
+          {
+            echo "changed<<EOF"
+            echo "$changed"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Require STATE.md update
+        if: steps.exempt.outputs.exempt != 'true'
+        run: |
+          if ! echo "${{ steps.diff.outputs.changed }}" | grep -qx 'STATE.md'; then
+            echo "::error file=STATE.md::STATE.md nao foi atualizado neste PR. Atualize (ticket em andamento/concluido, proximas destravadas, data)."
+            exit 1
+          fi
+          echo "STATE.md alterado OK."
+
+      - name: Require CHANGELOG.md update
+        if: steps.exempt.outputs.exempt != 'true'
+        run: |
+          if ! echo "${{ steps.diff.outputs.changed }}" | grep -qx 'CHANGELOG.md'; then
+            echo "::error file=CHANGELOG.md::CHANGELOG.md nao foi atualizado neste PR. Adicione uma linha na secao [Unreleased]."
+            exit 1
+          fi
+          echo "CHANGELOG.md alterado OK."
+
+      - name: Require Closes reference
+        if: steps.exempt.outputs.exempt != 'true'
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if echo "$PR_BODY" | grep -qiE '(close[sd]?|fix(e[sd])?|resolve[sd]?)[[:space:]]+#[0-9]+'; then
+            echo "Referencia Closes/Fixes/Resolves #N encontrada OK."
+          else
+            echo "::error::PR body nao contem 'Closes #N' (ou Fixes/Resolves). Adicione para fechamento automatico do issue."
+            exit 1
+          fi
