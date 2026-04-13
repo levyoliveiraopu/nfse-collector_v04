@@ -17,6 +17,13 @@
 
 _Nenhuma tarefa ativa._
 
+## Concluidos
+
+- **INFRA-06** — Bucket S3 (Backblaze B2): template de lifecycle,
+  `.env.example`, runbook manual e smoke test prontos; aplicacao no
+  console/CLI da Backblaze e geracao da Application Key ficam a cargo
+  do owner (ver `infra/s3-bucket.md` secao 2).
+
 ## Proximas Destravadas (prontas para iniciar)
 
 - **INFRA-01** — Hardening inicial da VPS Hostinger
@@ -24,6 +31,10 @@ _Nenhuma tarefa ativa._
 - **DOCS-01** — Termos de Uso (clausula de retencao 90d)
 - **DOCS-02** — Politica de Privacidade + LGPD
 - **DATA-01** — Schema inicial: tenants, users, tenant_users (depende de `apps/api` inicializado; ver API-01)
+
+> Nota: CORE-05, API-06, API-11 e INFRA-08 dependem de INFRA-06 **e**
+> de outros tickets (CORE-01 / API-05 / DATA-05 / INFRA-05), portanto
+> continuam bloqueados ate que essas dependencias sejam concluidas.
 
 ## Bloqueadas
 
@@ -44,7 +55,7 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-13
-- PR: setup inicial (GOV-01 + GOV-02 + GOV-03 + GOV-07)
+- PR: INFRA-06 (bucket S3 com lifecycle — template + runbook)
 - Autor: @LevyOliveirabr
 - Nota: workflow `pr-guardrail` exige STATE.md + CHANGELOG.md + `Closes #N` em todo PR para main.
 
