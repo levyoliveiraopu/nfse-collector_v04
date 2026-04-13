@@ -15,7 +15,8 @@
 
 ## Em Andamento
 
-_Nenhuma tarefa ativa._
+- **CORE-01** — Extrair pacote `worker-core` a partir de `src/`
+  (PR aberto, aguardando merge).
 
 ## Concluidos
 
@@ -27,7 +28,6 @@ _Nenhuma tarefa ativa._
 ## Proximas Destravadas (prontas para iniciar)
 
 - **INFRA-01** — Hardening inicial da VPS Hostinger
-- **CORE-01** — Extrair pacote `worker-core` a partir de `src/`
 - **DOCS-01** — Termos de Uso (clausula de retencao 90d)
 - **DOCS-02** — Politica de Privacidade + LGPD
 - **DATA-01** — Schema inicial: tenants, users, tenant_users (depende de `apps/api` inicializado; ver API-01)
@@ -55,7 +55,7 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-13
-- PR: INFRA-06 (bucket S3 com lifecycle — template + runbook)
+- PR: CORE-01 (motor ADN extraido para `packages/worker-core/`; `src/` vira shim)
 - Autor: @LevyOliveirabr
 - Nota: workflow `pr-guardrail` exige STATE.md + CHANGELOG.md + `Closes #N` em todo PR para main.
 

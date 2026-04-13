@@ -11,7 +11,8 @@ Uso via CLI:
 import csv
 import os
 
-from src import auth, nfse_fetcher, nsu_tracker
+from worker_core import auth, nsu_tracker
+from worker_core import fetcher as nfse_fetcher
 
 
 def executar_diagnostico(cnpj: str, csv_path: str, nsu_estado_path: str) -> None:
