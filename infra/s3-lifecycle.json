@@ -1,0 +1,17 @@
+{
+  "_readme": "Lifecycle rules para o bucket B2 nfse-saas-prod. Ver infra/s3-bucket.md secao 2.3 para limitacoes de prefix do B2 e o workaround aplicacional para exports 30d. Campos seguem o schema da B2 Native API (b2_update_bucket): https://www.backblaze.com/apidocs/b2-update-bucket",
+  "lifecycleRules": [
+    {
+      "fileNamePrefix": "tenants/",
+      "daysFromUploadingToHiding": 90,
+      "daysFromHidingToDeleting": 1,
+      "_comment": "Regra default: todos os objetos sob tenants/ expiram em 90 dias (ADR-003). Cobre tenants/{tid}/executions/*.xml e tenants/{tid}/credentials/* sem problema. Para exports (30d), ver nota na regra abaixo."
+    },
+    {
+      "fileNamePrefix": "tenants-exports/",
+      "daysFromUploadingToHiding": 30,
+      "daysFromHidingToDeleting": 1,
+      "_comment": "Exports (Excel/ZIP) ficam em tenants-exports/{tid}/... em vez de tenants/{tid}/exports/. Isso contorna a limitacao do B2 de nao aceitar prefix glob (tenants/*/exports/). O worker usa S3_EXPORTS_PREFIX para apontar ao prefix correto. Ver ADR-003 + infra/s3-bucket.md secao 2.3."
+    }
+  ]
+}

@@ -10,3 +10,4 @@ Segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - GOV-02: 5 ADRs iniciais (monolito modular, RLS, storage 90d, billing adiado, deploy compose).
 - GOV-03: backlog completo em `docs/tasks/` + templates GitHub + STATE.md.
 - GOV-07: workflow `pr-guardrail` exige STATE.md + CHANGELOG.md + `Closes #N` para mergear em main.
+- INFRA-06: bucket S3 (Backblaze B2) — template de lifecycle (`infra/s3-lifecycle.json`), variaveis `S3_*` em `config/.env.example`, smoke test (`infra/scripts/s3-smoke-test.sh`) e runbook em `infra/s3-bucket.md` (criacao de conta/key e aplicacao das rules ficam manuais).
