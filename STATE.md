@@ -44,6 +44,12 @@
   fail2ban, unattended-upgrades, TZ `America/Sao_Paulo`). Execucao na
   VPS real fica a cargo do owner — DoD dos checks `ssh`/`ufw`/`fail2ban`/
   `timedatectl` e validado apos aplicacao manual.
+- **INFRA-03** — Runbook de DNS no Cloudflare em `infra/dns.md`: tabela
+  de registros A para `app`/`api`/`ops`/`www`/apex com DNS-only
+  obrigatorio em `api` e `ops` (preservar mTLS das prefeituras — ADR-003),
+  passos via UI + API, checks `dig` e plano de migracao quando o nome
+  comercial sair. Aplicacao na zona real (owner) — DoD valida apos
+  propagacao.
 - **DOCS-01** — Termos de Uso criado em `docs/legal/terms.md`, incluindo
   clausula de retencao de 90 dias (ADR-003), pagamento/renovacao/cancelamento,
   limitacao de responsabilidade, foro/legislacao e orientacao de referencia
