@@ -1,0 +1,122 @@
+## docker-compose.obs.yml (INFRA-07)
+##
+## Stack de observabilidade minima: Loki + Promtail + Grafana + Uptime Kuma.
+## Runbook: ../observability.md.
+##
+## Execucao na VPS:
+##   cd /srv/nfse/prod/config/obs
+##   docker compose -f docker-compose.obs.yml --env-file ../.env up -d
+##
+## Portas expostas somente em 127.0.0.1 — acesso externo e feito pelo
+## Nginx host (infra/nginx/ops.conf.example) com basic auth + IP allowlist.
+
+name: nfse-obs
+
+networks:
+  obs_net:
+    driver: bridge
+
+volumes:
+  loki_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /srv/nfse/prod/data/loki
+  grafana_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /srv/nfse/prod/data/grafana
+  uptime_kuma_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /srv/nfse/prod/data/uptime-kuma
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  loki:
+    image: grafana/loki:2.9.8
+    container_name: nfse-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki-config.yml
+    user: "10001:10001"
+    volumes:
+      - ./loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki_data:/loki
+    networks:
+      - obs_net
+    # Exposto somente para a rede obs_net — nao publica porta no host.
+    expose:
+      - "3100"
+    logging: *default-logging
+
+  promtail:
+    image: grafana/promtail:2.9.8
+    container_name: nfse-promtail
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/promtail-config.yml
+    volumes:
+      - ./promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      # Acesso read-only aos logs do Docker na VPS.
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/log:/var/log:ro
+      # Positions file persistente (nao re-scaneia do zero a cada restart).
+      - /srv/nfse/prod/data/promtail:/var/lib/promtail
+    networks:
+      - obs_net
+    depends_on:
+      - loki
+    logging: *default-logging
+
+  grafana:
+    image: grafana/grafana:10.4.5
+    container_name: nfse-grafana
+    restart: unless-stopped
+    user: "472:472"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
+      # Servido atras do Nginx em ops.<dominio>/grafana.
+      GF_SERVER_ROOT_URL: "https://${OBS_DOMAIN:?set OBS_DOMAIN in .env}/grafana"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_INSTALL_PLUGINS: ""
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks:
+      - obs_net
+    ports:
+      # Bind localhost — Nginx host faz proxy para aqui.
+      - "127.0.0.1:3001:3000"
+    depends_on:
+      - loki
+    logging: *default-logging
+
+  uptime-kuma:
+    image: louislam/uptime-kuma:1.23.13
+    container_name: nfse-uptime-kuma
+    restart: unless-stopped
+    environment:
+      UPTIME_KUMA_PORT: "3001"
+    volumes:
+      - uptime_kuma_data:/app/data
+    networks:
+      - obs_net
+    ports:
+      # Bind localhost — Nginx host faz proxy para aqui.
+      - "127.0.0.1:3002:3001"
+    logging: *default-logging
