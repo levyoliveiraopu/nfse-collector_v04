@@ -6,6 +6,7 @@ Segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- GOV-06: workflow `.github/workflows/ci.yml` com jobs `lint-python` (ruff), `test-python` (pytest), `lint-ts` (eslint + typecheck) em todo PR e push em `main`; cache pip/pnpm; `ruff.toml` conservador na raiz (regras E/F/W, E501 ignorada, isort desligado).
 - DOCS-03: runbook de credencial invalida em `docs/runbooks/credencial-invalida.md` e link no APP-06 para ocorrencias `CERT_EXPIRED`, `CRED_INVALID` e `CERT_REVOKED`.
 - GOV-01: estrutura do monorepo (pnpm workspaces + Turborepo).
 - GOV-02: 5 ADRs iniciais (monolito modular, RLS, storage 90d, billing adiado, deploy compose).
