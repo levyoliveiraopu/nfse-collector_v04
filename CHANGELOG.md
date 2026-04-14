@@ -11,6 +11,7 @@ Segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - GOV-03: backlog completo em `docs/tasks/` + templates GitHub + STATE.md.
 - GOV-07: workflow `pr-guardrail` exige STATE.md + CHANGELOG.md + `Closes #N` para mergear em main.
 - INFRA-06: bucket S3 (Backblaze B2) — template de lifecycle (`infra/s3-lifecycle.json`), variaveis `S3_*` em `config/.env.example`, smoke test (`infra/scripts/s3-smoke-test.sh`) e runbook em `infra/s3-bucket.md` (criacao de conta/key e aplicacao das rules ficam manuais).
+- API-01: bootstrap FastAPI em `apps/api/` com `pyproject.toml` (hatchling), `api/config.py` (pydantic-settings, prefixo `API_`), `api/logging.py` (JSON structured logs via `python-json-logger`), `api/main.py` com endpoints `/health` e `/version`, Dockerfile multi-stage (usuario nao-root, `GIT_COMMIT` via build-arg), `.dockerignore`, README e variaveis `API_*` em `config/.env.example`.
 
 ### Changed
 - CORE-01: motor ADN legado extraido de `src/` para pacote Python instalavel em `packages/worker-core/` (modulos `auth`, `fetcher`, `nsu_tracker`, `batch_processor`, `excel_builder`, `storage_backend`, `local_uploader`, `gdrive_uploader`, `noop_uploader`); `src/` vira shim fino retro-compativel. `main.py` e testes existentes preservados. `pip install -e packages/worker-core` habilita `from worker_core import fetch_nfse`.
