@@ -6,6 +6,7 @@ Segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- API-02: autenticacao completa em `apps/api/api/auth/` — endpoints `/auth/signup|login|refresh|logout`, hash argon2id (`api/security/password.py`), JWT HS256 access 15min (`api/security/jwt.py`), refresh opaco 7d com rotacao e detecao de reuso via `replaced_by` (`api/security/tokens.py`), rate limit slowapi 5/min/IP no login, migration `0010_auth_refresh_tokens.py` com RLS por `tenant_id`. Novas envs `API_JWT_SECRET`/`API_JWT_ISSUER`/`API_JWT_AUDIENCE`/`API_ACCESS_TOKEN_TTL_MINUTES`/`API_REFRESH_TOKEN_TTL_DAYS`/`API_LOGIN_RATE_LIMIT` em `config/.env.example`. Novas deps `argon2-cffi`, `pyjwt[crypto]`, `slowapi`, `pydantic[email]`.
 - DATA-01: Alembic configurado em `apps/api/alembic/` + migration `0001_initial_identity.py` criando extensao `pgcrypto`, roles `app_admin` (BYPASSRLS) / `app_user` (NOBYPASSRLS), tabelas `tenants`, `users` e `tenant_users`, indices (`LOWER(email)` unico, `(tenant_id, role)`, `(user_id)`) e RLS com politicas em `tenants` e `tenant_users` via GUC `app.current_tenant`; `API_DATABASE_URL` em `config/.env.example`.
 - GOV-06: workflow `.github/workflows/ci.yml` com jobs `lint-python` (ruff), `test-python` (pytest), `lint-ts` (eslint + typecheck) em todo PR e push em `main`; cache pip/pnpm; `ruff.toml` conservador na raiz (regras E/F/W, E501 ignorada, isort desligado).
 - DOCS-03: runbook de credencial invalida em `docs/runbooks/credencial-invalida.md` e link no APP-06 para ocorrencias `CERT_EXPIRED`, `CRED_INVALID` e `CERT_REVOKED`.
