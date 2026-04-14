@@ -64,6 +64,18 @@
   `apps/api/README.md`. Tenant inexistente/`suspended`/`canceled` ->
   403; token ausente/invalido -> 401 com `WWW-Authenticate: Bearer`
   (PR a abrir — Closes #27).
+- **DATA-04** — Schema de tabelas operacionais:
+  migrations `0006_occurrences.py` (ocorrencias por tenant com FKs
+  compostas para `companies` e `executions`, FK nullable para
+  `users.assignee_user_id`, CHECKs de `severity`/`status`/ordem de
+  `first_seen_at`/`last_seen_at`, RLS), `0007_reprocess_jobs.py`
+  (jobs de reprocessamento com `scope jsonb`, `result_execution_ids
+  text[]`, CHECK de `status`, RLS) e `0008_notifications.py`
+  (outbox multicanal com `payload jsonb`, CHECKs de
+  `channel`/`status`, indice parcial para pendentes, RLS) em
+  `apps/api/alembic/versions/`. Testes estaticos em
+  `apps/api/tests/test_migration_000{6,7,8}.py`
+  (PR a abrir — Closes #15).
 
 ## Concluidos
 
@@ -221,6 +233,14 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-14
+- PR: (a abrir) — DATA-04: migrations `0006_occurrences`
+  (FKs compostas para `companies` e `executions`, FK nullable para
+  `users` em `assignee_user_id`, CHECKs de severity/status/ordem
+  first_seen/last_seen, RLS), `0007_reprocess_jobs` (`scope jsonb`,
+  `result_execution_ids text[]`, CHECK de status, RLS) e
+  `0008_notifications` (`payload jsonb`, CHECKs de channel/status,
+  indice parcial para pendentes, RLS) + testes estaticos. Move
+  DATA-04 de "Bloqueadas" para "Em Andamento". Closes #15.
 - PR: (a abrir) — APP-01: paginas de auth (`/login`, `/signup`,
   `/recuperar-senha`, `/redefinir-senha/[token]`,
   `/aceitar-convite/[token]`) + `<AuthProvider>` com access em memoria
