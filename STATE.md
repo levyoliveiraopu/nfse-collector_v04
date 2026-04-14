@@ -66,7 +66,7 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-14
-- PR: DS-01 em andamento — bootstrap do `apps/web-app` (issue #40)
+- PR: API-01 — bootstrap FastAPI em `apps/api/` (`/health`, `/version`, Dockerfile)
 - Autor: @LevyOliveirabr
 - Nota: workflow `pr-guardrail` exige STATE.md + CHANGELOG.md + `Closes #N` em todo PR para main.
 
