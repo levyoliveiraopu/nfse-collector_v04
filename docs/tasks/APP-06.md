@@ -16,6 +16,7 @@ Inbox de ocorrencias estilo helpdesk.
   `docs/runbooks/<code>.md` embutido).
 - Acoes: acknowledge, resolve (com nota), assign, reprocessar (abre
   pre-preenchido em APP-05).
+- Runbook de credencial invalida (DOCS-03): `docs/runbooks/credencial-invalida.md` (cobre `CERT_EXPIRED`, `CRED_INVALID`, `CERT_REVOKED`).
 
 ## Definition of Done
 

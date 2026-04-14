@@ -15,10 +15,13 @@
 
 ## Em Andamento
 
-_Nenhuma tarefa ativa._
+- **DS-01** — Bootstrap do `apps/web-app` (Next.js 14 App Router + TS strict,
+  Tailwind, shadcn/ui, Lucide, Sonner) com pagina `/` "Hello painel"
+  (PR pendente; issue #40).
 
 ## Concluidos
 
+- **DOCS-03** — Runbook de credencial invalida criado em `docs/runbooks/credencial-invalida.md` e linkado no ticket APP-06 para uso inline nas ocorrencias `CERT_EXPIRED`, `CRED_INVALID` e `CERT_REVOKED` (PR a abrir).
 - **CORE-01** — Motor ADN legado extraido de `src/` para pacote Python
   instalavel em `packages/worker-core/`; `src/` vira shim retro-compativel
   (PR #80).
@@ -26,6 +29,7 @@ _Nenhuma tarefa ativa._
   `.env.example`, runbook manual e smoke test prontos; aplicacao no
   console/CLI da Backblaze e geracao da Application Key ficam a cargo
   do owner (ver `infra/s3-bucket.md` secao 2).
+- **DOCS-02** — Politica de Privacidade (LGPD) publicada em `docs/legal/privacy.md` + RoPA minima em `docs/legal/ropa.md` (PR a abrir).
 
 - **DOCS-04** — Runbook de incidentes para indisponibilidade de portal
   e rate-limit documentado em `docs/runbooks/portal-indisponivel.md`
@@ -35,7 +39,6 @@ _Nenhuma tarefa ativa._
 
 - **INFRA-01** — Hardening inicial da VPS Hostinger
 - **DOCS-01** — Termos de Uso (clausula de retencao 90d)
-- **DOCS-02** — Politica de Privacidade + LGPD
 - **DATA-01** — Schema inicial: tenants, users, tenant_users (depende de `apps/api` inicializado; ver API-01)
 
 > Nota: CORE-05, API-06, API-11 e INFRA-08 dependem de INFRA-06 **e**
@@ -45,7 +48,6 @@ _Nenhuma tarefa ativa._
 ## Bloqueadas
 
 - **SITE-00..10** — aguardando definicao do nome comercial.
-- **API-01** — aguardando `GOV-01` (feito) e decisao sobre estrutura de pacote Python.
 
 ## Limite de WIP
 
