@@ -1,8 +1,7 @@
-"""Entry point da API FastAPI (API-01).
+"""Entry point da API FastAPI.
 
-Expoe endpoints basicos de observabilidade:
-- GET /health  -> liveness simples.
-- GET /version -> versao do pacote + commit (quando disponivel).
+Expoe endpoints basicos de observabilidade (API-01) e o router de
+autenticacao (API-02) em `/auth/*`.
 """
 
 from __future__ import annotations
@@ -10,9 +9,22 @@ from __future__ import annotations
 import logging
 
 from fastapi import Depends, FastAPI
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
+from .auth.routes import limiter as auth_limiter
+from .auth.routes import router as auth_router
 from .config import Settings, get_settings
 from .logging import configure_logging
+
+
+def _rate_limit_handler(request, exc: RateLimitExceeded):  # noqa: ARG001
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse(
+        status_code=429,
+        content={"detail": "muitas tentativas; tente novamente em instantes"},
+    )
 
 
 def create_app() -> FastAPI:
@@ -23,6 +35,11 @@ def create_app() -> FastAPI:
         title=settings.app_name,
         version=settings.version,
     )
+
+    # Rate limit global (compartilha o limiter definido no modulo auth).
+    app.state.limiter = auth_limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
+    app.add_middleware(SlowAPIMiddleware)
 
     logger = logging.getLogger("api")
     logger.info(
@@ -44,6 +61,8 @@ def create_app() -> FastAPI:
             "version": settings.version,
             "commit": settings.git_commit,
         }
+
+    app.include_router(auth_router)
 
     return app
 

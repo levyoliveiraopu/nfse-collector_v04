@@ -11,7 +11,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from . import __version__
@@ -42,6 +42,31 @@ class Settings(BaseSettings):
     # Formato recomendado: "postgresql+psycopg://user:pass@host:5432/dbname".
     # Vazio por default para nao quebrar ambientes que ainda nao usam DB.
     database_url: str = Field(default="")
+
+    # -----------------------------------------------------------------
+    # Auth (API-02)
+    # -----------------------------------------------------------------
+    # Segredo HS256 do JWT. Obrigatorio em staging/production (validado
+    # abaixo). Em development pode ficar vazio — o sistema cai para um
+    # fallback de dev que emite um warning alto.
+    jwt_secret: str = Field(default="")
+    jwt_issuer: str = Field(default="nfse-api")
+    jwt_audience: str = Field(default="nfse-web")
+
+    access_token_ttl_minutes: int = Field(default=15, ge=1, le=60 * 24)
+    refresh_token_ttl_days: int = Field(default=7, ge=1, le=90)
+
+    # Formato aceito pelo slowapi: "<count>/<period>" (ex: "5/minute").
+    login_rate_limit: str = Field(default="5/minute")
+
+    @model_validator(mode="after")
+    def _validate_auth_secrets(self) -> "Settings":
+        if self.environment in ("staging", "production") and not self.jwt_secret:
+            raise ValueError(
+                "API_JWT_SECRET e obrigatorio em staging/production. "
+                "Defina a variavel de ambiente antes de subir a API."
+            )
+        return self
 
 
 @lru_cache(maxsize=1)

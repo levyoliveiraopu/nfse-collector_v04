@@ -33,6 +33,14 @@
   politicas em `tenants` e `tenant_users` via GUC `app.current_tenant`
   (PR #95). Desbloqueia DATA-02..DATA-07.
   (PR a abrir, issue #12).
+- **API-02** — Auth: signup + login + JWT refresh rotativo. Endpoints
+  `/auth/signup|login|refresh|logout` em `apps/api/api/auth/`, hash
+  argon2id (`api/security/password.py`), JWT access 15min HS256
+  (`api/security/jwt.py`), refresh opaco 7d com rotacao e detecao de
+  reuso via `replaced_by` (`api/security/tokens.py`), rate limit
+  slowapi 5/min/IP no login, migration `0010_auth_refresh_tokens.py`
+  com RLS por tenant. Testes unitarios (argon2/JWT/hash) e E2E com
+  `TEST_DATABASE_URL` opcional (PR a abrir, issue #26).
 - **DS-03** — Layout shell: componente `<AppShell>` em
   `apps/web-app/components/app-shell/` com sidebar colapsavel
   (256px/64px em desktop, drawer em <1024px), topbar fixa com
@@ -156,6 +164,11 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-14
+- PR: (a abrir) — API-02: autenticacao completa em
+  `apps/api/api/auth/` (signup/login/refresh/logout), argon2id, JWT
+  access 15min + refresh opaco 7d com rotacao e detecao de reuso,
+  migration `0010_auth_refresh_tokens` com RLS, rate limit slowapi no
+  login. Move API-02 de "Proximas Destravadas" para "Em Andamento".
 - PR: (a abrir) — DATA-02: migrations `0002_companies` e
   `0003_company_credentials` com RLS por tenant, unique
   `(tenant_id, cnpj)`, FK composta `(tenant_id, company_id)` e indice
