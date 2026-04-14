@@ -15,6 +15,8 @@
 
 ## Em Andamento
 
+## Concluidos
+
 - **DATA-06** — Teste automatizado de isolamento cross-tenant: suite
   `apps/api/tests/test_rls_isolation.py` com 31 casos parametrizados
   que semeiam 2 tenants (A e B) em todas as 14 tabelas RLS (`tenants`,
@@ -296,8 +298,6 @@
   reaproveitamento de CNPJ, filtros/paginacao e limite de plano
   (PR a abrir — Closes #29).
 
-## Concluidos
-
 - **DATA-01** — Schema inicial de identidade: Alembic configurado em
   `apps/api/alembic/`, migration `0001_initial_identity.py` cria
   extensao `pgcrypto`, roles `app_admin` (BYPASSRLS) / `app_user`
@@ -322,8 +322,6 @@
   shell com KPIs e tabela placeholder; landmarks ARIA + skip-link
   "Pular para o conteudo" + `focus-visible:ring`. Typecheck e
   `next lint` verdes (PR a abrir, issue #42).
-
-## Concluidos
 
 - **DS-05** — Componente `KPIStatCard` em
   `apps/web-app/components/ui/kpi-stat-card.tsx` (props `title`, `value`,
