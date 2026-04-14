@@ -15,6 +15,9 @@ Segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - DOCS-01: Termos de Uso em `docs/legal/terms.md`, com clausula de retencao de 90 dias e diretriz de referencia no signup e em `/legal`.
 - DOCS-02: politica de privacidade LGPD em `docs/legal/privacy.md` + RoPA minima em `docs/legal/ropa.md`.
 - DOCS-04: runbook de incidentes para `PORTAL_5XX`, `PORTAL_TIMEOUT` e `RATE_LIMIT` com triagem, backoff, comunicação ao cliente e critério de status page (`docs/runbooks/portal-indisponivel.md`).
+- INFRA-01: runbook de hardening da VPS Hostinger em `infra/vps-hardening.md` (usuario `deploy`, SSH chave-only, UFW, fail2ban, unattended-upgrades, TZ `America/Sao_Paulo`).
+- API-01: bootstrap FastAPI em `apps/api/` com config via `pydantic-settings` (prefixo `API_`), logging JSON estruturado, endpoints `/health` e `/version`, Dockerfile multi-stage com usuario nao-root.
+- DS-01: bootstrap do `apps/web-app` com Next.js 14 App Router + TS strict, Tailwind, shadcn/ui, Lucide, Sonner e pagina `/` "Hello painel" (PR #84).
 
 ### Changed
 - CORE-01: motor ADN legado extraido de `src/` para pacote Python instalavel em `packages/worker-core/` (modulos `auth`, `fetcher`, `nsu_tracker`, `batch_processor`, `excel_builder`, `storage_backend`, `local_uploader`, `gdrive_uploader`, `noop_uploader`); `src/` vira shim fino retro-compativel. `main.py` e testes existentes preservados. `pip install -e packages/worker-core` habilita `from worker_core import fetch_nfse`.
