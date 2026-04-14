@@ -1,0 +1,5 @@
+# Nunca commitar o .env real deste stack — contem senhas do Postgres/Redis.
+# Em producao, o arquivo vive em /srv/nfse/<env>/config/.env (INFRA-02).
+.env
+.env.*
+!.env.example

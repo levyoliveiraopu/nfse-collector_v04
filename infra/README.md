@@ -11,6 +11,12 @@ Scripts, configs e documentacao de infraestrutura.
 ## Arquivos existentes
 
 - `vps-hardening.md` — runbook de hardening da VPS Hostinger (INFRA-01).
+- `vps-docker.md` — instalacao Docker Engine + Compose v2 + arvore
+  `/srv/nfse/{prod,staging}/...` (INFRA-02).
+- `dns.md` — configuracao DNS no Cloudflare (INFRA-03).
+- `compose/docker-compose.base.yml` + `compose/.env.example` +
+  `compose/README.md` — stack base com Postgres 16 e Redis 7, volumes
+  persistentes, healthchecks e politica manual de backup (INFRA-05).
 - `vps-docker.md` — instalacao Docker Engine + Compose v2 (INFRA-02).
 - `dns.md` — configuracao DNS no Cloudflare (INFRA-03).
 - `nginx.md` + `nginx/` — Nginx no host + Let's Encrypt (INFRA-04):
