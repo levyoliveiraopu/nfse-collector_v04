@@ -15,10 +15,16 @@
 
 ## Em Andamento
 
-_Nenhuma tarefa ativa._
+- **DS-01** — Bootstrap do `apps/web-app` (Next.js 14 App Router + TS strict,
+  Tailwind, shadcn/ui, Lucide, Sonner) com pagina `/` "Hello painel"
+  (PR pendente; issue #40).
 
 ## Concluidos
 
+- **API-01** — Bootstrap FastAPI em `apps/api/`: config via
+  `pydantic-settings` (prefixo `API_`), logging JSON estruturado,
+  endpoints `/health` e `/version`, Dockerfile multi-stage com usuario
+  nao-root. Desbloqueia DATA-01.
 - **CORE-01** — Motor ADN legado extraido de `src/` para pacote Python
   instalavel em `packages/worker-core/`; `src/` vira shim retro-compativel
   (PR #80).
@@ -41,7 +47,6 @@ _Nenhuma tarefa ativa._
 ## Bloqueadas
 
 - **SITE-00..10** — aguardando definicao do nome comercial.
-- **API-01** — aguardando `GOV-01` (feito) e decisao sobre estrutura de pacote Python.
 
 ## Limite de WIP
 
