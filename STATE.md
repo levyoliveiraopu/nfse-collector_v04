@@ -23,6 +23,18 @@
   `apps/api/alembic/versions/`. Testes estaticos em `apps/api/tests/`
   e runbook manual de isolamento cross-tenant em `apps/api/README.md`
   (PR a abrir — Closes #13).
+- **DATA-05** — Schema das tabelas de suporte do MVP: migrations
+  `0011_files.py` (sem `storage_tier` por ADR-003; tambem merge dos
+  dois heads Alembic `0003_company_credentials` + `0010_auth_refresh_tokens`),
+  `0012_schedules.py` (cron por tenant/company, FK composta, indice
+  `(enabled, next_run_at)`), `0013_audit_logs.py` (bigserial, indice
+  `(tenant_id, created_at DESC)`, metadata jsonb), e
+  `0014_plans_subscriptions.py` (catalogo `plans` sem RLS +
+  `subscriptions` com RLS; promove `tenants.plan_id` a FK ->
+  `plans.code`). Testes estaticos em `apps/api/tests/test_migration_0011..0014.py`
+  e teste de insercao massiva (10k rows) em
+  `tests/test_audit_logs_bulk.py` (pulado sem `TEST_DATABASE_URL`)
+  (PR a abrir — Closes #16).
 
 ## Concluidos
 
@@ -164,6 +176,13 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-14
+- PR: (a abrir) — DATA-05: migrations `0011_files`, `0012_schedules`,
+  `0013_audit_logs` e `0014_plans_subscriptions` (sem `storage_tier`
+  em `files` por ADR-003; merge dos dois heads Alembic em `0011`;
+  promocao de `tenants.plan_id` a FK `-> plans.code`). RLS em `files`,
+  `schedules`, `audit_logs`, `subscriptions`. Testes estaticos +
+  insercao massiva (10k rows) em `audit_logs` atras de
+  `TEST_DATABASE_URL`. Move DATA-05 para "Em Andamento". Closes #16.
 - PR: (a abrir) — API-02: autenticacao completa em
   `apps/api/api/auth/` (signup/login/refresh/logout), argon2id, JWT
   access 15min + refresh opaco 7d com rotacao e detecao de reuso,
