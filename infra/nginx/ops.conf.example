@@ -1,0 +1,119 @@
+# Nginx server block para ops.<dominio> (INFRA-07).
+#
+# Aplicar em /etc/nginx/sites-available/ops.conf na VPS e ativar com:
+#   sudo ln -s /etc/nginx/sites-available/ops.conf /etc/nginx/sites-enabled/
+#   sudo nginx -t && sudo systemctl reload nginx
+#
+# Pre-requisitos:
+#   - DNS A ops.<dominio> -> VPS (DNS-only, ver infra/dns.md).
+#   - TLS via certbot --nginx (apos publicar o server block http).
+#   - /etc/nginx/.htpasswd-ops gerado via htpasswd (ver infra/observability.md).
+#
+# Substituir <DOMINIO> pelo dominio real antes de aplicar.
+
+# Redirect 80 -> 443 (certbot gerencia o bloco HTTPS + cert path automatico).
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ops.<DOMINIO>;
+
+    # Deixar ACME challenge aberto; resto redireciona.
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name ops.<DOMINIO>;
+
+    # Certbot preenche ssl_certificate / ssl_certificate_key.
+    # ssl_certificate     /etc/letsencrypt/live/ops.<DOMINIO>/fullchain.pem;
+    # ssl_certificate_key /etc/letsencrypt/live/ops.<DOMINIO>/privkey.pem;
+    # include /etc/letsencrypt/options-ssl-nginx.conf;
+    # ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    # Headers de seguranca basicos.
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer" always;
+
+    # IP allowlist — editar conforme infra/observability.md.
+    # Deixar apenas os IPs/CIDRs de quem deve acessar /grafana e /uptime.
+    # Exemplos (substituir):
+    #   allow 203.0.113.10/32;      # owner residencial
+    #   allow 198.51.100.0/24;      # bloco do escritorio
+    #   allow 10.0.0.0/8;           # VPN corporativa (se houver)
+    # deny all;
+    #
+    # Abaixo um bloco comentado — descomente e ajuste antes de recarregar.
+    # satisfy all;  # exige allowlist E basic auth (AND) — default aqui
+    # allow 203.0.113.10/32;
+    # deny all;
+
+    # Basic auth aplica para /grafana e /uptime (definido no location).
+    # O arquivo e gerado por htpasswd -c /etc/nginx/.htpasswd-ops <user>.
+    auth_basic_user_file /etc/nginx/.htpasswd-ops;
+
+    # Default -> 404 (evita deixar rota aberta por engano).
+    location = / {
+        return 404;
+    }
+
+    # -----------------------------------------------------------------
+    # Grafana — proxied para 127.0.0.1:3001 (container nfse-grafana).
+    # GF_SERVER_SERVE_FROM_SUB_PATH=true + GF_SERVER_ROOT_URL garantem
+    # que o Grafana gere URLs sob /grafana/.
+    # -----------------------------------------------------------------
+    location /grafana/ {
+        auth_basic "NFS-e Ops";
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # WebSocket support (Grafana Live).
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 3600s;
+
+        proxy_pass http://127.0.0.1:3001/;
+    }
+
+    # -----------------------------------------------------------------
+    # Uptime Kuma — proxied para 127.0.0.1:3002 (container nfse-uptime-kuma).
+    # Kuma usa WebSocket para atualizacoes em tempo real do dashboard.
+    # -----------------------------------------------------------------
+    location /uptime/ {
+        auth_basic "NFS-e Ops";
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 3600s;
+
+        proxy_pass http://127.0.0.1:3002/;
+    }
+
+    # Status endpoints de probe (health HTTP simples) — abrir sem auth
+    # apenas se for usado como monitor externo; caso contrario manter
+    # tudo atras da allowlist. Deixado comentado por default.
+    # location = /nginx-status {
+    #     stub_status;
+    #     allow 127.0.0.1;
+    #     deny all;
+    # }
+}

@@ -15,6 +15,33 @@
 
 ## Em Andamento
 
+- **INFRA-07** — Stack de observabilidade minima em
+  `infra/compose/docker-compose.obs.yml`: `loki` (v2.9, retencao 14d,
+  filesystem/boltdb-shipper), `promtail` (coleta
+  `/var/lib/docker/containers` + `/var/log`, positions persistentes em
+  `/srv/nfse/prod/data/promtail`), `grafana` (v10.4, bind
+  `127.0.0.1:3001`, `GF_SERVER_SERVE_FROM_SUB_PATH=true`/root URL
+  `/grafana`, datasource Loki + dashboard "NFS-e — Logs API & Worker"
+  provisionados) e `uptime-kuma` (v1.23, bind `127.0.0.1:3002`). Configs
+  versionados em `infra/compose/{loki,promtail,grafana}/...` e dashboard
+  inicial em `infra/compose/grafana/dashboards/api-worker-logs.json`
+  (paineis de logs `nfse-api`/`nfse-worker` + timeseries de taxa de erro
+  em 5m). Server block Nginx em `infra/nginx/ops.conf.example` expoe
+  `ops.<DOMINIO>/grafana` e `/uptime` com `satisfy all` (IP allowlist +
+  basic auth via `/etc/nginx/.htpasswd-ops`), WebSocket para Grafana Live
+  e Uptime Kuma, redirect 80->443 e headers de seguranca (HSTS,
+  X-Frame-Options, Referrer-Policy). Runbook completo em
+  `infra/observability.md` cobrindo estrutura de diretorios com UIDs
+  corretos (Loki 10001, Grafana 472), subida da stack, htpasswd bcrypt,
+  certbot, criacao dos 4 monitores (site/app/api/health/worker/healthz)
+  e Notification Telegram com teste manual. Novas envs no bloco
+  `# Observabilidade (INFRA-07)` do `config/.env.example`
+  (`OBS_DOMAIN`, `GRAFANA_ADMIN_USER/PASSWORD`, `OPS_ALLOWED_IPS`,
+  `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`). Execucao real fica a cargo
+  do owner — DoD (Grafana acessivel, logs em tempo real, alerta Telegram
+  dispara) valida apos aplicacao manual
+  (PR a abrir — Closes #9).
+
 - **INFRA-04** — Nginx no host + Let's Encrypt: runbook completo em
   `infra/nginx.md` (instalacao via apt no Ubuntu 24.04 noble, webroot
   ACME em `/var/www/letsencrypt/`, placeholder em `/var/www/em-breve/`,
@@ -334,6 +361,19 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-14
+- PR: (a abrir) — INFRA-07: stack de observabilidade
+  (Loki 2.9 + Promtail + Grafana 10.4 + Uptime Kuma 1.23) em
+  `infra/compose/docker-compose.obs.yml`, com configs versionados
+  (`loki-config.yml`, `promtail-config.yml`, provisioning de datasource
+  Loki e dashboard "NFS-e — Logs API & Worker" em JSON), server block
+  Nginx em `infra/nginx/ops.conf.example` protegendo `ops.<DOMINIO>`
+  por IP allowlist + basic auth bcrypt (`satisfy all`), e runbook
+  completo em `infra/observability.md` (diretorios com UIDs corretos,
+  htpasswd, certbot, 4 monitores no Uptime Kuma, Notification Telegram
+  testada). Novo bloco `# Observabilidade (INFRA-07)` em
+  `config/.env.example` com placeholders para `OBS_DOMAIN`,
+  `GRAFANA_ADMIN_USER/PASSWORD`, `OPS_ALLOWED_IPS`, `TELEGRAM_BOT_TOKEN`
+  e `TELEGRAM_CHAT_ID`. Move INFRA-07 para "Em Andamento". Closes #9.
 - PR: (a abrir) — INFRA-05: compose base com Postgres 16 + Redis 7 em
   `infra/compose/docker-compose.base.yml` (volumes nomeados, network
   privada, healthchecks, portas em 127.0.0.1, Redis com `requirepass` +
