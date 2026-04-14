@@ -32,6 +32,22 @@
   paginacao chamando router.replace). Typecheck, lint e 56 testes verdes.
   Novas deps `@tanstack/react-table` e `@tanstack/react-query`
   (PR a abrir — Closes #45).
+- **CORE-02** — Refactor `packages/worker-core/worker_core/auth.py` para
+  aceitar PFX em memoria: novo context manager
+  `mtls_session(pfx_bytes, pfx_password)` carrega o PFX direto dos bytes
+  (vindo do banco cifrado — ADR-003), materializa cert PEM + key PEM em
+  tmpfs (`/dev/shm`, fallback `tempfile.gettempdir()`) com `0o600` e
+  garante remocao dos dois PEMs no `finally` (sucesso ou excecao);
+  `certificate` exposto via `session.nfse_certificate`. Legado
+  `criar_session_cliente(path, senha)` mantido como wrapper de compat
+  (batch_processor e diagnostico nao mudam). Mensagens de erro sem path/
+  senha/bytes quando o PFX vem de memoria. Testes em `tests/test_auth.py`
+  (11 novos): fixture gera PFX self-signed em memoria via
+  `cryptography.hazmat.primitives.serialization.pkcs12.serialize_key_and_certificates`;
+  cobre sucesso, limpeza em excecao, senha errada, PFX vazio/nao-bytes,
+  certificado vencido, ausencia de vazamento em logs (`caplog`),
+  confirmacao de tmpfs e wrapper legacy. `pytest tests/` = 79 passed
+  (PR a abrir — Closes #20).
 
 - **APP-01** — Paginas de auth: `/login`, `/signup`, `/recuperar-senha`,
   `/redefinir-senha/[token]` e `/aceitar-convite/[token]` em
@@ -59,6 +75,18 @@
   `apps/api/alembic/versions/`. Testes estaticos em `apps/api/tests/`
   e runbook manual de isolamento cross-tenant em `apps/api/README.md`
   (PR a abrir — Closes #13).
+- **DATA-05** — Schema das tabelas de suporte do MVP: migrations
+  `0011_files.py` (sem `storage_tier` por ADR-003; tambem merge dos
+  dois heads Alembic `0003_company_credentials` + `0010_auth_refresh_tokens`),
+  `0012_schedules.py` (cron por tenant/company, FK composta, indice
+  `(enabled, next_run_at)`), `0013_audit_logs.py` (bigserial, indice
+  `(tenant_id, created_at DESC)`, metadata jsonb), e
+  `0014_plans_subscriptions.py` (catalogo `plans` sem RLS +
+  `subscriptions` com RLS; promove `tenants.plan_id` a FK ->
+  `plans.code`). Testes estaticos em `apps/api/tests/test_migration_0011..0014.py`
+  e teste de insercao massiva (10k rows) em
+  `tests/test_audit_logs_bulk.py` (pulado sem `TEST_DATABASE_URL`)
+  (PR a abrir — Closes #16).
 - **DATA-03** — Schema de `executions` + `execution_items`:
   migrations `0004_executions.py` (uma corrida de coleta por
   tenant+company com FK composta para `companies`, indice
@@ -82,6 +110,30 @@
   `apps/api/README.md`. Tenant inexistente/`suspended`/`canceled` ->
   403; token ausente/invalido -> 401 com `WWW-Authenticate: Bearer`
   (PR a abrir — Closes #27).
+- **API-04** — RBAC (owner/admin/operator/viewer): dependency
+  `require_role(*allowed, min_role=None)` em
+  `apps/api/api/security/rbac.py`, encadeando `assert_tenant_active`
+  (API-03) e devolvendo 403 claro quando o papel nao e autorizado;
+  guarda pura `ensure_can_manage_member` protegendo `owner` (apenas
+  outro owner remove/rebaixa owner; admin nao promove acima do proprio
+  papel) para uso pelos endpoints de membros a chegar; matriz completa
+  em `docs/architecture/rbac-matrix.md` cobrindo tenant, membros,
+  companies, executions e auditoria; 31 testes unitarios em
+  `apps/api/tests/test_rbac.py` incluindo prova de DoD (viewer -> 403
+  em `POST /_probe/companies` via router efemero e `require_role(min_role="owner")`
+  somente permitindo owner). (PR a abrir — Closes #28).
+- **DATA-04** — Schema de tabelas operacionais:
+  migrations `0006_occurrences.py` (ocorrencias por tenant com FKs
+  compostas para `companies` e `executions`, FK nullable para
+  `users.assignee_user_id`, CHECKs de `severity`/`status`/ordem de
+  `first_seen_at`/`last_seen_at`, RLS), `0007_reprocess_jobs.py`
+  (jobs de reprocessamento com `scope jsonb`, `result_execution_ids
+  text[]`, CHECK de `status`, RLS) e `0008_notifications.py`
+  (outbox multicanal com `payload jsonb`, CHECKs de
+  `channel`/`status`, indice parcial para pendentes, RLS) em
+  `apps/api/alembic/versions/`. Testes estaticos em
+  `apps/api/tests/test_migration_000{6,7,8}.py`
+  (PR a abrir — Closes #15).
 
 ## Concluidos
 
@@ -249,6 +301,39 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
   (csv/url-state/component). Novas deps `@tanstack/react-table` e
   `@tanstack/react-query`. Move DS-06 de "Bloqueadas" (dependia de DS-02,
   ja concluido) para "Em Andamento". Closes #45.
+- PR: (a abrir) — API-04: RBAC com dependency `require_role`
+  (`apps/api/api/security/rbac.py`) encadeando `assert_tenant_active`
+  e devolvendo 403 claro; guarda `ensure_can_manage_member`
+  protegendo owner (admin nao remove/rebaixa owner; promocao limitada
+  pelo papel do ator); matriz de permissoes em
+  `docs/architecture/rbac-matrix.md`; 31 testes em
+  `apps/api/tests/test_rbac.py` cobrindo viewer -> 403 ao criar
+  empresa via router efemero + guardas de membros. Move API-04 de
+  "Bloqueadas" para "Em Andamento". Closes #28.
+- PR: (a abrir) — CORE-02: refactor de `worker_core/auth.py` para aceitar
+  PFX em memoria. Novo `mtls_session(pfx_bytes, pfx_password)` como
+  context manager grava PEM em `/dev/shm` (fallback `tempfile.gettempdir()`)
+  com `0o600` e garante cleanup em sucesso/excecao; `certificate` exposto
+  em `session.nfse_certificate`. `criar_session_cliente(path, senha)`
+  vira wrapper de compat (batch_processor e diagnostico intocados).
+  11 novos testes em `tests/test_auth.py` com PFX gerado em memoria
+  (sucesso, cleanup em excecao, senha errada, cert vencido, nao-vazamento
+  em logs, tmpfs). Move CORE-02 para "Em Andamento". Closes #20.
+- PR: (a abrir) — DATA-04: migrations `0006_occurrences`
+  (FKs compostas para `companies` e `executions`, FK nullable para
+  `users` em `assignee_user_id`, CHECKs de severity/status/ordem
+  first_seen/last_seen, RLS), `0007_reprocess_jobs` (`scope jsonb`,
+  `result_execution_ids text[]`, CHECK de status, RLS) e
+  `0008_notifications` (`payload jsonb`, CHECKs de channel/status,
+  indice parcial para pendentes, RLS) + testes estaticos. Move
+  DATA-04 de "Bloqueadas" para "Em Andamento". Closes #15.
+- PR: (a abrir) — DATA-05: migrations `0011_files`, `0012_schedules`,
+  `0013_audit_logs` e `0014_plans_subscriptions` (sem `storage_tier`
+  em `files` por ADR-003; merge dos dois heads Alembic em `0011`;
+  promocao de `tenants.plan_id` a FK `-> plans.code`). RLS em `files`,
+  `schedules`, `audit_logs`, `subscriptions`. Testes estaticos +
+  insercao massiva (10k rows) em `audit_logs` atras de
+  `TEST_DATABASE_URL`. Move DATA-05 para "Em Andamento". Closes #16.
 - PR: (a abrir) — APP-01: paginas de auth (`/login`, `/signup`,
   `/recuperar-senha`, `/redefinir-senha/[token]`,
   `/aceitar-convite/[token]`) + `<AuthProvider>` com access em memoria
