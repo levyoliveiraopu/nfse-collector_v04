@@ -1,4 +1,5 @@
 import { ThemeToggle } from "@/components/theme-toggle";
+import { DataTableDemo } from "./data-table-demo";
 import { KPIStatCardDemo } from "./kpi-stat-card-demo";
 import { StatusBadgeDemo } from "./status-badge-demo";
 
@@ -236,6 +237,13 @@ console.log(\`hello \${tenant}\`);`}
         description="DS-05 — card de indicador com valor, delta vs periodo anterior e mini-sparkline (SVG inline). Estados: ready / loading / empty / error."
       >
         <KPIStatCardDemo />
+      </Section>
+
+      <Section
+        title="DataTable"
+        description="DS-06 — tabela reutilizavel server-side (TanStack Table + react-query) com filtros (texto/select/date-range), saved filters, paginacao, ordenacao, export CSV e preservacao de estado na URL. Dataset de demo com 10.000 linhas mockadas."
+      >
+        <DataTableDemo />
       </Section>
     </main>
   );
