@@ -44,6 +44,12 @@
   fail2ban, unattended-upgrades, TZ `America/Sao_Paulo`). Execucao na
   VPS real fica a cargo do owner — DoD dos checks `ssh`/`ufw`/`fail2ban`/
   `timedatectl` e validado apos aplicacao manual.
+- **INFRA-03** — Runbook de DNS no Cloudflare em `infra/dns.md`: tabela
+  de registros A para `app`/`api`/`ops`/`www`/apex com DNS-only
+  obrigatorio em `api` e `ops` (preservar mTLS das prefeituras — ADR-003),
+  passos via UI + API, checks `dig` e plano de migracao quando o nome
+  comercial sair. Aplicacao na zona real (owner) — DoD valida apos
+  propagacao.
 - **DOCS-01** — Termos de Uso criado em `docs/legal/terms.md`, incluindo
   clausula de retencao de 90 dias (ADR-003), pagamento/renovacao/cancelamento,
   limitacao de responsabilidade, foro/legislacao e orientacao de referencia
@@ -62,8 +68,6 @@
 
 - **GOV-06** — CI base (lint + test) com GitHub Actions (ruff, eslint,
   pytest, vitest) (issue #2).
-- **INFRA-03** — DNS dos subdominios no Cloudflare (`app`, `api`, `ops`,
-  `www`, apex) (issue #5).
 - **DATA-01** — Schema inicial: tenants, users, tenant_users
   (destravado por API-01) (issue #12).
 
@@ -89,9 +93,8 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-14
-- PR: (a abrir) — GOV: revisao geral do STATE.md — move DS-01 de "Em
-  Andamento" para "Concluidos" (PR #84 ja mergeado), adiciona GOV-07
-  em "Concluidos" e inclui GOV-06 + INFRA-03 nas proximas destravadas.
+- PR: (a abrir) — INFRA-03: runbook de DNS no Cloudflare (`infra/dns.md`),
+  move INFRA-03 de "Proximas Destravadas" para "Concluidos".
 - Autor: @LevyOliveirabr
 - Nota: workflow `pr-guardrail` exige STATE.md + CHANGELOG.md + `Closes #N` em todo PR para main.
 
