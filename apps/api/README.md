@@ -547,6 +547,31 @@ Restaurar:
 ```sql
 ALTER TABLE companies ENABLE ROW LEVEL SECURITY;
 ```
+## Seeds de dev — DATA-07
+
+Script idempotente em `apps/api/scripts/seed.py` que popula o banco com
+dados minimos para subir a API + painel:
+
+- Plans `starter`, `pro` e `scale` (limites em `jsonb`, precos em centavos).
+- Tenant `demo` (slug `demo`, plan `pro`).
+- User global `admin@demo.local` com senha vinda de
+  `API_SEED_ADMIN_PASSWORD` (fallback `demo12345` apenas em
+  `API_ENVIRONMENT=development`).
+- Membership `owner` ligando o user ao tenant.
+
+Todas as insercoes usam `ON CONFLICT ... DO UPDATE`, entao rodar o
+script multiplas vezes nao duplica linhas.
+
+Pre-requisito: `alembic upgrade head` ja aplicado.
+
+```bash
+cd apps/api
+API_DATABASE_URL="postgresql+psycopg://app_admin:***@localhost:5432/nfse" \
+API_SEED_ADMIN_PASSWORD="troque-em-dev" \
+  python -m scripts.seed
+```
+
+Login de teste no painel: `admin@demo.local` + a senha acima.
 
 ## Build Docker
 

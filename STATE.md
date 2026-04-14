@@ -40,6 +40,59 @@
   `0014_plans_subscriptions` eram heads independentes), desbloqueando
   `alembic upgrade head`. Move DATA-06 para "Em Andamento"
   (PR a abrir — Closes #17).
+- **DATA-07** — Seed de dev idempotente em
+  `apps/api/scripts/seed.py`: popula `plans` (`starter`/`pro`/`scale`
+  com limites `jsonb` e precos em centavos), tenant `demo` (slug
+  `demo`, plan `pro`, status `active`), user global `admin@demo.local`
+  (senha vinda de `API_SEED_ADMIN_PASSWORD`, fallback `demo12345`
+  apenas em `API_ENVIRONMENT=development`; aborta em staging/prod)
+  e membership `owner`. Todas as escritas usam
+  `ON CONFLICT ... DO UPDATE` (`plans.code`, `tenants.slug`,
+  expressao `LOWER(email)` em `users`, PK composta em
+  `tenant_users`), entao re-rodar nao duplica linhas. Usa
+  `get_admin_session()` (BYPASSRLS) por rodar sem
+  `app.current_tenant`. Invocavel via
+  `cd apps/api && python -m scripts.seed` (pacote `scripts/` com
+  `__init__.py`). 9 testes unitarios em
+  `apps/api/tests/test_seed.py` (constantes, limites jsonb,
+  fallback/abort da senha, `ON CONFLICT` nos 3 upserts) + 1 teste de
+  integracao gated por `TEST_DATABASE_URL` rodando `run_seed()` duas
+  vezes e validando idempotencia. Nova env
+  `API_SEED_ADMIN_PASSWORD` em `config/.env.example`. Nao insere
+  linha em `subscriptions` (billing adiado — ADR-004)
+  (PR a abrir — Closes #18).
+- **INFRA-09** — Pipeline de deploy (GitHub Actions -> SSH):
+  workflows `.github/workflows/deploy-staging.yml` (push em `main` com
+  paths `apps/api/**`, `packages/worker-core/**`, `infra/compose/**`,
+  `infra/deploy/**`) e `.github/workflows/deploy-prod.yml` (push de tag
+  `v*` + `workflow_dispatch` manual com input `tag`). Ambos fazem
+  `docker/build-push-action@v6` do `apps/api/Dockerfile` para
+  `ghcr.io/<owner>/nfse-api:<tag>` + `latest-{staging,prod}` via
+  `GITHUB_TOKEN` (`permissions: packages: write`) com cache GHA, e em
+  seguida `appleboy/ssh-action@v1.2.0` no VPS exportando
+  `DEPLOY_ENV`+`DEPLOY_TAG` para `/srv/nfse/deploy.sh`. Script
+  `infra/deploy/deploy.sh` (idempotente, `set -euo pipefail`):
+  persiste tag anterior em `config/.last_deploy_tag` antes do
+  `docker compose pull && up -d --remove-orphans`, aguarda health em
+  `GET /health` (30 tentativas x 2s), e em falha reverte para a tag
+  anterior + re-sobe e `exit 20` (marca workflow como falho apos
+  rollback). Override `infra/compose/docker-compose.deploy.yml`
+  adiciona o servico `api` consumindo `ghcr.io/...:${DEPLOY_TAG}` com
+  `depends_on` healthy de Postgres/Redis (INFRA-05) e publica em
+  `127.0.0.1:8000` para o Nginx host (INFRA-04); bloco do `worker`
+  comentado aguardando CORE-05. Runbook completo em
+  `infra/deploy/README.md` cobrindo preparacao do `/srv/nfse/<env>`
+  (symlinks para compose files + `deploy.sh`), `docker login ghcr.io`
+  com PAT `read:packages`, os 4 secrets do repo
+  (`SSH_HOST`/`SSH_USER`/`SSH_KEY`/`GHCR_TOKEN` opcional),
+  environment `prod` com approval manual, roteiro do DoD (rollback
+  via `HEALTH_URL` falso + `workflow_dispatch`) e operacao
+  (disparo manual, promocao staging->prod, rollback manual, logs).
+  Concurrency `deploy-staging`/`deploy-prod` nao cancela em voo.
+  Execucao real fica a cargo do owner — DoD (PR em main dispara
+  staging; tag `v0.0.1` dispara prod; rollback manual ok) valida apos
+  provisionamento dos secrets e do `/srv/nfse/` na VPS
+  (PR a abrir — Closes #11).
 
 - **INFRA-07** — Stack de observabilidade minima em
   `infra/compose/docker-compose.obs.yml`: `loki` (v2.9, retencao 14d,
@@ -225,6 +278,23 @@
   `apps/api/alembic/versions/`. Testes estaticos em
   `apps/api/tests/test_migration_000{6,7,8}.py`
   (PR a abrir — Closes #15).
+- **API-05** — CRUD de `/companies`: router em
+  `apps/api/api/companies/` com `GET` paginado (filtros `status`/`uf`),
+  `GET /{id}`, `POST` (valida DV de CNPJ e aplica limite de plano via
+  `plans.limits.max_companies`), `PATCH` (CNPJ imutavel via
+  `extra=forbid`) e `DELETE` soft (grava `deleted_at`). Nova migration
+  `0015_companies_deleted_at.py` adiciona coluna `deleted_at
+  TIMESTAMPTZ` e troca `uq_companies_tenant_cnpj` por UNIQUE parcial
+  `WHERE deleted_at IS NULL` (permite reusar CNPJ apos soft-delete),
+  alem de indice parcial de listagem. RBAC da matriz
+  `docs/architecture/rbac-matrix.md`: leitura = todos; POST/PATCH =
+  `owner|admin|operator`; DELETE = `owner|admin`. Validador de CNPJ
+  (`companies/cnpj.py`) rejeita DV invalido e sequencias repetidas.
+  38 testes unitarios (CNPJ, schemas, migration estatica) + 16 testes
+  de integracao gated por `TEST_DATABASE_URL` cobrindo CRUD, cross-
+  tenant via RLS, RBAC (viewer -> 403), soft-delete idempotente,
+  reaproveitamento de CNPJ, filtros/paginacao e limite de plano
+  (PR a abrir — Closes #29).
 
 ## Concluidos
 
@@ -399,6 +469,47 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
   `0015_merge_heads.py` (no-op) fecha o fork Alembic deixado por
   DATA-04/DATA-05 — `alembic heads` volta a reportar 1 ponta.
   Move DATA-06 para "Em Andamento". Closes #17.
+- PR: (a abrir) — DATA-07: seed de dev idempotente em
+  `apps/api/scripts/seed.py` (plans `starter`/`pro`/`scale` +
+  tenant `demo` + user `admin@demo.local` + membership `owner`).
+  Todas as escritas usam `ON CONFLICT ... DO UPDATE`. Senha vem de
+  `API_SEED_ADMIN_PASSWORD` com fallback dev (`demo12345`) e abort
+  em staging/prod. Pacote `apps/api/scripts/` com `__init__.py`
+  destravando `python -m scripts.seed`. 9 testes unitarios + 1 de
+  integracao (idempotencia) gated por `TEST_DATABASE_URL` em
+  `apps/api/tests/test_seed.py`. Nova env
+  `API_SEED_ADMIN_PASSWORD` em `config/.env.example`. Nova secao
+  "Seeds de dev" em `apps/api/README.md`. Move DATA-07 de
+  "Bloqueadas" para "Em Andamento". Closes #18.
+- PR: (a abrir) — INFRA-09: pipeline de deploy (GitHub Actions -> SSH).
+  Workflows `.github/workflows/deploy-staging.yml` (push em `main`) e
+  `deploy-prod.yml` (push de tag `v*` + `workflow_dispatch`) fazem
+  `docker/build-push-action@v6` do `apps/api/Dockerfile` para GHCR
+  (`ghcr.io/<owner>/nfse-api:<tag>` + `latest-{staging,prod}`) via
+  `GITHUB_TOKEN` com cache GHA, e `appleboy/ssh-action@v1.2.0` no VPS
+  rodando `infra/deploy/deploy.sh` — que grava a tag anterior em
+  `/srv/nfse/<env>/config/.last_deploy_tag`, faz
+  `docker compose pull && up -d --remove-orphans`, aguarda
+  `GET /health` (30x2s) e reverte para a tag anterior em caso de falha
+  (`exit 20` marca o workflow como falho pos-rollback). Override
+  `infra/compose/docker-compose.deploy.yml` adiciona o servico `api`
+  ancorado em `${DEPLOY_TAG}` (bloco do `worker` comentado ate
+  CORE-05). Runbook `infra/deploy/README.md` documenta provisionamento
+  do `/srv/nfse/<env>` (symlinks para compose + `deploy.sh`),
+  `docker login ghcr.io` com PAT `read:packages`, os 4 secrets do repo
+  e roteiro do DoD incluindo rollback manual via `workflow_dispatch`.
+  Move INFRA-09 de "bloqueadas" (dependias INFRA-02+GOV-06, ja
+  concluidas) para "Em Andamento". Closes #11.
+- PR: (a abrir) — API-05: CRUD de `/companies` em
+  `apps/api/api/companies/` (router + `cnpj.py` validando DV + schemas
+  Pydantic com normalizacao de CNPJ/UF e `extra=forbid` em PATCH);
+  dependencies FastAPI `require_role` aplicadas pela matriz RBAC;
+  limite `plans.limits.max_companies` aplicado no POST; soft-delete via
+  `deleted_at`. Nova migration `0015_companies_deleted_at.py`
+  (coluna + UNIQUE parcial + indice de listagem). Router registrado em
+  `api/main.py` (OpenAPI `/docs`). 38 unit tests (CNPJ + schemas +
+  migration estatica) + 16 integracao gated por `TEST_DATABASE_URL`.
+  Move API-05 de "Bloqueadas" para "Em Andamento". Closes #29.
 - PR: (a abrir) — INFRA-07: stack de observabilidade
   (Loki 2.9 + Promtail + Grafana 10.4 + Uptime Kuma 1.23) em
   `infra/compose/docker-compose.obs.yml`, com configs versionados
