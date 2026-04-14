@@ -6,6 +6,7 @@ Segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- INFRA-03: runbook de configuracao DNS no Cloudflare em `infra/dns.md` (registros A para `app`/`api`/`ops`/`www`/apex, DNS-only obrigatorio em `api` e `ops` para preservar mTLS das prefeituras, checks `dig` e plano de migracao quando o nome comercial sair).
 - DOCS-03: runbook de credencial invalida em `docs/runbooks/credencial-invalida.md` e link no APP-06 para ocorrencias `CERT_EXPIRED`, `CRED_INVALID` e `CERT_REVOKED`.
 - GOV-01: estrutura do monorepo (pnpm workspaces + Turborepo).
 - GOV-02: 5 ADRs iniciais (monolito modular, RLS, storage 90d, billing adiado, deploy compose).
