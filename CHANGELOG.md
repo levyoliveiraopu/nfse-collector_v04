@@ -6,6 +6,7 @@ Segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- DS-04: componente `StatusBadge` em `apps/web-app/components/ui/status-badge.tsx` com 10 variantes (`success`, `processing`, `pending`, `failed`, `warning`, `blocked`, `cert_expiring`, `cred_invalid`, `portal_unstable`, `reprocess_needed`), tamanhos `sm`/`md`, icone Lucide e tooltip via `title`; demo no `/styleguide` e primeiro spec (vitest + jsdom + `@testing-library/react`) do `apps/web-app` com 20 snapshots (10 variantes x 2 tamanhos) — destrava o TODO `test-ts` do GOV-06.
 - DATA-01: Alembic configurado em `apps/api/alembic/` + migration `0001_initial_identity.py` criando extensao `pgcrypto`, roles `app_admin` (BYPASSRLS) / `app_user` (NOBYPASSRLS), tabelas `tenants`, `users` e `tenant_users`, indices (`LOWER(email)` unico, `(tenant_id, role)`, `(user_id)`) e RLS com politicas em `tenants` e `tenant_users` via GUC `app.current_tenant`; `API_DATABASE_URL` em `config/.env.example`.
 - GOV-06: workflow `.github/workflows/ci.yml` com jobs `lint-python` (ruff), `test-python` (pytest), `lint-ts` (eslint + typecheck) em todo PR e push em `main`; cache pip/pnpm; `ruff.toml` conservador na raiz (regras E/F/W, E501 ignorada, isort desligado).
 - DOCS-03: runbook de credencial invalida em `docs/runbooks/credencial-invalida.md` e link no APP-06 para ocorrencias `CERT_EXPIRED`, `CRED_INVALID` e `CERT_REVOKED`.
