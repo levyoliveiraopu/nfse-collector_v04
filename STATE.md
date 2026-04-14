@@ -26,12 +26,12 @@ _Nenhuma tarefa ativa._
   `.env.example`, runbook manual e smoke test prontos; aplicacao no
   console/CLI da Backblaze e geracao da Application Key ficam a cargo
   do owner (ver `infra/s3-bucket.md` secao 2).
+- **DOCS-02** — Politica de Privacidade (LGPD) publicada em `docs/legal/privacy.md` + RoPA minima em `docs/legal/ropa.md` (PR a abrir).
 
 ## Proximas Destravadas (prontas para iniciar)
 
 - **INFRA-01** — Hardening inicial da VPS Hostinger
 - **DOCS-01** — Termos de Uso (clausula de retencao 90d)
-- **DOCS-02** — Politica de Privacidade + LGPD
 - **DATA-01** — Schema inicial: tenants, users, tenant_users (depende de `apps/api` inicializado; ver API-01)
 
 > Nota: CORE-05, API-06, API-11 e INFRA-08 dependem de INFRA-06 **e**
@@ -57,8 +57,8 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-13
-- PR: #80 — CORE-01 (motor ADN extraido para `packages/worker-core/`; `src/` vira shim)
-- Autor: @LevyOliveirabr
+- PR: (a abrir) — DOCS-02 (politica de privacidade LGPD + RoPA minima)
+- Autor: @levyoliveiraopu
 - Nota: workflow `pr-guardrail` exige STATE.md + CHANGELOG.md + `Closes #N` em todo PR para main.
 
 ## Links Rapidos
