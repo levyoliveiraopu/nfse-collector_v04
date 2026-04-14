@@ -62,6 +62,22 @@
 
 ## Concluidos
 
+- **DS-05** — Componente `KPIStatCard` em
+  `apps/web-app/components/ui/kpi-stat-card.tsx` (props `title`, `value`,
+  `deltaPercent?`, `trendData?`, `icon?`, `state?`, `hint?`,
+  `errorMessage?`): card com valor grande, delta colorido (success/
+  destructive/muted com seta Lucide), mini-sparkline via SVG inline
+  (sem Recharts — evita dep extra e `use client` obrigatorio) e estados
+  `ready`/`loading` (skeleton)/`empty` (valor `—`)/`error`
+  (AlertTriangle + mensagem). Demo no `/styleguide` com 7 cards (4 em
+  `ready` + loading/empty/error) via `app/styleguide/kpi-stat-card-demo.tsx`;
+  `app/dashboard/page.tsx` refatorado para consumir o componente.
+  Spec `components/ui/kpi-stat-card.test.tsx` com 7 snapshots cobrindo
+  ready (sem delta/sparkline, delta positivo, delta negativo, delta
+  zero), loading, empty e error, mais asserts de `aria-label`,
+  `aria-busy` e de que `trendData` com <2 pontos nao renderiza a
+  sparkline. Typecheck e `next lint` verdes (PR a abrir — Closes #44).
+
 - **DS-04** — Componente `StatusBadge` (10 variantes) em
   `apps/web-app/components/ui/status-badge.tsx` com `variant`
   (`success`, `processing`, `pending`, `failed`, `warning`, `blocked`,
@@ -198,6 +214,11 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 - PR: (a abrir) — DS-03: `<AppShell>` (sidebar colapsavel + topbar com
   breadcrumbs, tenant switcher, bell, theme toggle e user menu) e rota
   `/dashboard` consumindo o shell. Move DS-03 para "Em Andamento".
+- PR: (a abrir) — DS-05: componente `KPIStatCard` com estados
+  `ready`/`loading`/`empty`/`error`, delta colorido e mini-sparkline
+  em SVG inline; demo com 7 cards no `/styleguide` e refactor do
+  `/dashboard` para usar o componente; spec com 7 snapshots + asserts
+  de acessibilidade. Closes #44.
 - PR: (a abrir) — DS-04: componente `StatusBadge` com 10 variantes
   + tamanhos `sm`/`md` em `apps/web-app/components/ui/status-badge.tsx`,
   demo no `/styleguide` e primeiro spec (vitest + RTL) do `apps/web-app`
