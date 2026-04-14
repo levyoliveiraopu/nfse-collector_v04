@@ -47,3 +47,17 @@ class AuthOut(BaseModel):
 
 class LogoutOut(BaseModel):
     revoked: bool
+
+
+class MeOut(BaseModel):
+    """Identidade corrente derivada do JWT (API-03).
+
+    Serve como prova de vida do middleware de tenant: se o handler
+    responde, o `SET LOCAL app.current_tenant` foi aplicado e o RLS
+    esta ativo nesta request.
+    """
+
+    tenant_id: str
+    user_id: str
+    role: str
+    memberships_visible: int

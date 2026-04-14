@@ -1,0 +1,618 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`KPIStatCard > snapshot: empty 1`] = `
+<article
+  aria-label="NFS-e coletadas (30d)"
+  class="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 text-card-foreground shadow-sm"
+  data-state="empty"
+>
+  <header
+    class="flex items-start justify-between gap-2"
+  >
+    <p
+      class="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+    >
+      NFS-e coletadas (30d)
+    </p>
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-file-text h-4 w-4 shrink-0 text-muted-foreground"
+      fill="none"
+      height="24"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="24"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"
+      />
+      <path
+        d="M14 2v4a2 2 0 0 0 2 2h4"
+      />
+      <path
+        d="M10 9H8"
+      />
+      <path
+        d="M16 13H8"
+      />
+      <path
+        d="M16 17H8"
+      />
+    </svg>
+  </header>
+  <div
+    class="space-y-1"
+  >
+    <p
+      class="text-3xl font-semibold tracking-tight text-muted-foreground"
+    >
+      —
+    </p>
+    <p
+      class="text-xs text-muted-foreground"
+    >
+      Nenhuma coleta no periodo
+    </p>
+  </div>
+</article>
+`;
+
+exports[`KPIStatCard > snapshot: error 1`] = `
+<article
+  aria-label="NFS-e coletadas (30d)"
+  class="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 text-card-foreground shadow-sm"
+  data-state="error"
+>
+  <header
+    class="flex items-start justify-between gap-2"
+  >
+    <p
+      class="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+    >
+      NFS-e coletadas (30d)
+    </p>
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-file-text h-4 w-4 shrink-0 text-muted-foreground"
+      fill="none"
+      height="24"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="24"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"
+      />
+      <path
+        d="M14 2v4a2 2 0 0 0 2 2h4"
+      />
+      <path
+        d="M10 9H8"
+      />
+      <path
+        d="M16 13H8"
+      />
+      <path
+        d="M16 17H8"
+      />
+    </svg>
+  </header>
+  <div
+    class="flex items-start gap-2 text-sm text-destructive"
+  >
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-triangle-alert h-4 w-4 shrink-0"
+      fill="none"
+      height="24"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="24"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"
+      />
+      <path
+        d="M12 9v4"
+      />
+      <path
+        d="M12 17h.01"
+      />
+    </svg>
+    <span>
+      API indisponivel. Tente novamente.
+    </span>
+  </div>
+</article>
+`;
+
+exports[`KPIStatCard > snapshot: loading 1`] = `
+<article
+  aria-busy="true"
+  aria-label="Carregando"
+  class="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 text-card-foreground shadow-sm"
+  data-state="loading"
+>
+  <header
+    class="flex items-start justify-between gap-2"
+  >
+    <p
+      class="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+    >
+      Carregando
+    </p>
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-file-text h-4 w-4 shrink-0 text-muted-foreground"
+      fill="none"
+      height="24"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="24"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"
+      />
+      <path
+        d="M14 2v4a2 2 0 0 0 2 2h4"
+      />
+      <path
+        d="M10 9H8"
+      />
+      <path
+        d="M16 13H8"
+      />
+      <path
+        d="M16 17H8"
+      />
+    </svg>
+  </header>
+  <div
+    class="space-y-2"
+  >
+    <div
+      aria-hidden="true"
+      class="animate-pulse rounded-md bg-muted h-8 w-24"
+    />
+    <div
+      aria-hidden="true"
+      class="animate-pulse rounded-md bg-muted h-3 w-32"
+    />
+  </div>
+</article>
+`;
+
+exports[`KPIStatCard > snapshot: ready com delta negativo e sparkline 1`] = `
+<article
+  aria-label="Taxa de sucesso"
+  class="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 text-card-foreground shadow-sm"
+  data-state="ready"
+>
+  <header
+    class="flex items-start justify-between gap-2"
+  >
+    <p
+      class="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+    >
+      Taxa de sucesso
+    </p>
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-file-text h-4 w-4 shrink-0 text-muted-foreground"
+      fill="none"
+      height="24"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="24"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"
+      />
+      <path
+        d="M14 2v4a2 2 0 0 0 2 2h4"
+      />
+      <path
+        d="M10 9H8"
+      />
+      <path
+        d="M16 13H8"
+      />
+      <path
+        d="M16 17H8"
+      />
+    </svg>
+  </header>
+  <p
+    class="text-3xl font-semibold tracking-tight"
+  >
+    83,1%
+  </p>
+  <div
+    class="flex items-center justify-between gap-3"
+  >
+    <div
+      class="flex min-w-0 flex-col gap-0.5"
+    >
+      <span
+        class="inline-flex items-center gap-1 text-xs font-medium text-destructive"
+      >
+        <svg
+          aria-hidden="true"
+          class="lucide lucide-trending-down h-3.5 w-3.5"
+          fill="none"
+          height="24"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          viewBox="0 0 24 24"
+          width="24"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <polyline
+            points="22 17 13.5 8.5 8.5 13.5 2 7"
+          />
+          <polyline
+            points="16 17 22 17 22 11"
+          />
+        </svg>
+        <span
+          class="sr-only"
+        >
+          queda
+           de 
+        </span>
+        <span>
+          -4.7%
+        </span>
+      </span>
+      <p
+        class="truncate text-xs text-muted-foreground"
+      >
+        vs 30 dias anteriores
+      </p>
+    </div>
+    <svg
+      aria-hidden="true"
+      class="h-6 w-20 shrink-0"
+      preserveAspectRatio="none"
+      role="presentation"
+      viewBox="0 0 80 24"
+    >
+      <path
+        class="fill-destructive/15"
+        d="M0.00,0.00 L13.33,4.24 L26.67,9.88 L40.00,11.29 L53.33,18.35 L66.67,21.18 L80.00,24.00 L80.00,24 L0,24 Z"
+        stroke-width="0"
+      />
+      <path
+        class="stroke-destructive"
+        d="M0.00,0.00 L13.33,4.24 L26.67,9.88 L40.00,11.29 L53.33,18.35 L66.67,21.18 L80.00,24.00"
+        fill="none"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="1.5"
+      />
+    </svg>
+  </div>
+</article>
+`;
+
+exports[`KPIStatCard > snapshot: ready com delta positivo e sparkline 1`] = `
+<article
+  aria-label="Taxa de sucesso"
+  class="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 text-card-foreground shadow-sm"
+  data-state="ready"
+>
+  <header
+    class="flex items-start justify-between gap-2"
+  >
+    <p
+      class="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+    >
+      Taxa de sucesso
+    </p>
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-file-text h-4 w-4 shrink-0 text-muted-foreground"
+      fill="none"
+      height="24"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="24"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"
+      />
+      <path
+        d="M14 2v4a2 2 0 0 0 2 2h4"
+      />
+      <path
+        d="M10 9H8"
+      />
+      <path
+        d="M16 13H8"
+      />
+      <path
+        d="M16 17H8"
+      />
+    </svg>
+  </header>
+  <p
+    class="text-3xl font-semibold tracking-tight"
+  >
+    97,2%
+  </p>
+  <div
+    class="flex items-center justify-between gap-3"
+  >
+    <div
+      class="flex min-w-0 flex-col gap-0.5"
+    >
+      <span
+        class="inline-flex items-center gap-1 text-xs font-medium text-success"
+      >
+        <svg
+          aria-hidden="true"
+          class="lucide lucide-trending-up h-3.5 w-3.5"
+          fill="none"
+          height="24"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          viewBox="0 0 24 24"
+          width="24"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <polyline
+            points="22 7 13.5 15.5 8.5 10.5 2 17"
+          />
+          <polyline
+            points="16 7 22 7 22 13"
+          />
+        </svg>
+        <span
+          class="sr-only"
+        >
+          aumento
+           de 
+        </span>
+        <span>
+          +12.4%
+        </span>
+      </span>
+      <p
+        class="truncate text-xs text-muted-foreground"
+      >
+        vs 30 dias anteriores
+      </p>
+    </div>
+    <svg
+      aria-hidden="true"
+      class="h-6 w-20 shrink-0"
+      preserveAspectRatio="none"
+      role="presentation"
+      viewBox="0 0 80 24"
+    >
+      <path
+        class="fill-success/15"
+        d="M0.00,24.00 L13.33,20.80 L26.67,17.60 L40.00,19.20 L53.33,11.20 L66.67,4.80 L80.00,0.00 L80.00,24 L0,24 Z"
+        stroke-width="0"
+      />
+      <path
+        class="stroke-success"
+        d="M0.00,24.00 L13.33,20.80 L26.67,17.60 L40.00,19.20 L53.33,11.20 L66.67,4.80 L80.00,0.00"
+        fill="none"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="1.5"
+      />
+    </svg>
+  </div>
+</article>
+`;
+
+exports[`KPIStatCard > snapshot: ready com delta zero (estavel) 1`] = `
+<article
+  aria-label="Coletas em andamento"
+  class="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 text-card-foreground shadow-sm"
+  data-state="ready"
+>
+  <header
+    class="flex items-start justify-between gap-2"
+  >
+    <p
+      class="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+    >
+      Coletas em andamento
+    </p>
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-file-text h-4 w-4 shrink-0 text-muted-foreground"
+      fill="none"
+      height="24"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="24"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"
+      />
+      <path
+        d="M14 2v4a2 2 0 0 0 2 2h4"
+      />
+      <path
+        d="M10 9H8"
+      />
+      <path
+        d="M16 13H8"
+      />
+      <path
+        d="M16 17H8"
+      />
+    </svg>
+  </header>
+  <p
+    class="text-3xl font-semibold tracking-tight"
+  >
+    6
+  </p>
+  <div
+    class="flex items-center justify-between gap-3"
+  >
+    <div
+      class="flex min-w-0 flex-col gap-0.5"
+    >
+      <span
+        class="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground"
+      >
+        <svg
+          aria-hidden="true"
+          class="lucide lucide-minus h-3.5 w-3.5"
+          fill="none"
+          height="24"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          viewBox="0 0 24 24"
+          width="24"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M5 12h14"
+          />
+        </svg>
+        <span
+          class="sr-only"
+        >
+          estavel
+           de 
+        </span>
+        <span>
+          0%
+        </span>
+      </span>
+      <p
+        class="truncate text-xs text-muted-foreground"
+      >
+        vs 30 dias anteriores
+      </p>
+    </div>
+    <svg
+      aria-hidden="true"
+      class="h-6 w-20 shrink-0"
+      preserveAspectRatio="none"
+      role="presentation"
+      viewBox="0 0 80 24"
+    >
+      <path
+        class="fill-muted-foreground/15"
+        d="M0.00,24.00 L13.33,12.00 L26.67,24.00 L40.00,0.00 L53.33,24.00 L66.67,12.00 L80.00,24.00 L80.00,24 L0,24 Z"
+        stroke-width="0"
+      />
+      <path
+        class="stroke-muted-foreground"
+        d="M0.00,24.00 L13.33,12.00 L26.67,24.00 L40.00,0.00 L53.33,24.00 L66.67,12.00 L80.00,24.00"
+        fill="none"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="1.5"
+      />
+    </svg>
+  </div>
+</article>
+`;
+
+exports[`KPIStatCard > snapshot: ready sem delta e sem sparkline 1`] = `
+<article
+  aria-label="NFS-e coletadas (30d)"
+  class="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 text-card-foreground shadow-sm"
+  data-state="ready"
+>
+  <header
+    class="flex items-start justify-between gap-2"
+  >
+    <p
+      class="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+    >
+      NFS-e coletadas (30d)
+    </p>
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-file-text h-4 w-4 shrink-0 text-muted-foreground"
+      fill="none"
+      height="24"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="24"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"
+      />
+      <path
+        d="M14 2v4a2 2 0 0 0 2 2h4"
+      />
+      <path
+        d="M10 9H8"
+      />
+      <path
+        d="M16 13H8"
+      />
+      <path
+        d="M16 17H8"
+      />
+    </svg>
+  </header>
+  <p
+    class="text-3xl font-semibold tracking-tight"
+  >
+    1.284
+  </p>
+  <div
+    class="flex items-center justify-between gap-3"
+  >
+    <div
+      class="flex min-w-0 flex-col gap-0.5"
+    >
+      <p
+        class="truncate text-xs text-muted-foreground"
+      >
+        vs 30 dias anteriores
+      </p>
+    </div>
+  </div>
+</article>
+`;
