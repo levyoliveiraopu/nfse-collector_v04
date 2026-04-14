@@ -27,6 +27,10 @@ _Nenhuma tarefa ativa._
   console/CLI da Backblaze e geracao da Application Key ficam a cargo
   do owner (ver `infra/s3-bucket.md` secao 2).
 
+- **DOCS-04** — Runbook de incidentes para indisponibilidade de portal
+  e rate-limit documentado em `docs/runbooks/portal-indisponivel.md`
+  (triagem, backoff, comunicação e critério de status page).
+
 ## Proximas Destravadas (prontas para iniciar)
 
 - **INFRA-01** — Hardening inicial da VPS Hostinger
@@ -57,8 +61,8 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-13
-- PR: #80 — CORE-01 (motor ADN extraido para `packages/worker-core/`; `src/` vira shim)
-- Autor: @LevyOliveirabr
+- PR: #82 — DOCS-04 (runbook para `PORTAL_5XX`, `PORTAL_TIMEOUT` e `RATE_LIMIT`)
+- Autor: @levyoliveiraopu
 - Nota: workflow `pr-guardrail` exige STATE.md + CHANGELOG.md + `Closes #N` em todo PR para main.
 
 ## Links Rapidos
