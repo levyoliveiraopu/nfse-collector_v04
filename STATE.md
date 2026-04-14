@@ -15,7 +15,9 @@
 
 ## Em Andamento
 
-_Nenhuma tarefa ativa._
+- **DS-01** — Bootstrap do `apps/web-app` (Next.js 14 App Router + TS strict,
+  Tailwind, shadcn/ui, Lucide, Sonner) com pagina `/` "Hello painel"
+  (PR pendente; issue #40).
 
 ## Concluidos
 
@@ -56,8 +58,8 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 
 ## Ultima atualizacao
 
-- Data: 2026-04-13
-- PR: #80 — CORE-01 (motor ADN extraido para `packages/worker-core/`; `src/` vira shim)
+- Data: 2026-04-14
+- PR: DS-01 em andamento — bootstrap do `apps/web-app` (issue #40)
 - Autor: @LevyOliveirabr
 - Nota: workflow `pr-guardrail` exige STATE.md + CHANGELOG.md + `Closes #N` em todo PR para main.
 
