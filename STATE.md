@@ -15,6 +15,24 @@
 
 ## Em Andamento
 
+- **DS-06** — Componente `<DataTable>` server-side em
+  `apps/web-app/components/ui/data-table/` baseado em TanStack Table +
+  `@tanstack/react-query`: paginacao/ordenacao/filtragem manuais, estado
+  preservado em `searchParams` (prefixo configuravel), filtros texto/
+  select/date-range com draft local aplicado via botao/Enter, saved
+  filters por tabela em `localStorage` (chave `dt:<queryKey>`), export
+  CSV do resultado atual (RFC 4180 + BOM UTF-8), estados loading
+  (skeleton rows), vazio e erro com "Tentar novamente". `AppQueryClient
+  Provider` em `apps/web-app/components/providers/query-client-provider.tsx`
+  wrappando o `RootLayout`. Demo com 10k linhas mockadas no `/styleguide`
+  (`app/styleguide/data-table-demo.tsx` — dataset deterministico via
+  Mulberry32, fetcher simulando latencia). Testes vitest: `csv.test.ts`
+  (10 casos), `url-state.test.ts` (8 casos, roundtrip parse<->serialize)
+  e `data-table.test.tsx` (5 casos — skeleton/vazio/linhas/erro+retry/
+  paginacao chamando router.replace). Typecheck, lint e 56 testes verdes.
+  Novas deps `@tanstack/react-table` e `@tanstack/react-query`
+  (PR a abrir — Closes #45).
+
 - **APP-01** — Paginas de auth: `/login`, `/signup`, `/recuperar-senha`,
   `/redefinir-senha/[token]` e `/aceitar-convite/[token]` em
   `apps/web-app/app/(auth)/`; `<AuthProvider>` em
@@ -221,6 +239,16 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-14
+- PR: (a abrir) — DS-06: componente `<DataTable>` server-side em
+  `apps/web-app/components/ui/data-table/` (TanStack Table + react-query)
+  com paginacao/ordenacao/filtragem manuais, filtros texto/select/date-
+  range, saved filters em localStorage, export CSV (RFC 4180 + BOM UTF-8),
+  estados loading/vazio/erro+retry e preservacao de estado em
+  `searchParams`. `AppQueryClientProvider` no `RootLayout`. Demo no
+  `/styleguide` com 10k linhas mockadas. 23 novos testes vitest
+  (csv/url-state/component). Novas deps `@tanstack/react-table` e
+  `@tanstack/react-query`. Move DS-06 de "Bloqueadas" (dependia de DS-02,
+  ja concluido) para "Em Andamento". Closes #45.
 - PR: (a abrir) — APP-01: paginas de auth (`/login`, `/signup`,
   `/recuperar-senha`, `/redefinir-senha/[token]`,
   `/aceitar-convite/[token]`) + `<AuthProvider>` com access em memoria

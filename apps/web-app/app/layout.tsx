@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { AuthProvider } from "@/components/auth/auth-provider";
+import { AppQueryClientProvider } from "@/components/providers/query-client-provider";
 import "./globals.css";
 
 const inter = Inter({
@@ -50,7 +51,9 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body className="min-h-screen bg-background font-sans text-foreground antialiased">
-        <AuthProvider>{children}</AuthProvider>
+        <AppQueryClientProvider>
+          <AuthProvider>{children}</AuthProvider>
+        </AppQueryClientProvider>
         <Toaster richColors position="top-right" />
       </body>
     </html>
