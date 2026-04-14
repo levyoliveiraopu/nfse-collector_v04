@@ -31,6 +31,10 @@
   do owner (ver `infra/s3-bucket.md` secao 2).
 - **DOCS-02** — Politica de Privacidade (LGPD) publicada em `docs/legal/privacy.md` + RoPA minima em `docs/legal/ropa.md` (PR a abrir).
 
+- **DOCS-04** — Runbook de incidentes para indisponibilidade de portal
+  e rate-limit documentado em `docs/runbooks/portal-indisponivel.md`
+  (triagem, backoff, comunicação e critério de status page).
+
 ## Proximas Destravadas (prontas para iniciar)
 
 - **INFRA-01** — Hardening inicial da VPS Hostinger
@@ -59,8 +63,8 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-13
-- PR: pendente (branch `task/DOCS-03-runbook-credencial`)
-- Autor: @Codex
+- PR: #82 — DOCS-04 (runbook para `PORTAL_5XX`, `PORTAL_TIMEOUT` e `RATE_LIMIT`)
+- Autor: @levyoliveiraopu
 - Nota: workflow `pr-guardrail` exige STATE.md + CHANGELOG.md + `Closes #N` em todo PR para main.
 
 ## Links Rapidos
