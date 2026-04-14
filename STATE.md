@@ -23,6 +23,15 @@
   `apps/api/alembic/versions/`. Testes estaticos em `apps/api/tests/`
   e runbook manual de isolamento cross-tenant em `apps/api/README.md`
   (PR a abrir — Closes #13).
+- **API-03** — Middleware de tenant (GUC para RLS): dependencies
+  `get_current_claims` / `assert_tenant_active` / `get_tenant_db` em
+  `apps/api/api/deps.py`; endpoint `GET /auth/me` como prova de vida
+  (RLS-gated count em `tenant_users`); 15 testes unitarios e 6 de
+  integracao (gated por `TEST_DATABASE_URL`) em
+  `apps/api/tests/test_tenant_middleware*.py`; runbook manual em
+  `apps/api/README.md`. Tenant inexistente/`suspended`/`canceled` ->
+  403; token ausente/invalido -> 401 com `WWW-Authenticate: Bearer`
+  (PR a abrir — Closes #27).
 
 ## Concluidos
 
@@ -164,6 +173,13 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-14
+- PR: (a abrir) — API-03: middleware de tenant via dependencies FastAPI
+  (`get_current_claims`/`assert_tenant_active`/`get_tenant_db`) em
+  `apps/api/api/deps.py`, reusa `get_tenant_session` para `SET LOCAL
+  app.current_tenant` sem vazamento de GUC no pool; `GET /auth/me` como
+  prova de vida RLS-gated; 15 testes unitarios + 6 de integracao
+  (gated por `TEST_DATABASE_URL`); runbook manual de isolamento
+  cross-tenant no `apps/api/README.md`. Move API-03 para "Em Andamento".
 - PR: (a abrir) — API-02: autenticacao completa em
   `apps/api/api/auth/` (signup/login/refresh/logout), argon2id, JWT
   access 15min + refresh opaco 7d com rotacao e detecao de reuso,
