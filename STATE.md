@@ -15,6 +15,24 @@
 
 ## Em Andamento
 
+- **APP-01** — Paginas de auth: `/login`, `/signup`, `/recuperar-senha`,
+  `/redefinir-senha/[token]` e `/aceitar-convite/[token]` em
+  `apps/web-app/app/(auth)/`; `<AuthProvider>` em
+  `apps/web-app/components/auth/` com access token em memoria + refresh
+  automatico; refresh token em cookie httpOnly gerenciado pelos Route
+  Handlers `apps/web-app/app/api/auth/{signup,login,refresh,logout}/`
+  (proxy fino para a API FastAPI — compensa API-02 devolver o refresh no
+  body). `/dashboard` protegido por `<RequireAuth>`; user menu faz logout
+  de verdade. Spec Playwright em `apps/web-app/e2e/auth.spec.ts`
+  (signup->dashboard + refresh automatico) com `page.route` mockando
+  `/api/auth/*` — roda local via `pnpm --filter web-app test:e2e`.
+  Novas envs `NEXT_PUBLIC_API_BASE_URL` e `API_BASE_URL` em
+  `config/.env.example`. Novas deps `zod`, `react-hook-form`,
+  `@hookform/resolvers`, `@playwright/test`. Stubs de UI para
+  recuperar/redefinir/aceitar-convite (backend correspondente ainda nao
+  existe — endpoints a entregar em ticket API futuro).
+  (PR a abrir — Closes #49).
+
 - **DATA-02** — Schema de `companies` + `company_credentials`:
   migrations `0002_companies.py` (CNPJs por tenant, unique
   `(tenant_id, cnpj)`, RLS) e `0003_company_credentials.py` (PFX A1
@@ -164,6 +182,14 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-14
+- PR: (a abrir) — APP-01: paginas de auth (`/login`, `/signup`,
+  `/recuperar-senha`, `/redefinir-senha/[token]`,
+  `/aceitar-convite/[token]`) + `<AuthProvider>` com access em memoria
+  e refresh automatico; Route Handlers `/api/auth/*` proxiam a API e
+  guardam o refresh em cookie httpOnly; `/dashboard` protegido por
+  `<RequireAuth>`; spec Playwright local; envs
+  `NEXT_PUBLIC_API_BASE_URL`/`API_BASE_URL` em `config/.env.example`.
+  Move APP-01 de "Bloqueadas" para "Em Andamento". Closes #49.
 - PR: (a abrir) — API-02: autenticacao completa em
   `apps/api/api/auth/` (signup/login/refresh/logout), argon2id, JWT
   access 15min + refresh opaco 7d com rotacao e detecao de reuso,
