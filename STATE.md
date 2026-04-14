@@ -27,10 +27,14 @@ _Nenhuma tarefa ativa._
   console/CLI da Backblaze e geracao da Application Key ficam a cargo
   do owner (ver `infra/s3-bucket.md` secao 2).
 
+- **DOCS-01** — Termos de Uso criado em `docs/legal/terms.md`, incluindo
+  clausula de retencao de 90 dias (ADR-003), pagamento/renovacao/cancelamento,
+  limitacao de responsabilidade, foro/legislacao e orientacao de referencia
+  para signup e rota `/legal` do app/site.
+
 ## Proximas Destravadas (prontas para iniciar)
 
 - **INFRA-01** — Hardening inicial da VPS Hostinger
-- **DOCS-01** — Termos de Uso (clausula de retencao 90d)
 - **DOCS-02** — Politica de Privacidade + LGPD
 - **DATA-01** — Schema inicial: tenants, users, tenant_users (depende de `apps/api` inicializado; ver API-01)
 
@@ -57,8 +61,8 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-13
-- PR: #80 — CORE-01 (motor ADN extraido para `packages/worker-core/`; `src/` vira shim)
-- Autor: @LevyOliveirabr
+- PR: #81 — DOCS-01 (Termos de Uso com clausula de retencao 90 dias)
+- Autor: @codex
 - Nota: workflow `pr-guardrail` exige STATE.md + CHANGELOG.md + `Closes #N` em todo PR para main.
 
 ## Links Rapidos
