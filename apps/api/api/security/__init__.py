@@ -1,1 +1,1 @@
-"""Modulos de seguranca da API (API-02): hashing, JWT e refresh tokens."""
+"""Modulos de seguranca da API: hashing, JWT, refresh tokens (API-02) e RBAC (API-04)."""

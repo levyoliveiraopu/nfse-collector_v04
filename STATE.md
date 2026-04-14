@@ -64,6 +64,18 @@
   `apps/api/README.md`. Tenant inexistente/`suspended`/`canceled` ->
   403; token ausente/invalido -> 401 com `WWW-Authenticate: Bearer`
   (PR a abrir — Closes #27).
+- **API-04** — RBAC (owner/admin/operator/viewer): dependency
+  `require_role(*allowed, min_role=None)` em
+  `apps/api/api/security/rbac.py`, encadeando `assert_tenant_active`
+  (API-03) e devolvendo 403 claro quando o papel nao e autorizado;
+  guarda pura `ensure_can_manage_member` protegendo `owner` (apenas
+  outro owner remove/rebaixa owner; admin nao promove acima do proprio
+  papel) para uso pelos endpoints de membros a chegar; matriz completa
+  em `docs/architecture/rbac-matrix.md` cobrindo tenant, membros,
+  companies, executions e auditoria; 31 testes unitarios em
+  `apps/api/tests/test_rbac.py` incluindo prova de DoD (viewer -> 403
+  em `POST /_probe/companies` via router efemero e `require_role(min_role="owner")`
+  somente permitindo owner). (PR a abrir — Closes #28).
 
 ## Concluidos
 
@@ -221,6 +233,15 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-14
+- PR: (a abrir) — API-04: RBAC com dependency `require_role`
+  (`apps/api/api/security/rbac.py`) encadeando `assert_tenant_active`
+  e devolvendo 403 claro; guarda `ensure_can_manage_member`
+  protegendo owner (admin nao remove/rebaixa owner; promocao limitada
+  pelo papel do ator); matriz de permissoes em
+  `docs/architecture/rbac-matrix.md`; 31 testes em
+  `apps/api/tests/test_rbac.py` cobrindo viewer -> 403 ao criar
+  empresa via router efemero + guardas de membros. Move API-04 de
+  "Bloqueadas" para "Em Andamento". Closes #28.
 - PR: (a abrir) — APP-01: paginas de auth (`/login`, `/signup`,
   `/recuperar-senha`, `/redefinir-senha/[token]`,
   `/aceitar-convite/[token]`) + `<AuthProvider>` com access em memoria
