@@ -1,11 +1,21 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { LogOut, User as UserIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/components/auth/auth-provider";
 import { useDropdown } from "./use-dropdown";
 
 export function UserMenu() {
   const { open, setOpen, containerRef } = useDropdown();
+  const { user, logout } = useAuth();
+  const router = useRouter();
+
+  async function handleLogout() {
+    setOpen(false);
+    await logout();
+    router.replace("/login");
+  }
 
   return (
     <div className="relative" ref={containerRef}>
@@ -34,16 +44,27 @@ export function UserMenu() {
           className="absolute right-0 z-50 mt-2 w-56 overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-md"
         >
           <div className="border-b border-border px-3 py-2 text-xs text-muted-foreground">
-            Sessao de exemplo
+            {user ? (
+              <>
+                <div className="font-medium text-foreground">
+                  {user.role}
+                </div>
+                <div className="truncate font-mono text-[10px]">
+                  {user.userId.slice(0, 8)}...
+                </div>
+              </>
+            ) : (
+              "Sessao"
+            )}
           </div>
           <button
             role="menuitem"
             type="button"
-            disabled
-            className="flex w-full items-center gap-2 px-3 py-2 text-sm text-muted-foreground disabled:cursor-not-allowed"
+            onClick={handleLogout}
+            className="flex w-full items-center gap-2 px-3 py-2 text-sm text-foreground transition hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <LogOut className="h-4 w-4" aria-hidden="true" />
-            Sair (em breve)
+            Sair
           </button>
         </div>
       )}
