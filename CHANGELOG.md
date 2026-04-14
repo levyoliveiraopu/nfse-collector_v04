@@ -6,6 +6,7 @@ Segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- DOCS-03: runbook de credencial invalida em `docs/runbooks/credencial-invalida.md` e link no APP-06 para ocorrencias `CERT_EXPIRED`, `CRED_INVALID` e `CERT_REVOKED`.
 - GOV-01: estrutura do monorepo (pnpm workspaces + Turborepo).
 - GOV-02: 5 ADRs iniciais (monolito modular, RLS, storage 90d, billing adiado, deploy compose).
 - GOV-03: backlog completo em `docs/tasks/` + templates GitHub + STATE.md.

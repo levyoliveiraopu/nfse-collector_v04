@@ -21,10 +21,7 @@
 
 ## Concluidos
 
-- **API-01** — Bootstrap FastAPI em `apps/api/`: config via
-  `pydantic-settings` (prefixo `API_`), logging JSON estruturado,
-  endpoints `/health` e `/version`, Dockerfile multi-stage com usuario
-  nao-root. Desbloqueia DATA-01.
+- **DOCS-03** — Runbook de credencial invalida criado em `docs/runbooks/credencial-invalida.md` e linkado no ticket APP-06 para uso inline nas ocorrencias `CERT_EXPIRED`, `CRED_INVALID` e `CERT_REVOKED` (PR a abrir).
 - **CORE-01** — Motor ADN legado extraido de `src/` para pacote Python
   instalavel em `packages/worker-core/`; `src/` vira shim retro-compativel
   (PR #80).
@@ -62,8 +59,8 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-13
-- PR: (a abrir) — DOCS-02 (politica de privacidade LGPD + RoPA minima)
-- Autor: @levyoliveiraopu
+- PR: pendente (branch `task/DOCS-03-runbook-credencial`)
+- Autor: @Codex
 - Nota: workflow `pr-guardrail` exige STATE.md + CHANGELOG.md + `Closes #N` em todo PR para main.
 
 ## Links Rapidos
