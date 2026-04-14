@@ -24,6 +24,17 @@
 
 ## Concluidos
 
+- **DS-02** — Design tokens + tema base: CSS vars para cores (paleta neutra +
+  primaria azul + critica vermelha + success/warning) em light/dark,
+  tipografia (Inter + JetBrains Mono via `next/font/google` com variaveis
+  `--font-sans`/`--font-mono`), espacamento, radius e sombras em
+  `apps/web-app/styles/tokens.css`; Tailwind estendido em
+  `apps/web-app/tailwind.config.ts` mapeando os tokens; rota `/styleguide`
+  (app router ignora diretorios com `_`, ajustado de `_styleguide` para
+  `styleguide`) com amostras de todos os tokens; toggle light/dark
+  (`components/theme-toggle.tsx`) com persistencia em `localStorage` e
+  script inline anti-FOUC no `layout.tsx` (PR a abrir — Closes #41).
+
 - **GOV-01/02/03** — Setup do monorepo (pnpm workspaces + Turborepo),
   5 ADRs iniciais e backlog completo em `docs/tasks/` com STATE.md e
   templates GitHub (PR #1).
