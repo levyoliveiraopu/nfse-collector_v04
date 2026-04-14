@@ -15,12 +15,19 @@
 
 ## Em Andamento
 
-- **DS-01** — Bootstrap do `apps/web-app` (Next.js 14 App Router + TS strict,
-  Tailwind, shadcn/ui, Lucide, Sonner) com pagina `/` "Hello painel"
-  (PR pendente; issue #40).
+- _(nenhuma tarefa em andamento)_
 
 ## Concluidos
 
+- **GOV-01/02/03** — Setup do monorepo (pnpm workspaces + Turborepo),
+  5 ADRs iniciais e backlog completo em `docs/tasks/` com STATE.md e
+  templates GitHub (PR #1).
+- **GOV-07** — Workflow `.github/workflows/pr-guardrail.yml` exige
+  STATE.md + CHANGELOG.md + `Closes #N` em todo PR para `main`
+  (entregue junto com o setup inicial).
+- **DS-01** — Bootstrap do `apps/web-app` (Next.js 14 App Router + TS
+  strict, Tailwind, shadcn/ui, Lucide, Sonner) com pagina `/`
+  "Hello painel" (PR #84).
 - **API-01** — Bootstrap FastAPI em `apps/api/`: config via
   `pydantic-settings` (prefixo `API_`), logging JSON estruturado,
   endpoints `/health` e `/version`, Dockerfile multi-stage com usuario
@@ -53,7 +60,12 @@
 
 ## Proximas Destravadas (prontas para iniciar)
 
-- **DATA-01** — Schema inicial: tenants, users, tenant_users (destravado por API-01)
+- **GOV-06** — CI base (lint + test) com GitHub Actions (ruff, eslint,
+  pytest, vitest) (issue #2).
+- **INFRA-03** — DNS dos subdominios no Cloudflare (`app`, `api`, `ops`,
+  `www`, apex) (issue #5).
+- **DATA-01** — Schema inicial: tenants, users, tenant_users
+  (destravado por API-01) (issue #12).
 
 > Nota: CORE-05, API-06, API-11 e INFRA-08 dependem de INFRA-06 **e**
 > de outros tickets (CORE-01 / API-05 / DATA-05 / INFRA-05), portanto
@@ -77,9 +89,9 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-14
-- PR: (a abrir) — GOV: sincroniza STATE.md e CHANGELOG.md apos merges
-  concorrentes de DOCS-01..04 (restaura entradas perdidas e remove
-  tickets ja concluidos da lista de proximas destravadas).
+- PR: (a abrir) — GOV: revisao geral do STATE.md — move DS-01 de "Em
+  Andamento" para "Concluidos" (PR #84 ja mergeado), adiciona GOV-07
+  em "Concluidos" e inclui GOV-06 + INFRA-03 nas proximas destravadas.
 - Autor: @LevyOliveirabr
 - Nota: workflow `pr-guardrail` exige STATE.md + CHANGELOG.md + `Closes #N` em todo PR para main.
 
