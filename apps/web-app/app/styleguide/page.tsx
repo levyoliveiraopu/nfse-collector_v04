@@ -1,4 +1,5 @@
 import { ThemeToggle } from "@/components/theme-toggle";
+import { StatusBadgeDemo } from "./status-badge-demo";
 
 const colorTokens: Array<{ name: string; varName: string }> = [
   { name: "background", varName: "--background" },
@@ -220,6 +221,13 @@ console.log(\`hello \${tenant}\`);`}
             Outline
           </button>
         </div>
+      </Section>
+
+      <Section
+        title="StatusBadge"
+        description="DS-04 — 10 variantes para status de execucoes, credenciais e ocorrencias. Tamanhos sm e md. Tooltip via atributo title."
+      >
+        <StatusBadgeDemo />
       </Section>
     </main>
   );

@@ -33,6 +33,19 @@
 
 ## Concluidos
 
+- **DS-04** — Componente `StatusBadge` (10 variantes) em
+  `apps/web-app/components/ui/status-badge.tsx` com `variant`
+  (`success`, `processing`, `pending`, `failed`, `warning`, `blocked`,
+  `cert_expiring`, `cred_invalid`, `portal_unstable`, `reprocess_needed`)
+  + `size` (`sm`, `md`), icone Lucide por variante e tooltip via
+  atributo `title` nativo. Demo no styleguide em
+  `apps/web-app/app/styleguide/status-badge-demo.tsx`. Bootstrap de
+  vitest + jsdom + `@testing-library/react`/`jest-dom` (primeiro spec
+  do `apps/web-app`, destrava o TODO de `test-ts` do GOV-06) com
+  `vitest.config.ts` / `vitest.setup.ts` e suite de snapshot cobrindo
+  as 10 variantes x 2 tamanhos (20 snapshots) + comportamento de
+  override de label/tooltip e `hideIcon` (PR a abrir — Closes #43).
+
 - **DS-02** — Design tokens + tema base: CSS vars para cores (paleta neutra +
   primaria azul + critica vermelha + success/warning) em light/dark,
   tipografia (Inter + JetBrains Mono via `next/font/google` com variaveis
@@ -126,6 +139,10 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 - PR: (a abrir) — DS-03: `<AppShell>` (sidebar colapsavel + topbar com
   breadcrumbs, tenant switcher, bell, theme toggle e user menu) e rota
   `/dashboard` consumindo o shell. Move DS-03 para "Em Andamento".
+- PR: (a abrir) — DS-04: componente `StatusBadge` com 10 variantes
+  + tamanhos `sm`/`md` em `apps/web-app/components/ui/status-badge.tsx`,
+  demo no `/styleguide` e primeiro spec (vitest + RTL) do `apps/web-app`
+  cobrindo 20 snapshots (10 variantes x 2 tamanhos). Closes #43.
 - Autor: @LevyOliveirabr
 - Nota: workflow `pr-guardrail` exige STATE.md + CHANGELOG.md + `Closes #N` em todo PR para main.
 
