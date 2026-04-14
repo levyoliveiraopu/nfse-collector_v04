@@ -1,0 +1,777 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`StatusBadge > snapshot: variante blocked tamanho md 1`] = `
+<span
+  aria-label="Bloqueado"
+  class="inline-flex items-center whitespace-nowrap rounded-full border font-medium h-6 gap-1.5 px-2 text-xs bg-muted text-muted-foreground border-border"
+  data-size="md"
+  data-variant="blocked"
+  role="status"
+  title="Execucao bloqueada por dependencia ou politica."
+>
+  <svg
+    aria-hidden="true"
+    class="lucide lucide-ban h-3.5 w-3.5"
+    fill="none"
+    height="24"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="2"
+    viewBox="0 0 24 24"
+    width="24"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <circle
+      cx="12"
+      cy="12"
+      r="10"
+    />
+    <path
+      d="m4.9 4.9 14.2 14.2"
+    />
+  </svg>
+  <span>
+    Bloqueado
+  </span>
+</span>
+`;
+
+exports[`StatusBadge > snapshot: variante blocked tamanho sm 1`] = `
+<span
+  aria-label="Bloqueado"
+  class="inline-flex items-center whitespace-nowrap rounded-full border font-medium h-5 gap-1 px-1.5 text-[11px] bg-muted text-muted-foreground border-border"
+  data-size="sm"
+  data-variant="blocked"
+  role="status"
+  title="Execucao bloqueada por dependencia ou politica."
+>
+  <svg
+    aria-hidden="true"
+    class="lucide lucide-ban h-3 w-3"
+    fill="none"
+    height="24"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="2"
+    viewBox="0 0 24 24"
+    width="24"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <circle
+      cx="12"
+      cy="12"
+      r="10"
+    />
+    <path
+      d="m4.9 4.9 14.2 14.2"
+    />
+  </svg>
+  <span>
+    Bloqueado
+  </span>
+</span>
+`;
+
+exports[`StatusBadge > snapshot: variante cert_expiring tamanho md 1`] = `
+<span
+  aria-label="Cert. expirando"
+  class="inline-flex items-center whitespace-nowrap rounded-full border font-medium h-6 gap-1.5 px-2 text-xs bg-warning/15 text-warning-foreground border-warning/40 dark:text-warning"
+  data-size="md"
+  data-variant="cert_expiring"
+  role="status"
+  title="Certificado A1 proximo do vencimento."
+>
+  <svg
+    aria-hidden="true"
+    class="lucide lucide-shield-alert h-3.5 w-3.5"
+    fill="none"
+    height="24"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="2"
+    viewBox="0 0 24 24"
+    width="24"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path
+      d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"
+    />
+    <path
+      d="M12 8v4"
+    />
+    <path
+      d="M12 16h.01"
+    />
+  </svg>
+  <span>
+    Cert. expirando
+  </span>
+</span>
+`;
+
+exports[`StatusBadge > snapshot: variante cert_expiring tamanho sm 1`] = `
+<span
+  aria-label="Cert. expirando"
+  class="inline-flex items-center whitespace-nowrap rounded-full border font-medium h-5 gap-1 px-1.5 text-[11px] bg-warning/15 text-warning-foreground border-warning/40 dark:text-warning"
+  data-size="sm"
+  data-variant="cert_expiring"
+  role="status"
+  title="Certificado A1 proximo do vencimento."
+>
+  <svg
+    aria-hidden="true"
+    class="lucide lucide-shield-alert h-3 w-3"
+    fill="none"
+    height="24"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="2"
+    viewBox="0 0 24 24"
+    width="24"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path
+      d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"
+    />
+    <path
+      d="M12 8v4"
+    />
+    <path
+      d="M12 16h.01"
+    />
+  </svg>
+  <span>
+    Cert. expirando
+  </span>
+</span>
+`;
+
+exports[`StatusBadge > snapshot: variante cred_invalid tamanho md 1`] = `
+<span
+  aria-label="Credencial invalida"
+  class="inline-flex items-center whitespace-nowrap rounded-full border font-medium h-6 gap-1.5 px-2 text-xs bg-destructive/10 text-destructive border-destructive/30 dark:bg-destructive/15"
+  data-size="md"
+  data-variant="cred_invalid"
+  role="status"
+  title="Credencial recusada pelo portal. Ver runbook."
+>
+  <svg
+    aria-hidden="true"
+    class="lucide lucide-key-round h-3.5 w-3.5"
+    fill="none"
+    height="24"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="2"
+    viewBox="0 0 24 24"
+    width="24"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path
+      d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"
+    />
+    <circle
+      cx="16.5"
+      cy="7.5"
+      fill="currentColor"
+      r=".5"
+    />
+  </svg>
+  <span>
+    Credencial invalida
+  </span>
+</span>
+`;
+
+exports[`StatusBadge > snapshot: variante cred_invalid tamanho sm 1`] = `
+<span
+  aria-label="Credencial invalida"
+  class="inline-flex items-center whitespace-nowrap rounded-full border font-medium h-5 gap-1 px-1.5 text-[11px] bg-destructive/10 text-destructive border-destructive/30 dark:bg-destructive/15"
+  data-size="sm"
+  data-variant="cred_invalid"
+  role="status"
+  title="Credencial recusada pelo portal. Ver runbook."
+>
+  <svg
+    aria-hidden="true"
+    class="lucide lucide-key-round h-3 w-3"
+    fill="none"
+    height="24"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="2"
+    viewBox="0 0 24 24"
+    width="24"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path
+      d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"
+    />
+    <circle
+      cx="16.5"
+      cy="7.5"
+      fill="currentColor"
+      r=".5"
+    />
+  </svg>
+  <span>
+    Credencial invalida
+  </span>
+</span>
+`;
+
+exports[`StatusBadge > snapshot: variante failed tamanho md 1`] = `
+<span
+  aria-label="Falhou"
+  class="inline-flex items-center whitespace-nowrap rounded-full border font-medium h-6 gap-1.5 px-2 text-xs bg-destructive/10 text-destructive border-destructive/30 dark:bg-destructive/15"
+  data-size="md"
+  data-variant="failed"
+  role="status"
+  title="Execucao falhou. Verifique os detalhes."
+>
+  <svg
+    aria-hidden="true"
+    class="lucide lucide-circle-x h-3.5 w-3.5"
+    fill="none"
+    height="24"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="2"
+    viewBox="0 0 24 24"
+    width="24"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <circle
+      cx="12"
+      cy="12"
+      r="10"
+    />
+    <path
+      d="m15 9-6 6"
+    />
+    <path
+      d="m9 9 6 6"
+    />
+  </svg>
+  <span>
+    Falhou
+  </span>
+</span>
+`;
+
+exports[`StatusBadge > snapshot: variante failed tamanho sm 1`] = `
+<span
+  aria-label="Falhou"
+  class="inline-flex items-center whitespace-nowrap rounded-full border font-medium h-5 gap-1 px-1.5 text-[11px] bg-destructive/10 text-destructive border-destructive/30 dark:bg-destructive/15"
+  data-size="sm"
+  data-variant="failed"
+  role="status"
+  title="Execucao falhou. Verifique os detalhes."
+>
+  <svg
+    aria-hidden="true"
+    class="lucide lucide-circle-x h-3 w-3"
+    fill="none"
+    height="24"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="2"
+    viewBox="0 0 24 24"
+    width="24"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <circle
+      cx="12"
+      cy="12"
+      r="10"
+    />
+    <path
+      d="m15 9-6 6"
+    />
+    <path
+      d="m9 9 6 6"
+    />
+  </svg>
+  <span>
+    Falhou
+  </span>
+</span>
+`;
+
+exports[`StatusBadge > snapshot: variante pending tamanho md 1`] = `
+<span
+  aria-label="Pendente"
+  class="inline-flex items-center whitespace-nowrap rounded-full border font-medium h-6 gap-1.5 px-2 text-xs bg-muted text-muted-foreground border-border"
+  data-size="md"
+  data-variant="pending"
+  role="status"
+  title="Aguardando inicio ou recursos."
+>
+  <svg
+    aria-hidden="true"
+    class="lucide lucide-clock h-3.5 w-3.5"
+    fill="none"
+    height="24"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="2"
+    viewBox="0 0 24 24"
+    width="24"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <circle
+      cx="12"
+      cy="12"
+      r="10"
+    />
+    <polyline
+      points="12 6 12 12 16 14"
+    />
+  </svg>
+  <span>
+    Pendente
+  </span>
+</span>
+`;
+
+exports[`StatusBadge > snapshot: variante pending tamanho sm 1`] = `
+<span
+  aria-label="Pendente"
+  class="inline-flex items-center whitespace-nowrap rounded-full border font-medium h-5 gap-1 px-1.5 text-[11px] bg-muted text-muted-foreground border-border"
+  data-size="sm"
+  data-variant="pending"
+  role="status"
+  title="Aguardando inicio ou recursos."
+>
+  <svg
+    aria-hidden="true"
+    class="lucide lucide-clock h-3 w-3"
+    fill="none"
+    height="24"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="2"
+    viewBox="0 0 24 24"
+    width="24"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <circle
+      cx="12"
+      cy="12"
+      r="10"
+    />
+    <polyline
+      points="12 6 12 12 16 14"
+    />
+  </svg>
+  <span>
+    Pendente
+  </span>
+</span>
+`;
+
+exports[`StatusBadge > snapshot: variante portal_unstable tamanho md 1`] = `
+<span
+  aria-label="Portal instavel"
+  class="inline-flex items-center whitespace-nowrap rounded-full border font-medium h-6 gap-1.5 px-2 text-xs bg-warning/15 text-warning-foreground border-warning/40 dark:text-warning"
+  data-size="md"
+  data-variant="portal_unstable"
+  role="status"
+  title="Portal da prefeitura indisponivel ou com rate-limit."
+>
+  <svg
+    aria-hidden="true"
+    class="lucide lucide-wifi-off h-3.5 w-3.5"
+    fill="none"
+    height="24"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="2"
+    viewBox="0 0 24 24"
+    width="24"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path
+      d="M12 20h.01"
+    />
+    <path
+      d="M8.5 16.429a5 5 0 0 1 7 0"
+    />
+    <path
+      d="M5 12.859a10 10 0 0 1 5.17-2.69"
+    />
+    <path
+      d="M19 12.859a10 10 0 0 0-2.007-1.523"
+    />
+    <path
+      d="M2 8.82a15 15 0 0 1 4.177-2.643"
+    />
+    <path
+      d="M22 8.82a15 15 0 0 0-11.288-3.764"
+    />
+    <path
+      d="m2 2 20 20"
+    />
+  </svg>
+  <span>
+    Portal instavel
+  </span>
+</span>
+`;
+
+exports[`StatusBadge > snapshot: variante portal_unstable tamanho sm 1`] = `
+<span
+  aria-label="Portal instavel"
+  class="inline-flex items-center whitespace-nowrap rounded-full border font-medium h-5 gap-1 px-1.5 text-[11px] bg-warning/15 text-warning-foreground border-warning/40 dark:text-warning"
+  data-size="sm"
+  data-variant="portal_unstable"
+  role="status"
+  title="Portal da prefeitura indisponivel ou com rate-limit."
+>
+  <svg
+    aria-hidden="true"
+    class="lucide lucide-wifi-off h-3 w-3"
+    fill="none"
+    height="24"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="2"
+    viewBox="0 0 24 24"
+    width="24"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path
+      d="M12 20h.01"
+    />
+    <path
+      d="M8.5 16.429a5 5 0 0 1 7 0"
+    />
+    <path
+      d="M5 12.859a10 10 0 0 1 5.17-2.69"
+    />
+    <path
+      d="M19 12.859a10 10 0 0 0-2.007-1.523"
+    />
+    <path
+      d="M2 8.82a15 15 0 0 1 4.177-2.643"
+    />
+    <path
+      d="M22 8.82a15 15 0 0 0-11.288-3.764"
+    />
+    <path
+      d="m2 2 20 20"
+    />
+  </svg>
+  <span>
+    Portal instavel
+  </span>
+</span>
+`;
+
+exports[`StatusBadge > snapshot: variante processing tamanho md 1`] = `
+<span
+  aria-label="Processando"
+  class="inline-flex items-center whitespace-nowrap rounded-full border font-medium h-6 gap-1.5 px-2 text-xs bg-primary/10 text-primary border-primary/30 dark:bg-primary/15"
+  data-size="md"
+  data-variant="processing"
+  role="status"
+  title="Execucao em andamento."
+>
+  <svg
+    aria-hidden="true"
+    class="lucide lucide-loader-circle h-3.5 w-3.5 animate-spin"
+    fill="none"
+    height="24"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="2"
+    viewBox="0 0 24 24"
+    width="24"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path
+      d="M21 12a9 9 0 1 1-6.219-8.56"
+    />
+  </svg>
+  <span>
+    Processando
+  </span>
+</span>
+`;
+
+exports[`StatusBadge > snapshot: variante processing tamanho sm 1`] = `
+<span
+  aria-label="Processando"
+  class="inline-flex items-center whitespace-nowrap rounded-full border font-medium h-5 gap-1 px-1.5 text-[11px] bg-primary/10 text-primary border-primary/30 dark:bg-primary/15"
+  data-size="sm"
+  data-variant="processing"
+  role="status"
+  title="Execucao em andamento."
+>
+  <svg
+    aria-hidden="true"
+    class="lucide lucide-loader-circle h-3 w-3 animate-spin"
+    fill="none"
+    height="24"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="2"
+    viewBox="0 0 24 24"
+    width="24"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path
+      d="M21 12a9 9 0 1 1-6.219-8.56"
+    />
+  </svg>
+  <span>
+    Processando
+  </span>
+</span>
+`;
+
+exports[`StatusBadge > snapshot: variante reprocess_needed tamanho md 1`] = `
+<span
+  aria-label="Reprocessar"
+  class="inline-flex items-center whitespace-nowrap rounded-full border font-medium h-6 gap-1.5 px-2 text-xs bg-primary/10 text-primary border-primary/30 dark:bg-primary/15"
+  data-size="md"
+  data-variant="reprocess_needed"
+  role="status"
+  title="Ocorrencia requer reprocessamento manual."
+>
+  <svg
+    aria-hidden="true"
+    class="lucide lucide-refresh-cw h-3.5 w-3.5"
+    fill="none"
+    height="24"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="2"
+    viewBox="0 0 24 24"
+    width="24"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path
+      d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"
+    />
+    <path
+      d="M21 3v5h-5"
+    />
+    <path
+      d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"
+    />
+    <path
+      d="M8 16H3v5"
+    />
+  </svg>
+  <span>
+    Reprocessar
+  </span>
+</span>
+`;
+
+exports[`StatusBadge > snapshot: variante reprocess_needed tamanho sm 1`] = `
+<span
+  aria-label="Reprocessar"
+  class="inline-flex items-center whitespace-nowrap rounded-full border font-medium h-5 gap-1 px-1.5 text-[11px] bg-primary/10 text-primary border-primary/30 dark:bg-primary/15"
+  data-size="sm"
+  data-variant="reprocess_needed"
+  role="status"
+  title="Ocorrencia requer reprocessamento manual."
+>
+  <svg
+    aria-hidden="true"
+    class="lucide lucide-refresh-cw h-3 w-3"
+    fill="none"
+    height="24"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="2"
+    viewBox="0 0 24 24"
+    width="24"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path
+      d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"
+    />
+    <path
+      d="M21 3v5h-5"
+    />
+    <path
+      d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"
+    />
+    <path
+      d="M8 16H3v5"
+    />
+  </svg>
+  <span>
+    Reprocessar
+  </span>
+</span>
+`;
+
+exports[`StatusBadge > snapshot: variante success tamanho md 1`] = `
+<span
+  aria-label="Sucesso"
+  class="inline-flex items-center whitespace-nowrap rounded-full border font-medium h-6 gap-1.5 px-2 text-xs bg-success/10 text-success border-success/30 dark:bg-success/15"
+  data-size="md"
+  data-variant="success"
+  role="status"
+  title="Execucao concluida com sucesso."
+>
+  <svg
+    aria-hidden="true"
+    class="lucide lucide-circle-check h-3.5 w-3.5"
+    fill="none"
+    height="24"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="2"
+    viewBox="0 0 24 24"
+    width="24"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <circle
+      cx="12"
+      cy="12"
+      r="10"
+    />
+    <path
+      d="m9 12 2 2 4-4"
+    />
+  </svg>
+  <span>
+    Sucesso
+  </span>
+</span>
+`;
+
+exports[`StatusBadge > snapshot: variante success tamanho sm 1`] = `
+<span
+  aria-label="Sucesso"
+  class="inline-flex items-center whitespace-nowrap rounded-full border font-medium h-5 gap-1 px-1.5 text-[11px] bg-success/10 text-success border-success/30 dark:bg-success/15"
+  data-size="sm"
+  data-variant="success"
+  role="status"
+  title="Execucao concluida com sucesso."
+>
+  <svg
+    aria-hidden="true"
+    class="lucide lucide-circle-check h-3 w-3"
+    fill="none"
+    height="24"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="2"
+    viewBox="0 0 24 24"
+    width="24"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <circle
+      cx="12"
+      cy="12"
+      r="10"
+    />
+    <path
+      d="m9 12 2 2 4-4"
+    />
+  </svg>
+  <span>
+    Sucesso
+  </span>
+</span>
+`;
+
+exports[`StatusBadge > snapshot: variante warning tamanho md 1`] = `
+<span
+  aria-label="Atencao"
+  class="inline-flex items-center whitespace-nowrap rounded-full border font-medium h-6 gap-1.5 px-2 text-xs bg-warning/15 text-warning-foreground border-warning/40 dark:text-warning"
+  data-size="md"
+  data-variant="warning"
+  role="status"
+  title="Execucao concluida com avisos."
+>
+  <svg
+    aria-hidden="true"
+    class="lucide lucide-triangle-alert h-3.5 w-3.5"
+    fill="none"
+    height="24"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="2"
+    viewBox="0 0 24 24"
+    width="24"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path
+      d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"
+    />
+    <path
+      d="M12 9v4"
+    />
+    <path
+      d="M12 17h.01"
+    />
+  </svg>
+  <span>
+    Atencao
+  </span>
+</span>
+`;
+
+exports[`StatusBadge > snapshot: variante warning tamanho sm 1`] = `
+<span
+  aria-label="Atencao"
+  class="inline-flex items-center whitespace-nowrap rounded-full border font-medium h-5 gap-1 px-1.5 text-[11px] bg-warning/15 text-warning-foreground border-warning/40 dark:text-warning"
+  data-size="sm"
+  data-variant="warning"
+  role="status"
+  title="Execucao concluida com avisos."
+>
+  <svg
+    aria-hidden="true"
+    class="lucide lucide-triangle-alert h-3 w-3"
+    fill="none"
+    height="24"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="2"
+    viewBox="0 0 24 24"
+    width="24"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path
+      d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"
+    />
+    <path
+      d="M12 9v4"
+    />
+    <path
+      d="M12 17h.01"
+    />
+  </svg>
+  <span>
+    Atencao
+  </span>
+</span>
+`;

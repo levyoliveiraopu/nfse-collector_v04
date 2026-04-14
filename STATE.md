@@ -32,6 +32,32 @@
   (NOBYPASSRLS), tabelas `tenants`, `users`, `tenant_users`, RLS +
   politicas em `tenants` e `tenant_users` via GUC `app.current_tenant`
   (PR #95). Desbloqueia DATA-02..DATA-07.
+  (PR a abrir, issue #12).
+- **DS-03** — Layout shell: componente `<AppShell>` em
+  `apps/web-app/components/app-shell/` com sidebar colapsavel
+  (256px/64px em desktop, drawer em <1024px), topbar fixa com
+  breadcrumbs (derivados de `usePathname`), tenant switcher placeholder,
+  bell de notificacoes, theme toggle e user menu; dropdowns leves sem
+  Radix (fecham em click-outside/Esc); rota `/dashboard` consumindo o
+  shell com KPIs e tabela placeholder; landmarks ARIA + skip-link
+  "Pular para o conteudo" + `focus-visible:ring`. Typecheck e
+  `next lint` verdes (PR a abrir, issue #42).
+
+## Concluidos
+
+- **DS-04** — Componente `StatusBadge` (10 variantes) em
+  `apps/web-app/components/ui/status-badge.tsx` com `variant`
+  (`success`, `processing`, `pending`, `failed`, `warning`, `blocked`,
+  `cert_expiring`, `cred_invalid`, `portal_unstable`, `reprocess_needed`)
+  + `size` (`sm`, `md`), icone Lucide por variante e tooltip via
+  atributo `title` nativo. Demo no styleguide em
+  `apps/web-app/app/styleguide/status-badge-demo.tsx`. Bootstrap de
+  vitest + jsdom + `@testing-library/react`/`jest-dom` (primeiro spec
+  do `apps/web-app`, destrava o TODO de `test-ts` do GOV-06) com
+  `vitest.config.ts` / `vitest.setup.ts` e suite de snapshot cobrindo
+  as 10 variantes x 2 tamanhos (20 snapshots) + comportamento de
+  override de label/tooltip e `hideIcon` (PR a abrir — Closes #43).
+
 - **DS-02** — Design tokens + tema base: CSS vars para cores (paleta neutra +
   primaria azul + critica vermelha + success/warning) em light/dark,
   tipografia (Inter + JetBrains Mono via `next/font/google` com variaveis
@@ -68,6 +94,14 @@
   fail2ban, unattended-upgrades, TZ `America/Sao_Paulo`). Execucao na
   VPS real fica a cargo do owner — DoD dos checks `ssh`/`ufw`/`fail2ban`/
   `timedatectl` e validado apos aplicacao manual.
+- **INFRA-02** — Docker Engine + Compose v2 + diretorios padrao:
+  runbook em `infra/vps-docker.md` (repo oficial `download.docker.com`,
+  `docker-ce` + `buildx` + `compose-plugin`, `deploy` no grupo `docker`,
+  log-driver `json-file` com rotacao 10m/3 e `live-restore`, arvore
+  `/srv/nfse/{prod,staging}/{data,backups,logs,config}` com owner
+  `deploy:deploy` e mode `0750`). Execucao na VPS real fica a cargo do
+  owner — DoD (`docker compose version` >= 2.20, `docker ps` sem sudo,
+  permissoes dos diretorios) validado apos aplicacao manual.
 - **INFRA-03** — Runbook de DNS no Cloudflare em `infra/dns.md`: tabela
   de registros A para `app`/`api`/`ops`/`www`/apex com DNS-only
   obrigatorio em `api` e `ops` (preservar mTLS das prefeituras — ADR-003),
@@ -127,6 +161,18 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
   `(tenant_id, cnpj)`, FK composta `(tenant_id, company_id)` e indice
   em `cert_not_after`. Tambem move DATA-01 de "Em Andamento" para
   "Concluidos" com referencia ao PR #95 (mergeado em main).
+- PR: (a abrir) — INFRA-02: runbook `infra/vps-docker.md` instalando
+  Docker Engine + Compose v2 pelo repo oficial, adicionando `deploy` ao
+  grupo `docker`, fixando log-rotation em `/etc/docker/daemon.json` e
+  criando `/srv/nfse/{prod,staging}/{data,backups,logs,config}` com
+  owner `deploy:deploy` e mode `0750`. Move INFRA-02 para "Concluidos".
+- PR: (a abrir) — DS-03: `<AppShell>` (sidebar colapsavel + topbar com
+  breadcrumbs, tenant switcher, bell, theme toggle e user menu) e rota
+  `/dashboard` consumindo o shell. Move DS-03 para "Em Andamento".
+- PR: (a abrir) — DS-04: componente `StatusBadge` com 10 variantes
+  + tamanhos `sm`/`md` em `apps/web-app/components/ui/status-badge.tsx`,
+  demo no `/styleguide` e primeiro spec (vitest + RTL) do `apps/web-app`
+  cobrindo 20 snapshots (10 variantes x 2 tamanhos). Closes #43.
 - Autor: @LevyOliveirabr
 - Nota: workflow `pr-guardrail` exige STATE.md + CHANGELOG.md + `Closes #N` em todo PR para main.
 
