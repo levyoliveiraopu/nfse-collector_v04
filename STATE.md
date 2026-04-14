@@ -105,6 +105,19 @@
   `apps/api/tests/test_rbac.py` incluindo prova de DoD (viewer -> 403
   em `POST /_probe/companies` via router efemero e `require_role(min_role="owner")`
   somente permitindo owner). (PR a abrir — Closes #28).
+- **INFRA-05** — Compose base com Postgres 16 e Redis 7 em
+  `infra/compose/docker-compose.base.yml` (volumes nomeados `nfse_pgdata`
+  e `nfse_redisdata`, network privada `nfse_internal`, portas publicadas
+  apenas em `127.0.0.1`, healthchecks via `pg_isready` e `redis-cli ping`,
+  Redis com `requirepass` + AOF, Postgres com locale `C.UTF-8`);
+  `infra/compose/.env.example` documenta `POSTGRES_USER/PASSWORD/DB`,
+  `REDIS_PASSWORD` e portas host; `.gitignore` local evita commit de
+  `.env`; `infra/compose/README.md` traz setup, DoD, operacao
+  (`up`/`down`/logs) e politica manual de backup (pg_dumpall + RDB em
+  `/srv/nfse/<env>/backups/`, retencao 90d alinhada ao ADR-003 — automacao
+  fica para INFRA-08). `infra/README.md` atualizado com a nova pasta
+  `compose/` (PR a abrir — Closes #7).
+
 - **DATA-04** — Schema de tabelas operacionais:
   migrations `0006_occurrences.py` (ocorrencias por tenant com FKs
   compostas para `companies` e `executions`, FK nullable para
@@ -252,6 +265,10 @@
 - **INFRA-03** — DNS dos subdominios no Cloudflare (`app`, `api`, `ops`,
   `www`, apex) (issue #5).
 
+> INFRA-05 saiu de "Proximas Destravadas" para "Em Andamento" nesta
+> atualizacao. CORE-05, API-06, API-11 e INFRA-08 continuam parcialmente
+> bloqueados — ver nota abaixo.
+
 > Nota: CORE-05, API-06, API-11 e INFRA-08 dependem de INFRA-06 **e**
 > de outros tickets (CORE-01 / API-05 / DATA-05 / INFRA-05), portanto
 > continuam bloqueados ate que essas dependencias sejam concluidas.
@@ -274,6 +291,13 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-14
+- PR: (a abrir) — INFRA-05: compose base com Postgres 16 + Redis 7 em
+  `infra/compose/docker-compose.base.yml` (volumes nomeados, network
+  privada, healthchecks, portas em 127.0.0.1, Redis com `requirepass` +
+  AOF, Postgres com locale `C.UTF-8`); `.env.example`, `.gitignore` local
+  e `README.md` com setup, DoD e politica manual de backup (pg_dumpall +
+  RDB, retencao 90d alinhada ao ADR-003). Move INFRA-05 de "Proximas
+  Destravadas" para "Em Andamento". Closes #7.
 - PR: (a abrir) — API-04: RBAC com dependency `require_role`
   (`apps/api/api/security/rbac.py`) encadeando `assert_tenant_active`
   e devolvendo 403 claro; guarda `ensure_can_manage_member`

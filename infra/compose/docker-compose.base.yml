@@ -1,0 +1,89 @@
+# Compose base — INFRA-05
+#
+# Sobe Postgres 16 e Redis 7 com volumes persistentes, healthchecks e network
+# privada `internal`. Este arquivo e a fundacao dos stacks `prod` e `staging`
+# (ADR-005): overrides futuros (api, worker, web-app, nginx) fazem `extends`
+# ou compoem junto via `-f` adicional.
+#
+# Uso:
+#   cp .env.example .env && edit .env
+#   docker compose --env-file .env -f docker-compose.base.yml up -d
+#
+# Variaveis obrigatorias (ver .env.example): POSTGRES_USER, POSTGRES_PASSWORD,
+# POSTGRES_DB, REDIS_PASSWORD.
+#
+# Portas sao publicadas em 127.0.0.1 (loopback) apenas: acesso do host para
+# psql/redis-cli, sem exposicao a internet. O proxy reverso (Nginx host,
+# ADR-005) nao fala com esses servicos — o front so toca a API.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nfse-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER nao definido}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD nao definido}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB nao definido}
+      # Garante que o initdb gere cluster com locale UTF-8 (evita surpresas
+      # com collation em indices de texto nas migrations DATA-*).
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      # Loopback-only: `psql -h 127.0.0.1 -p ${POSTGRES_HOST_PORT:-5432}`.
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    # json-file/rotacao herdada do daemon.json configurado em INFRA-02.
+
+  redis:
+    image: redis:7-alpine
+    container_name: nfse-redis
+    restart: unless-stopped
+    # AOF habilitado para durabilidade das filas RQ; requirepass obriga
+    # autenticacao mesmo na rede interna (defesa em profundidade).
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD nao definido}
+      --appendonly yes
+      --appendfsync everysec
+    environment:
+      # Usado pelo healthcheck para autenticar sem passar --pass na linha
+      # de comando (evita warning do redis-cli e vazamento em `ps`).
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?REDIS_PASSWORD nao definido}
+    volumes:
+      - redisdata:/data
+    ports:
+      # Loopback-only: `redis-cli -h 127.0.0.1 -p ${REDIS_HOST_PORT:-6379} -a "$REDIS_PASSWORD" ping`.
+      - "127.0.0.1:${REDIS_HOST_PORT:-6379}:6379"
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+volumes:
+  pgdata:
+    name: nfse_pgdata
+  redisdata:
+    name: nfse_redisdata
+
+networks:
+  internal:
+    name: nfse_internal
+    driver: bridge
+    internal: false
+    # Sem `internal: true` porque servicos futuros (api) precisam de DNS
+    # externo para webhooks/prefeituras. Isolar via firewall do daemon,
+    # nao via driver. Aqui ficam apenas servicos de infra.
