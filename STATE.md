@@ -15,7 +15,9 @@
 
 ## Em Andamento
 
-_Nenhuma tarefa ativa._
+- **DS-01** — Bootstrap do `apps/web-app` (Next.js 14 App Router + TS strict,
+  Tailwind, shadcn/ui, Lucide, Sonner) com pagina `/` "Hello painel"
+  (PR pendente; issue #40).
 
 ## Concluidos
 
@@ -30,10 +32,14 @@ _Nenhuma tarefa ativa._
   `.env.example`, runbook manual e smoke test prontos; aplicacao no
   console/CLI da Backblaze e geracao da Application Key ficam a cargo
   do owner (ver `infra/s3-bucket.md` secao 2).
+- **INFRA-01** — Hardening inicial da VPS Hostinger: runbook completo
+  em `infra/vps-hardening.md` (usuario `deploy`, SSH chave-only, UFW,
+  fail2ban, unattended-upgrades, TZ `America/Sao_Paulo`). Execucao na
+  VPS real fica a cargo do owner — DoD dos checks `ssh`/`ufw`/`fail2ban`/
+  `timedatectl` e validado apos aplicacao manual.
 
 ## Proximas Destravadas (prontas para iniciar)
 
-- **INFRA-01** — Hardening inicial da VPS Hostinger
 - **DOCS-01** — Termos de Uso (clausula de retencao 90d)
 - **DOCS-02** — Politica de Privacidade + LGPD
 - **DATA-01** — Schema inicial: tenants, users, tenant_users (destravado por API-01)
