@@ -478,6 +478,76 @@ E2E (gated por `TEST_DATABASE_URL`, mesmo padrao do API-02):
 PYTHONPATH=. pytest tests/test_tenant_middleware_integration.py -v
 ```
 
+## Testes de isolamento RLS — DATA-06
+
+Prova automatizada de que o Row Level Security bloqueia acesso
+cross-tenant mesmo se a aplicacao tiver bug. O teste cria dois
+tenants (A e B) com linhas em todas as 14 tabelas com RLS e, assumindo
+o papel de `app_user` (`NOBYPASSRLS`), valida:
+
+- `SELECT` com GUC de A retorna **0 linhas** de B (parametrizado nas
+  13 tabelas com `tenant_id`, mais `tenants` com policy ancorada em
+  `id`).
+- Sem `SET LOCAL app.current_tenant` (fail-closed), todas as 14
+  tabelas retornam **0 linhas**.
+- `UPDATE`/`DELETE` apontando para linha de B, com GUC de A, nao
+  afeta nada (`rowcount == 0`).
+- `INSERT` forjando `tenant_id` de B, dentro do escopo de A, dispara
+  `InsufficientPrivilege` (`WITH CHECK` da policy).
+
+### Rodar local
+
+1. Suba um Postgres (ex.: o compose base do INFRA-05):
+
+   ```bash
+   docker compose -f infra/compose/docker-compose.base.yml up -d postgres
+   export TEST_DATABASE_URL="postgresql+psycopg://postgres:<pwd>@localhost:5432/nfse_test"
+   ```
+
+2. Aplique as migrations contra esse banco:
+
+   ```bash
+   cd apps/api
+   API_DATABASE_URL="$TEST_DATABASE_URL" alembic upgrade head
+   ```
+
+3. Rode o teste:
+
+   ```bash
+   pytest tests/test_rls_isolation.py -v
+   ```
+
+Sem `TEST_DATABASE_URL`, a suite inteira e pulada (mesmo padrao de
+API-02/03). Em CI o job `test-rls` sobe `postgres:16` como service
+container e executa o fluxo acima automaticamente em toda PR.
+
+### Injecao de falha (DoD)
+
+Para provar que o teste detecta um vazamento real, **desligue a RLS**
+de uma tabela e rode o pytest novamente — com RLS desativada o
+`app_user` enxerga todas as linhas:
+
+```sql
+ALTER TABLE companies DISABLE ROW LEVEL SECURITY;
+```
+
+```bash
+pytest tests/test_rls_isolation.py::test_tenant_a_cannot_read_tenant_b_rows -v
+# F — AssertionError: RLS VAZADO em companies: tenant A conseguiu ler
+# 1 linha(s) de B.
+```
+
+> Atencao: **nao** basta `DROP POLICY` sem desabilitar a RLS. Com RLS
+> ativada e sem policies, o Postgres faz fail-closed e o teste quebra
+> mas numa assercao diferente (seed some). A injecao canonica para
+> simular "bug de aplicacao que ignora tenant_id" e desabilitar a RLS.
+
+Restaurar:
+
+```sql
+ALTER TABLE companies ENABLE ROW LEVEL SECURITY;
+```
+
 ## Build Docker
 
 ```bash
