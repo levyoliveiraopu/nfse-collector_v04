@@ -15,6 +15,31 @@
 
 ## Em Andamento
 
+- **DATA-06** — Teste automatizado de isolamento cross-tenant: suite
+  `apps/api/tests/test_rls_isolation.py` com 31 casos parametrizados
+  que semeiam 2 tenants (A e B) em todas as 14 tabelas RLS (`tenants`,
+  `tenant_users`, `companies`, `company_credentials`, `executions`,
+  `execution_items`, `occurrences`, `reprocess_jobs`, `notifications`,
+  `refresh_tokens`, `files`, `schedules`, `audit_logs`,
+  `subscriptions`) e, via role `app_user` (`NOBYPASSRLS`), validam
+  que: (a) `SELECT` com GUC de A devolve 0 linhas de B em cada tabela;
+  (b) sem `SET LOCAL app.current_tenant` o `app_user` fica fail-closed
+  (0 linhas em todas as 14); (c) `UPDATE`/`DELETE` cross-tenant tem
+  `rowcount == 0`; (d) `INSERT` forjando `tenant_id` alheio dispara
+  `InsufficientPrivilege` (`WITH CHECK` da policy). Fixtures em
+  `apps/api/tests/conftest.py` (`rls_seed` scope=module com
+  truncate+seed, `app_user_cursor` abrindo conexao nova com
+  `SET LOCAL ROLE app_user` + `set_config('app.current_tenant', ...,
+  true)`), gated em `TEST_DATABASE_URL` (mesmo padrao de API-02/03).
+  Novo job `test-rls` em `.github/workflows/ci.yml` sobe service
+  container `postgres:16`, aplica `alembic upgrade head` e roda o
+  pytest em toda PR. Runbook de injecao de falha (`ALTER TABLE ...
+  DISABLE ROW LEVEL SECURITY`) documentado em `apps/api/README.md`.
+  Correcao incidental: migration `0015_merge_heads.py` (no-op) fecha
+  o fork Alembic deixado por DATA-04/DATA-05 (`0008_notifications` e
+  `0014_plans_subscriptions` eram heads independentes), desbloqueando
+  `alembic upgrade head`. Move DATA-06 para "Em Andamento"
+  (PR a abrir — Closes #17).
 - **DATA-07** — Seed de dev idempotente em
   `apps/api/scripts/seed.py`: popula `plans` (`starter`/`pro`/`scale`
   com limites `jsonb` e precos em centavos), tenant `demo` (slug
@@ -432,6 +457,18 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-14
+- PR: (a abrir) — DATA-06: teste automatizado de isolamento
+  cross-tenant. Nova suite `apps/api/tests/test_rls_isolation.py`
+  (31 testes parametrizados) + fixtures em
+  `apps/api/tests/conftest.py` (dois tenants semeados em todas as 14
+  tabelas RLS + context manager que troca a role para `app_user` e
+  seta a GUC `app.current_tenant`). Novo job `test-rls` em
+  `.github/workflows/ci.yml` com service container `postgres:16` e
+  `alembic upgrade head`. Runbook de injecao de falha no
+  `apps/api/README.md`. Migration incidental
+  `0015_merge_heads.py` (no-op) fecha o fork Alembic deixado por
+  DATA-04/DATA-05 — `alembic heads` volta a reportar 1 ponta.
+  Move DATA-06 para "Em Andamento". Closes #17.
 - PR: (a abrir) — DATA-07: seed de dev idempotente em
   `apps/api/scripts/seed.py` (plans `starter`/`pro`/`scale` +
   tenant `demo` + user `admin@demo.local` + membership `owner`).
