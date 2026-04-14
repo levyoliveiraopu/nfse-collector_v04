@@ -39,6 +39,12 @@ Estrutura em `apps/api/alembic/`:
 - `alembic/versions/0001_initial_identity.py` — tabelas `tenants`,
   `users`, `tenant_users`, roles `app_admin` / `app_user`, RLS com
   GUC `app.current_tenant`.
+- `alembic/versions/0002_companies.py` — tabela `companies`
+  (CNPJs por tenant) com unique `(tenant_id, cnpj)` e RLS (DATA-02).
+- `alembic/versions/0003_company_credentials.py` — tabela
+  `company_credentials` (PFX A1 cifrado) com FK composta para
+  `companies(tenant_id, id)`, indice em `cert_not_after` para alerta
+  de vencimento e RLS (DATA-02).
 
 ### Comandos
 
@@ -93,6 +99,39 @@ COMMIT;
 
 Sem `SET LOCAL app.current_tenant`, qualquer `SELECT` em `tenants` /
 `tenant_users` pelo `app_user` retorna vazio (fail-closed).
+
+### Teste manual de isolamento RLS — companies/credentials (DATA-02 DoD)
+
+Com `alembic upgrade head` aplicado, conectado como `app_user`:
+
+```sql
+-- Sessao 1 (tenant Acme)
+BEGIN;
+SET LOCAL app.current_tenant = ':t1';
+INSERT INTO companies (tenant_id, cnpj, razao_social, municipio_ibge, uf)
+  VALUES (':t1', '00000000000191', 'Acme LTDA', '3550308', 'SP')
+  RETURNING id;                        -- :c1
+INSERT INTO company_credentials
+  (tenant_id, company_id, pfx_object_key, pfx_password_ciphertext)
+  VALUES (':t1', ':c1', 'tenants/:t1/:c1/cert.pfx', decode('deadbeef','hex'));
+SELECT COUNT(*) FROM companies;            -- 1
+SELECT COUNT(*) FROM company_credentials;  -- 1
+COMMIT;
+
+-- Sessao 2 (tenant Beta) — nao deve enxergar nada da sessao 1
+BEGIN;
+SET LOCAL app.current_tenant = ':t2';
+SELECT * FROM companies;             -- vazio
+SELECT * FROM company_credentials;   -- vazio
+-- Tentativa de inserir credencial apontando para company de outro tenant
+-- (com tenant_id correto) falha na FK composta (:t2, :c1):
+INSERT INTO company_credentials
+  (tenant_id, company_id, pfx_object_key, pfx_password_ciphertext)
+  VALUES (':t2', ':c1', 'x', decode('00','hex'));
+-- ERROR: insert or update on table "company_credentials" violates
+-- foreign key constraint "fk_company_credentials_tenant_company"
+ROLLBACK;
+```
 
 ## Build Docker
 

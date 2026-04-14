@@ -15,15 +15,23 @@
 
 ## Em Andamento
 
+- **DATA-02** — Schema de `companies` + `company_credentials`:
+  migrations `0002_companies.py` (CNPJs por tenant, unique
+  `(tenant_id, cnpj)`, RLS) e `0003_company_credentials.py` (PFX A1
+  cifrado, FK composta `(tenant_id, company_id) -> companies`, indice
+  em `cert_not_after` para alerta de vencimento, RLS) em
+  `apps/api/alembic/versions/`. Testes estaticos em `apps/api/tests/`
+  e runbook manual de isolamento cross-tenant em `apps/api/README.md`
+  (PR a abrir — Closes #13).
+
+## Concluidos
+
 - **DATA-01** — Schema inicial de identidade: Alembic configurado em
   `apps/api/alembic/`, migration `0001_initial_identity.py` cria
   extensao `pgcrypto`, roles `app_admin` (BYPASSRLS) / `app_user`
   (NOBYPASSRLS), tabelas `tenants`, `users`, `tenant_users`, RLS +
   politicas em `tenants` e `tenant_users` via GUC `app.current_tenant`
-  (PR a abrir, issue #12).
-
-## Concluidos
-
+  (PR #95). Desbloqueia DATA-02..DATA-07.
 - **DS-02** — Design tokens + tema base: CSS vars para cores (paleta neutra +
   primaria azul + critica vermelha + success/warning) em light/dark,
   tipografia (Inter + JetBrains Mono via `next/font/google` com variaveis
@@ -114,10 +122,11 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-14
-- PR: (a abrir) — DATA-01: Alembic + migration `0001_initial_identity`
-  com tabelas `tenants`/`users`/`tenant_users`, roles `app_admin` /
-  `app_user`, RLS via GUC `app.current_tenant`. Move DATA-01 de
-  "Proximas Destravadas" para "Em Andamento".
+- PR: (a abrir) — DATA-02: migrations `0002_companies` e
+  `0003_company_credentials` com RLS por tenant, unique
+  `(tenant_id, cnpj)`, FK composta `(tenant_id, company_id)` e indice
+  em `cert_not_after`. Tambem move DATA-01 de "Em Andamento" para
+  "Concluidos" com referencia ao PR #95 (mergeado em main).
 - Autor: @LevyOliveirabr
 - Nota: workflow `pr-guardrail` exige STATE.md + CHANGELOG.md + `Closes #N` em todo PR para main.
 
