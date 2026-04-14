@@ -15,6 +15,23 @@
 
 ## Em Andamento
 
+- **CORE-02** — Refactor `packages/worker-core/worker_core/auth.py` para
+  aceitar PFX em memoria: novo context manager
+  `mtls_session(pfx_bytes, pfx_password)` carrega o PFX direto dos bytes
+  (vindo do banco cifrado — ADR-003), materializa cert PEM + key PEM em
+  tmpfs (`/dev/shm`, fallback `tempfile.gettempdir()`) com `0o600` e
+  garante remocao dos dois PEMs no `finally` (sucesso ou excecao);
+  `certificate` exposto via `session.nfse_certificate`. Legado
+  `criar_session_cliente(path, senha)` mantido como wrapper de compat
+  (batch_processor e diagnostico nao mudam). Mensagens de erro sem path/
+  senha/bytes quando o PFX vem de memoria. Testes em `tests/test_auth.py`
+  (11 novos): fixture gera PFX self-signed em memoria via
+  `cryptography.hazmat.primitives.serialization.pkcs12.serialize_key_and_certificates`;
+  cobre sucesso, limpeza em excecao, senha errada, PFX vazio/nao-bytes,
+  certificado vencido, ausencia de vazamento em logs (`caplog`),
+  confirmacao de tmpfs e wrapper legacy. `pytest tests/` = 79 passed
+  (PR a abrir — Closes #20).
+
 - **APP-01** — Paginas de auth: `/login`, `/signup`, `/recuperar-senha`,
   `/redefinir-senha/[token]` e `/aceitar-convite/[token]` em
   `apps/web-app/app/(auth)/`; `<AuthProvider>` em
@@ -221,6 +238,15 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-14
+- PR: (a abrir) — CORE-02: refactor de `worker_core/auth.py` para aceitar
+  PFX em memoria. Novo `mtls_session(pfx_bytes, pfx_password)` como
+  context manager grava PEM em `/dev/shm` (fallback `tempfile.gettempdir()`)
+  com `0o600` e garante cleanup em sucesso/excecao; `certificate` exposto
+  em `session.nfse_certificate`. `criar_session_cliente(path, senha)`
+  vira wrapper de compat (batch_processor e diagnostico intocados).
+  11 novos testes em `tests/test_auth.py` com PFX gerado em memoria
+  (sucesso, cleanup em excecao, senha errada, cert vencido, nao-vazamento
+  em logs, tmpfs). Move CORE-02 para "Em Andamento". Closes #20.
 - PR: (a abrir) — APP-01: paginas de auth (`/login`, `/signup`,
   `/recuperar-senha`, `/redefinir-senha/[token]`,
   `/aceitar-convite/[token]`) + `<AuthProvider>` com access em memoria
