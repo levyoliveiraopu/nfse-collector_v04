@@ -19,6 +19,10 @@ _Nenhuma tarefa ativa._
 
 ## Concluidos
 
+- **API-01** — Bootstrap FastAPI em `apps/api/`: config via
+  `pydantic-settings` (prefixo `API_`), logging JSON estruturado,
+  endpoints `/health` e `/version`, Dockerfile multi-stage com usuario
+  nao-root. Desbloqueia DATA-01.
 - **CORE-01** — Motor ADN legado extraido de `src/` para pacote Python
   instalavel em `packages/worker-core/`; `src/` vira shim retro-compativel
   (PR #80).
@@ -36,7 +40,7 @@ _Nenhuma tarefa ativa._
 
 - **DOCS-01** — Termos de Uso (clausula de retencao 90d)
 - **DOCS-02** — Politica de Privacidade + LGPD
-- **DATA-01** — Schema inicial: tenants, users, tenant_users (depende de `apps/api` inicializado; ver API-01)
+- **DATA-01** — Schema inicial: tenants, users, tenant_users (destravado por API-01)
 
 > Nota: CORE-05, API-06, API-11 e INFRA-08 dependem de INFRA-06 **e**
 > de outros tickets (CORE-01 / API-05 / DATA-05 / INFRA-05), portanto
@@ -45,7 +49,6 @@ _Nenhuma tarefa ativa._
 ## Bloqueadas
 
 - **SITE-00..10** — aguardando definicao do nome comercial.
-- **API-01** — aguardando `GOV-01` (feito) e decisao sobre estrutura de pacote Python.
 
 ## Limite de WIP
 
