@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     version: str = Field(default=__version__)
     git_commit: str = Field(default="unknown")
 
+    # Conexao Postgres usada pela API e por Alembic (DATA-01).
+    # Formato recomendado: "postgresql+psycopg://user:pass@host:5432/dbname".
+    # Vazio por default para nao quebrar ambientes que ainda nao usam DB.
+    database_url: str = Field(default="")
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

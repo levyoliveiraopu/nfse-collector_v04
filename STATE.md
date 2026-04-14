@@ -15,7 +15,12 @@
 
 ## Em Andamento
 
-- _(nenhuma tarefa em andamento)_
+- **DATA-01** — Schema inicial de identidade: Alembic configurado em
+  `apps/api/alembic/`, migration `0001_initial_identity.py` cria
+  extensao `pgcrypto`, roles `app_admin` (BYPASSRLS) / `app_user`
+  (NOBYPASSRLS), tabelas `tenants`, `users`, `tenant_users`, RLS +
+  politicas em `tenants` e `tenant_users` via GUC `app.current_tenant`
+  (PR a abrir, issue #12).
 
 ## Concluidos
 
@@ -75,8 +80,6 @@
 
 - **INFRA-03** — DNS dos subdominios no Cloudflare (`app`, `api`, `ops`,
   `www`, apex) (issue #5).
-- **DATA-01** — Schema inicial: tenants, users, tenant_users
-  (destravado por API-01) (issue #12).
 
 > Nota: CORE-05, API-06, API-11 e INFRA-08 dependem de INFRA-06 **e**
 > de outros tickets (CORE-01 / API-05 / DATA-05 / INFRA-05), portanto
@@ -100,10 +103,10 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-14
-- PR: (a abrir) — GOV-06: adiciona workflow `ci.yml` com lint (ruff,
-  eslint, typecheck) e test (pytest) em todo PR, cache pip/pnpm,
-  `ruff.toml` conservador. Move GOV-06 de "Proximas Destravadas" para
-  "Concluidos".
+- PR: (a abrir) — DATA-01: Alembic + migration `0001_initial_identity`
+  com tabelas `tenants`/`users`/`tenant_users`, roles `app_admin` /
+  `app_user`, RLS via GUC `app.current_tenant`. Move DATA-01 de
+  "Proximas Destravadas" para "Em Andamento".
 - Autor: @LevyOliveirabr
 - Nota: workflow `pr-guardrail` exige STATE.md + CHANGELOG.md + `Closes #N` em todo PR para main.
 
