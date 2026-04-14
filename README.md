@@ -53,3 +53,8 @@ documentado em `docs/LEGACY_COLLECTOR.md`. Sera migrado para
 ## Licenca
 
 Proprietario. Todos os direitos reservados.
+
+## Legal
+
+- Termos de Uso: `docs/legal/terms.md` (DOCS-01).
+- Requisito de produto: referenciar os Termos no signup e na rota `/legal` do app/site quando essas trilhas estiverem ativas.
