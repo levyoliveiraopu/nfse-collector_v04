@@ -13,8 +13,13 @@ Scripts, configs e documentacao de infraestrutura.
 ## Arquivos existentes
 
 - `vps-hardening.md` — runbook de hardening da VPS Hostinger (INFRA-01).
+- `vps-docker.md` — Docker Engine + Compose v2 na VPS (INFRA-02).
 - `dns.md` — configuracao DNS no Cloudflare (INFRA-03).
 - `s3-bucket.md` + `s3-lifecycle.json` + `scripts/s3-smoke-test.sh` —
   bucket S3 Backblaze B2 (INFRA-06).
+- `observability.md` + `compose/docker-compose.obs.yml` +
+  `compose/{loki,promtail,grafana}/...` + `nginx/ops.conf.example` —
+  stack Loki/Grafana/Promtail/Uptime Kuma exposta em `ops.<DOMINIO>`
+  (INFRA-07).
 
 Inicializado em GOV-01; conteudo preenchido pelos tickets INFRA-*.
