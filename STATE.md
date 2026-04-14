@@ -19,6 +19,17 @@
 
 ## Concluidos
 
+- **DS-02** — Design tokens + tema base: CSS vars para cores (paleta neutra +
+  primaria azul + critica vermelha + success/warning) em light/dark,
+  tipografia (Inter + JetBrains Mono via `next/font/google` com variaveis
+  `--font-sans`/`--font-mono`), espacamento, radius e sombras em
+  `apps/web-app/styles/tokens.css`; Tailwind estendido em
+  `apps/web-app/tailwind.config.ts` mapeando os tokens; rota `/styleguide`
+  (app router ignora diretorios com `_`, ajustado de `_styleguide` para
+  `styleguide`) com amostras de todos os tokens; toggle light/dark
+  (`components/theme-toggle.tsx`) com persistencia em `localStorage` e
+  script inline anti-FOUC no `layout.tsx` (PR a abrir — Closes #41).
+
 - **GOV-01/02/03** — Setup do monorepo (pnpm workspaces + Turborepo),
   5 ADRs iniciais e backlog completo em `docs/tasks/` com STATE.md e
   templates GitHub (PR #1).
@@ -100,10 +111,10 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-14
-- PR: (a abrir) — GOV-06: adiciona workflow `ci.yml` com lint (ruff,
-  eslint, typecheck) e test (pytest) em todo PR, cache pip/pnpm,
-  `ruff.toml` conservador. Move GOV-06 de "Proximas Destravadas" para
-  "Concluidos".
+- PR: (a abrir) — DS-02: design tokens (cores light/dark, tipografia
+  Inter + JetBrains Mono, spacing/radius/shadow) em
+  `apps/web-app/styles/tokens.css`, Tailwind estendido, rota
+  `/styleguide` e toggle light/dark. Move DS-02 para "Concluidos".
 - Autor: @LevyOliveirabr
 - Nota: workflow `pr-guardrail` exige STATE.md + CHANGELOG.md + `Closes #N` em todo PR para main.
 
