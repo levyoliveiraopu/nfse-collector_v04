@@ -1,0 +1,35 @@
+# Configuracao Ruff para o monorepo nfse-collector_v04.
+# Objetivo: cobrir erros reais (sintaxe, nomes nao definidos, imports duplicados)
+# sem forcar refatoracao do codigo legado (main.py, src/, tests/, worker_core).
+# Regras de ordenacao de imports (I) ficam desligadas por ora — seram
+# reativadas em um ticket proprio de cleanup.
+
+target-version = "py311"
+line-length = 120
+
+extend-exclude = [
+    ".venv",
+    "venv",
+    "node_modules",
+    ".next",
+    "dist",
+    "build",
+    "*.egg-info",
+]
+
+[lint]
+# E/W = pycodestyle, F = pyflakes.
+# Isort (I) intencionalmente nao habilitado para nao quebrar codigo legado.
+select = ["E", "F", "W"]
+
+# E501 (line-too-long) ignorada globalmente: varios comentarios/strings
+# herdadas ultrapassam 120 colunas; reformatar esta fora do escopo de GOV-06.
+ignore = ["E501"]
+
+[lint.per-file-ignores]
+# Testes podem ter imports nao usados intencionalmente (fixtures, side effects).
+"tests/**/*.py" = ["F401"]
+"**/tests/**/*.py" = ["F401"]
+# Excel builder legado importa Border/Side para uso condicional futuro;
+# limpeza ficara para um ticket de refatoracao do worker-core.
+"packages/worker-core/worker_core/excel_builder.py" = ["F401"]

@@ -63,11 +63,18 @@
 - **DOCS-04** — Runbook de incidentes para indisponibilidade de portal
   e rate-limit documentado em `docs/runbooks/portal-indisponivel.md`
   (triagem, backoff, comunicacao e criterio de status page) (PR #89).
+- **GOV-06** — CI base: workflow `.github/workflows/ci.yml` com jobs
+  `lint-python` (ruff), `test-python` (pytest), `lint-ts` (eslint +
+  typecheck) em todo PR e push em `main`; cache pip + pnpm;
+  `ruff.toml` conservador na raiz. `test-ts` (vitest) fica como TODO
+  ate o primeiro spec em `apps/web-app`. Branch protection com os
+  checks `lint-python`, `test-python`, `lint-ts` obrigatorios em
+  `main` precisa ser habilitada manualmente no GitHub (owner).
 
 ## Proximas Destravadas (prontas para iniciar)
 
-- **GOV-06** — CI base (lint + test) com GitHub Actions (ruff, eslint,
-  pytest, vitest) (issue #2).
+- **INFRA-03** — DNS dos subdominios no Cloudflare (`app`, `api`, `ops`,
+  `www`, apex) (issue #5).
 - **DATA-01** — Schema inicial: tenants, users, tenant_users
   (destravado por API-01) (issue #12).
 
@@ -93,8 +100,10 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-14
-- PR: (a abrir) — INFRA-03: runbook de DNS no Cloudflare (`infra/dns.md`),
-  move INFRA-03 de "Proximas Destravadas" para "Concluidos".
+- PR: (a abrir) — GOV-06: adiciona workflow `ci.yml` com lint (ruff,
+  eslint, typecheck) e test (pytest) em todo PR, cache pip/pnpm,
+  `ruff.toml` conservador. Move GOV-06 de "Proximas Destravadas" para
+  "Concluidos".
 - Autor: @LevyOliveirabr
 - Nota: workflow `pr-guardrail` exige STATE.md + CHANGELOG.md + `Closes #N` em todo PR para main.
 
