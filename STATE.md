@@ -32,22 +32,13 @@
   `.env.example`, runbook manual e smoke test prontos; aplicacao no
   console/CLI da Backblaze e geracao da Application Key ficam a cargo
   do owner (ver `infra/s3-bucket.md` secao 2).
-- **INFRA-01** — Hardening inicial da VPS Hostinger: runbook completo
-  em `infra/vps-hardening.md` (usuario `deploy`, SSH chave-only, UFW,
-  fail2ban, unattended-upgrades, TZ `America/Sao_Paulo`). Execucao na
-  VPS real fica a cargo do owner — DoD dos checks `ssh`/`ufw`/`fail2ban`/
-  `timedatectl` e validado apos aplicacao manual.
-
-- **DOCS-01** — Termos de Uso criado em `docs/legal/terms.md`, incluindo
-  clausula de retencao de 90 dias (ADR-003), pagamento/renovacao/cancelamento,
-  limitacao de responsabilidade, foro/legislacao e orientacao de referencia
-  para signup e rota `/legal` do app/site.
+- **DOCS-02** — Politica de Privacidade (LGPD) publicada em `docs/legal/privacy.md` + RoPA minima em `docs/legal/ropa.md` (PR a abrir).
 
 ## Proximas Destravadas (prontas para iniciar)
 
 - **INFRA-01** — Hardening inicial da VPS Hostinger
-- **DOCS-02** — Politica de Privacidade + LGPD
-- **DATA-01** — Schema inicial: tenants, users, tenant_users (destravado por API-01)
+- **DOCS-01** — Termos de Uso (clausula de retencao 90d)
+- **DATA-01** — Schema inicial: tenants, users, tenant_users (depende de `apps/api` inicializado; ver API-01)
 
 > Nota: CORE-05, API-06, API-11 e INFRA-08 dependem de INFRA-06 **e**
 > de outros tickets (CORE-01 / API-05 / DATA-05 / INFRA-05), portanto
@@ -71,8 +62,8 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-13
-- PR: #81 — DOCS-01 (Termos de Uso com clausula de retencao 90 dias)
-- Autor: @codex
+- PR: (a abrir) — DOCS-02 (politica de privacidade LGPD + RoPA minima)
+- Autor: @levyoliveiraopu
 - Nota: workflow `pr-guardrail` exige STATE.md + CHANGELOG.md + `Closes #N` em todo PR para main.
 
 ## Links Rapidos
