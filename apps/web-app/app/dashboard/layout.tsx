@@ -1,9 +1,14 @@
 import { AppShell } from "@/components/app-shell/app-shell";
+import { RequireAuth } from "@/components/auth/require-auth";
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return <AppShell>{children}</AppShell>;
+  return (
+    <RequireAuth>
+      <AppShell>{children}</AppShell>
+    </RequireAuth>
+  );
 }

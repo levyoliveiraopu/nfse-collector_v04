@@ -15,6 +15,24 @@
 
 ## Em Andamento
 
+- **APP-01** — Paginas de auth: `/login`, `/signup`, `/recuperar-senha`,
+  `/redefinir-senha/[token]` e `/aceitar-convite/[token]` em
+  `apps/web-app/app/(auth)/`; `<AuthProvider>` em
+  `apps/web-app/components/auth/` com access token em memoria + refresh
+  automatico; refresh token em cookie httpOnly gerenciado pelos Route
+  Handlers `apps/web-app/app/api/auth/{signup,login,refresh,logout}/`
+  (proxy fino para a API FastAPI — compensa API-02 devolver o refresh no
+  body). `/dashboard` protegido por `<RequireAuth>`; user menu faz logout
+  de verdade. Spec Playwright em `apps/web-app/e2e/auth.spec.ts`
+  (signup->dashboard + refresh automatico) com `page.route` mockando
+  `/api/auth/*` — roda local via `pnpm --filter web-app test:e2e`.
+  Novas envs `NEXT_PUBLIC_API_BASE_URL` e `API_BASE_URL` em
+  `config/.env.example`. Novas deps `zod`, `react-hook-form`,
+  `@hookform/resolvers`, `@playwright/test`. Stubs de UI para
+  recuperar/redefinir/aceitar-convite (backend correspondente ainda nao
+  existe — endpoints a entregar em ticket API futuro).
+  (PR a abrir — Closes #49).
+
 - **DATA-02** — Schema de `companies` + `company_credentials`:
   migrations `0002_companies.py` (CNPJs por tenant, unique
   `(tenant_id, cnpj)`, RLS) e `0003_company_credentials.py` (PFX A1
@@ -35,6 +53,29 @@
   e teste de insercao massiva (10k rows) em
   `tests/test_audit_logs_bulk.py` (pulado sem `TEST_DATABASE_URL`)
   (PR a abrir — Closes #16).
+- **DATA-03** — Schema de `executions` + `execution_items`:
+  migrations `0004_executions.py` (uma corrida de coleta por
+  tenant+company com FK composta para `companies`, indice
+  `(tenant_id, company_id, started_at DESC)`, CHECKs de
+  `trigger`/`status`/ordem do periodo/soma de itens, RLS) e
+  `0005_execution_items.py` (um item por NFS-e processada com FK
+  composta para `executions`, indices `(execution_id)` e
+  `(tenant_id, data_emissao)`, indice unico parcial
+  `(tenant_id, chave_nfse) WHERE chave_nfse IS NOT NULL`, RLS) em
+  `apps/api/alembic/versions/`. Testes estaticos em
+  `apps/api/tests/test_migration_0004.py` e `test_migration_0005.py`;
+  runbook manual de isolamento cross-tenant + EXPLAIN verde da query
+  de listagem por periodo em `apps/api/README.md`
+  (PR a abrir — Closes #14).
+- **API-03** — Middleware de tenant (GUC para RLS): dependencies
+  `get_current_claims` / `assert_tenant_active` / `get_tenant_db` em
+  `apps/api/api/deps.py`; endpoint `GET /auth/me` como prova de vida
+  (RLS-gated count em `tenant_users`); 15 testes unitarios e 6 de
+  integracao (gated por `TEST_DATABASE_URL`) em
+  `apps/api/tests/test_tenant_middleware*.py`; runbook manual em
+  `apps/api/README.md`. Tenant inexistente/`suspended`/`canceled` ->
+  403; token ausente/invalido -> 401 com `WWW-Authenticate: Bearer`
+  (PR a abrir — Closes #27).
 
 ## Concluidos
 
@@ -64,6 +105,22 @@
   `next lint` verdes (PR a abrir, issue #42).
 
 ## Concluidos
+
+- **DS-05** — Componente `KPIStatCard` em
+  `apps/web-app/components/ui/kpi-stat-card.tsx` (props `title`, `value`,
+  `deltaPercent?`, `trendData?`, `icon?`, `state?`, `hint?`,
+  `errorMessage?`): card com valor grande, delta colorido (success/
+  destructive/muted com seta Lucide), mini-sparkline via SVG inline
+  (sem Recharts — evita dep extra e `use client` obrigatorio) e estados
+  `ready`/`loading` (skeleton)/`empty` (valor `—`)/`error`
+  (AlertTriangle + mensagem). Demo no `/styleguide` com 7 cards (4 em
+  `ready` + loading/empty/error) via `app/styleguide/kpi-stat-card-demo.tsx`;
+  `app/dashboard/page.tsx` refatorado para consumir o componente.
+  Spec `components/ui/kpi-stat-card.test.tsx` com 7 snapshots cobrindo
+  ready (sem delta/sparkline, delta positivo, delta negativo, delta
+  zero), loading, empty e error, mais asserts de `aria-label`,
+  `aria-busy` e de que `trendData` com <2 pontos nao renderiza a
+  sparkline. Typecheck e `next lint` verdes (PR a abrir — Closes #44).
 
 - **DS-04** — Componente `StatusBadge` (10 variantes) em
   `apps/web-app/components/ui/status-badge.tsx` com `variant`
@@ -183,6 +240,21 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
   `schedules`, `audit_logs`, `subscriptions`. Testes estaticos +
   insercao massiva (10k rows) em `audit_logs` atras de
   `TEST_DATABASE_URL`. Move DATA-05 para "Em Andamento". Closes #16.
+- PR: (a abrir) — APP-01: paginas de auth (`/login`, `/signup`,
+  `/recuperar-senha`, `/redefinir-senha/[token]`,
+  `/aceitar-convite/[token]`) + `<AuthProvider>` com access em memoria
+  e refresh automatico; Route Handlers `/api/auth/*` proxiam a API e
+  guardam o refresh em cookie httpOnly; `/dashboard` protegido por
+  `<RequireAuth>`; spec Playwright local; envs
+  `NEXT_PUBLIC_API_BASE_URL`/`API_BASE_URL` em `config/.env.example`.
+  Move APP-01 de "Bloqueadas" para "Em Andamento". Closes #49.
+- PR: (a abrir) — API-03: middleware de tenant via dependencies FastAPI
+  (`get_current_claims`/`assert_tenant_active`/`get_tenant_db`) em
+  `apps/api/api/deps.py`, reusa `get_tenant_session` para `SET LOCAL
+  app.current_tenant` sem vazamento de GUC no pool; `GET /auth/me` como
+  prova de vida RLS-gated; 15 testes unitarios + 6 de integracao
+  (gated por `TEST_DATABASE_URL`); runbook manual de isolamento
+  cross-tenant no `apps/api/README.md`. Move API-03 para "Em Andamento".
 - PR: (a abrir) — API-02: autenticacao completa em
   `apps/api/api/auth/` (signup/login/refresh/logout), argon2id, JWT
   access 15min + refresh opaco 7d com rotacao e detecao de reuso,
@@ -193,6 +265,12 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
   `(tenant_id, cnpj)`, FK composta `(tenant_id, company_id)` e indice
   em `cert_not_after`. Tambem move DATA-01 de "Em Andamento" para
   "Concluidos" com referencia ao PR #95 (mergeado em main).
+- PR: (a abrir) — DATA-03: migrations `0004_executions` (FK composta
+  para `companies`, indice `(tenant_id, company_id, started_at DESC)`,
+  CHECKs de trigger/status/periodo/soma, RLS) e
+  `0005_execution_items` (FK composta para `executions`, indice
+  unico parcial em `(tenant_id, chave_nfse)`, RLS). Move DATA-03 de
+  "Proximas Destravadas" para "Em Andamento". Closes #14.
 - PR: (a abrir) — INFRA-02: runbook `infra/vps-docker.md` instalando
   Docker Engine + Compose v2 pelo repo oficial, adicionando `deploy` ao
   grupo `docker`, fixando log-rotation em `/etc/docker/daemon.json` e
@@ -201,6 +279,11 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 - PR: (a abrir) — DS-03: `<AppShell>` (sidebar colapsavel + topbar com
   breadcrumbs, tenant switcher, bell, theme toggle e user menu) e rota
   `/dashboard` consumindo o shell. Move DS-03 para "Em Andamento".
+- PR: (a abrir) — DS-05: componente `KPIStatCard` com estados
+  `ready`/`loading`/`empty`/`error`, delta colorido e mini-sparkline
+  em SVG inline; demo com 7 cards no `/styleguide` e refactor do
+  `/dashboard` para usar o componente; spec com 7 snapshots + asserts
+  de acessibilidade. Closes #44.
 - PR: (a abrir) — DS-04: componente `StatusBadge` com 10 variantes
   + tamanhos `sm`/`md` em `apps/web-app/components/ui/status-badge.tsx`,
   demo no `/styleguide` e primeiro spec (vitest + RTL) do `apps/web-app`
