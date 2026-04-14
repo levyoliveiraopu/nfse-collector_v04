@@ -45,6 +45,17 @@ Estrutura em `apps/api/alembic/`:
   `company_credentials` (PFX A1 cifrado) com FK composta para
   `companies(tenant_id, id)`, indice em `cert_not_after` para alerta
   de vencimento e RLS (DATA-02).
+- `alembic/versions/0004_executions.py` — tabela `executions`
+  (uma corrida de coleta por tenant+company) com FK composta para
+  `companies(tenant_id, id)`, indice `(tenant_id, company_id,
+  started_at DESC)` para listagem por periodo, CHECKs de
+  `trigger`/`status`/ordem do periodo/soma de itens e RLS (DATA-03).
+- `alembic/versions/0005_execution_items.py` — tabela
+  `execution_items` (um item por NFS-e processada) com FK composta
+  para `executions(tenant_id, id)`, indice `(execution_id)`, indice
+  `(tenant_id, data_emissao)` e indice unico parcial
+  `(tenant_id, chave_nfse) WHERE chave_nfse IS NOT NULL`; RLS
+  (DATA-03).
 
 ### Comandos
 
@@ -240,6 +251,72 @@ INSERT INTO company_credentials
 -- ERROR: insert or update on table "company_credentials" violates
 -- foreign key constraint "fk_company_credentials_tenant_company"
 ROLLBACK;
+```
+
+### Teste manual de isolamento RLS — executions/execution_items (DATA-03 DoD)
+
+Com `alembic upgrade head` aplicado, conectado como `app_user`
+(assume tenants/companies criados na secao DATA-02 acima):
+
+```sql
+-- Sessao 1 (tenant Acme)
+BEGIN;
+SET LOCAL app.current_tenant = ':t1';
+INSERT INTO executions
+  (tenant_id, company_id, trigger, period_start, period_end,
+   status, started_at, nsu_from, nsu_to, items_total, items_ok, items_fail)
+  VALUES (':t1', ':c1', 'manual', '2026-03-01', '2026-03-31',
+          'running', now(), 1000, 1050, 50, 0, 0)
+  RETURNING id;                             -- :e1
+INSERT INTO execution_items
+  (execution_id, tenant_id, nsu, chave_nfse, cnpj_emitente,
+   data_emissao, valor, status)
+  VALUES (':e1', ':t1', 1001, 'chv-0000001', '00000000000191',
+          '2026-03-15T10:00:00-03', 123.45, 'ok');
+SELECT COUNT(*) FROM executions;            -- 1
+SELECT COUNT(*) FROM execution_items;       -- 1
+COMMIT;
+
+-- Sessao 2 (tenant Beta) — nao deve enxergar nada da sessao 1
+BEGIN;
+SET LOCAL app.current_tenant = ':t2';
+SELECT * FROM executions;            -- vazio
+SELECT * FROM execution_items;       -- vazio
+-- Tentativa de inserir item apontando para execucao de outro tenant
+-- falha na FK composta (:t2, :e1):
+INSERT INTO execution_items (execution_id, tenant_id, status)
+  VALUES (':e1', ':t2', 'pending');
+-- ERROR: insert or update on table "execution_items" violates
+-- foreign key constraint "fk_execution_items_tenant_execution"
+ROLLBACK;
+```
+
+Duplicata por chave dentro do mesmo tenant deve falhar no indice unico
+parcial:
+
+```sql
+BEGIN;
+SET LOCAL app.current_tenant = ':t1';
+INSERT INTO execution_items (execution_id, tenant_id, chave_nfse, status)
+  VALUES (':e1', ':t1', 'chv-0000001', 'ok');
+-- ERROR: duplicate key value violates unique constraint
+-- "uq_execution_items_tenant_chave"
+ROLLBACK;
+```
+
+**EXPLAIN de listagem por periodo (DoD).** A query abaixo precisa
+usar o indice composto `ix_executions_tenant_company_started`:
+
+```sql
+EXPLAIN
+SELECT id, status, started_at, items_total, items_ok, items_fail
+FROM executions
+WHERE tenant_id = ':t1'
+  AND company_id = ':c1'
+  AND started_at BETWEEN '2026-03-01' AND '2026-03-31'
+ORDER BY started_at DESC
+LIMIT 50;
+-- Espera: Index Scan using ix_executions_tenant_company_started
 ```
 
 ## Build Docker
