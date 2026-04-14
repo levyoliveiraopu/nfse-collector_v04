@@ -21,7 +21,10 @@
 
 ## Concluidos
 
-- **DOCS-03** — Runbook de credencial invalida criado em `docs/runbooks/credencial-invalida.md` e linkado no ticket APP-06 para uso inline nas ocorrencias `CERT_EXPIRED`, `CRED_INVALID` e `CERT_REVOKED` (PR a abrir).
+- **API-01** — Bootstrap FastAPI em `apps/api/`: config via
+  `pydantic-settings` (prefixo `API_`), logging JSON estruturado,
+  endpoints `/health` e `/version`, Dockerfile multi-stage com usuario
+  nao-root. Desbloqueia DATA-01.
 - **CORE-01** — Motor ADN legado extraido de `src/` para pacote Python
   instalavel em `packages/worker-core/`; `src/` vira shim retro-compativel
   (PR #80).
@@ -29,17 +32,28 @@
   `.env.example`, runbook manual e smoke test prontos; aplicacao no
   console/CLI da Backblaze e geracao da Application Key ficam a cargo
   do owner (ver `infra/s3-bucket.md` secao 2).
-- **DOCS-02** — Politica de Privacidade (LGPD) publicada em `docs/legal/privacy.md` + RoPA minima em `docs/legal/ropa.md` (PR a abrir).
-
+- **INFRA-01** — Hardening inicial da VPS Hostinger: runbook completo
+  em `infra/vps-hardening.md` (usuario `deploy`, SSH chave-only, UFW,
+  fail2ban, unattended-upgrades, TZ `America/Sao_Paulo`). Execucao na
+  VPS real fica a cargo do owner — DoD dos checks `ssh`/`ufw`/`fail2ban`/
+  `timedatectl` e validado apos aplicacao manual.
+- **DOCS-01** — Termos de Uso criado em `docs/legal/terms.md`, incluindo
+  clausula de retencao de 90 dias (ADR-003), pagamento/renovacao/cancelamento,
+  limitacao de responsabilidade, foro/legislacao e orientacao de referencia
+  para signup e rota `/legal` do app/site (PR #81).
+- **DOCS-02** — Politica de Privacidade (LGPD) publicada em
+  `docs/legal/privacy.md` + RoPA minima em `docs/legal/ropa.md` (PR #87).
+- **DOCS-03** — Runbook de credencial invalida criado em
+  `docs/runbooks/credencial-invalida.md` e linkado no ticket APP-06 para
+  uso inline nas ocorrencias `CERT_EXPIRED`, `CRED_INVALID` e
+  `CERT_REVOKED` (PR #88).
 - **DOCS-04** — Runbook de incidentes para indisponibilidade de portal
   e rate-limit documentado em `docs/runbooks/portal-indisponivel.md`
-  (triagem, backoff, comunicação e critério de status page).
+  (triagem, backoff, comunicacao e criterio de status page) (PR #89).
 
 ## Proximas Destravadas (prontas para iniciar)
 
-- **INFRA-01** — Hardening inicial da VPS Hostinger
-- **DOCS-01** — Termos de Uso (clausula de retencao 90d)
-- **DATA-01** — Schema inicial: tenants, users, tenant_users (depende de `apps/api` inicializado; ver API-01)
+- **DATA-01** — Schema inicial: tenants, users, tenant_users (destravado por API-01)
 
 > Nota: CORE-05, API-06, API-11 e INFRA-08 dependem de INFRA-06 **e**
 > de outros tickets (CORE-01 / API-05 / DATA-05 / INFRA-05), portanto
@@ -62,9 +76,11 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 
 ## Ultima atualizacao
 
-- Data: 2026-04-13
-- PR: #82 — DOCS-04 (runbook para `PORTAL_5XX`, `PORTAL_TIMEOUT` e `RATE_LIMIT`)
-- Autor: @levyoliveiraopu
+- Data: 2026-04-14
+- PR: (a abrir) — GOV: sincroniza STATE.md e CHANGELOG.md apos merges
+  concorrentes de DOCS-01..04 (restaura entradas perdidas e remove
+  tickets ja concluidos da lista de proximas destravadas).
+- Autor: @LevyOliveirabr
 - Nota: workflow `pr-guardrail` exige STATE.md + CHANGELOG.md + `Closes #N` em todo PR para main.
 
 ## Links Rapidos
