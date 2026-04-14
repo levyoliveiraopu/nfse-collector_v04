@@ -15,6 +15,48 @@
 
 ## Em Andamento
 
+- **INFRA-04** — Nginx no host + Let's Encrypt: runbook completo em
+  `infra/nginx.md` (instalacao via apt no Ubuntu 24.04 noble, webroot
+  ACME em `/var/www/letsencrypt/`, placeholder em `/var/www/em-breve/`,
+  emissao SAN unico cobrindo apex + `www` + `app` + `api` + `ops` com
+  `certbot --nginx --redirect`, `certbot renew --dry-run` e
+  `certbot.timer` do systemd, HSTS desligado por padrao e ativado so
+  apos validar HTTPS); configs versionadas em `infra/nginx/` com
+  `nginx.conf` (overrides globais: worker_processes auto, gzip,
+  log_format com `request_time`/upstream, `server_tokens off`),
+  snippets `tls.conf` (TLS 1.2+, ciphers Mozilla intermediate, stapling,
+  `ssl_dhparam`), `security-headers.conf` (HSTS comentado, X-Frame-Options
+  DENY, X-Content-Type-Options, Referrer-Policy, Permissions-Policy,
+  COOP/CORP), `rate-limit.conf` (`limit_req_zone auth_ip 10m 5r/s`),
+  `proxy-common.conf` (X-Forwarded-*, Upgrade/Connection, timeouts) e
+  `connection-upgrade.conf` (map WebSocket); server blocks
+  `apex.conf` (301 -> www), `www.conf`/`app.conf`/`ops.conf` servindo
+  `em-breve.html`, `api.conf` com `limit_req zone=auth_ip burst=10
+  nodelay` em `location ^~ /auth/` (prova de rate limit do DoD) e
+  `proxy_pass` comentado para `127.0.0.1:3000`/`127.0.0.1:8000`
+  (descomenta em INFRA-05); reforco em `api`/`ops` de que DNS precisa
+  ficar em DNS-only na Cloudflare (ADR-003 / INFRA-03). Execucao na
+  VPS real fica a cargo do owner — DoD (SSL Labs A nos 5 hostnames,
+  `certbot renew --dry-run` ok, configs commitadas) valida apos
+  aplicacao manual (PR a abrir — Closes #6).
+
+- **DS-06** — Componente `<DataTable>` server-side em
+  `apps/web-app/components/ui/data-table/` baseado em TanStack Table +
+  `@tanstack/react-query`: paginacao/ordenacao/filtragem manuais, estado
+  preservado em `searchParams` (prefixo configuravel), filtros texto/
+  select/date-range com draft local aplicado via botao/Enter, saved
+  filters por tabela em `localStorage` (chave `dt:<queryKey>`), export
+  CSV do resultado atual (RFC 4180 + BOM UTF-8), estados loading
+  (skeleton rows), vazio e erro com "Tentar novamente". `AppQueryClient
+  Provider` em `apps/web-app/components/providers/query-client-provider.tsx`
+  wrappando o `RootLayout`. Demo com 10k linhas mockadas no `/styleguide`
+  (`app/styleguide/data-table-demo.tsx` — dataset deterministico via
+  Mulberry32, fetcher simulando latencia). Testes vitest: `csv.test.ts`
+  (10 casos), `url-state.test.ts` (8 casos, roundtrip parse<->serialize)
+  e `data-table.test.tsx` (5 casos — skeleton/vazio/linhas/erro+retry/
+  paginacao chamando router.replace). Typecheck, lint e 56 testes verdes.
+  Novas deps `@tanstack/react-table` e `@tanstack/react-query`
+  (PR a abrir — Closes #45).
 - **CORE-02** — Refactor `packages/worker-core/worker_core/auth.py` para
   aceitar PFX em memoria: novo context manager
   `mtls_session(pfx_bytes, pfx_password)` carrega o PFX direto dos bytes
@@ -262,8 +304,9 @@
 
 ## Proximas Destravadas (prontas para iniciar)
 
-- **INFRA-03** — DNS dos subdominios no Cloudflare (`app`, `api`, `ops`,
-  `www`, apex) (issue #5).
+- **INFRA-05** — Docker Compose (base + overrides prod/staging) com
+  Nginx host ja publicando os 5 hostnames (INFRA-04). Descomentar os
+  `proxy_pass` em `infra/nginx/sites-available/{app,api}.conf`.
 
 > INFRA-05 saiu de "Proximas Destravadas" para "Em Andamento" nesta
 > atualizacao. CORE-05, API-06, API-11 e INFRA-08 continuam parcialmente
@@ -298,6 +341,30 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
   e `README.md` com setup, DoD e politica manual de backup (pg_dumpall +
   RDB, retencao 90d alinhada ao ADR-003). Move INFRA-05 de "Proximas
   Destravadas" para "Em Andamento". Closes #7.
+- PR: (a abrir) — INFRA-04: Nginx no host + Let's Encrypt. Runbook
+  `infra/nginx.md` (instalacao apt Ubuntu 24.04, webroot ACME,
+  emissao SAN unico via `certbot --nginx` para apex + `www` + `app` +
+  `api` + `ops`, `certbot.timer` + `certbot renew --dry-run`, HSTS so
+  apos validacao). Configs versionadas em `infra/nginx/` — `nginx.conf`
+  global, snippets `tls.conf` (Mozilla intermediate + stapling),
+  `security-headers.conf` (HSTS comentado, X-Frame/X-Content-Type/
+  Referrer/Permissions), `rate-limit.conf` (`auth_ip` 5r/s),
+  `proxy-common.conf` + `connection-upgrade.conf`; server blocks
+  `apex`/`www`/`app`/`api`/`ops` com placeholder "em breve" e
+  `proxy_pass` comentado para 3000/8000 (INFRA-05 descomenta);
+  `limit_req` em `location ^~ /auth/` do `api.conf` como prova de DoD.
+  Move INFRA-04 para "Em Andamento". Move INFRA-05 para "Proximas
+  Destravadas". Closes #6.
+- PR: (a abrir) — DS-06: componente `<DataTable>` server-side em
+  `apps/web-app/components/ui/data-table/` (TanStack Table + react-query)
+  com paginacao/ordenacao/filtragem manuais, filtros texto/select/date-
+  range, saved filters em localStorage, export CSV (RFC 4180 + BOM UTF-8),
+  estados loading/vazio/erro+retry e preservacao de estado em
+  `searchParams`. `AppQueryClientProvider` no `RootLayout`. Demo no
+  `/styleguide` com 10k linhas mockadas. 23 novos testes vitest
+  (csv/url-state/component). Novas deps `@tanstack/react-table` e
+  `@tanstack/react-query`. Move DS-06 de "Bloqueadas" (dependia de DS-02,
+  ja concluido) para "Em Andamento". Closes #45.
 - PR: (a abrir) — API-04: RBAC com dependency `require_role`
   (`apps/api/api/security/rbac.py`) encadeando `assert_tenant_active`
   e devolvendo 403 claro; guarda `ensure_can_manage_member`
