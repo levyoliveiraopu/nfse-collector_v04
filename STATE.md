@@ -15,6 +15,39 @@
 
 ## Em Andamento
 
+- **INFRA-09** — Pipeline de deploy (GitHub Actions -> SSH):
+  workflows `.github/workflows/deploy-staging.yml` (push em `main` com
+  paths `apps/api/**`, `packages/worker-core/**`, `infra/compose/**`,
+  `infra/deploy/**`) e `.github/workflows/deploy-prod.yml` (push de tag
+  `v*` + `workflow_dispatch` manual com input `tag`). Ambos fazem
+  `docker/build-push-action@v6` do `apps/api/Dockerfile` para
+  `ghcr.io/<owner>/nfse-api:<tag>` + `latest-{staging,prod}` via
+  `GITHUB_TOKEN` (`permissions: packages: write`) com cache GHA, e em
+  seguida `appleboy/ssh-action@v1.2.0` no VPS exportando
+  `DEPLOY_ENV`+`DEPLOY_TAG` para `/srv/nfse/deploy.sh`. Script
+  `infra/deploy/deploy.sh` (idempotente, `set -euo pipefail`):
+  persiste tag anterior em `config/.last_deploy_tag` antes do
+  `docker compose pull && up -d --remove-orphans`, aguarda health em
+  `GET /health` (30 tentativas x 2s), e em falha reverte para a tag
+  anterior + re-sobe e `exit 20` (marca workflow como falho apos
+  rollback). Override `infra/compose/docker-compose.deploy.yml`
+  adiciona o servico `api` consumindo `ghcr.io/...:${DEPLOY_TAG}` com
+  `depends_on` healthy de Postgres/Redis (INFRA-05) e publica em
+  `127.0.0.1:8000` para o Nginx host (INFRA-04); bloco do `worker`
+  comentado aguardando CORE-05. Runbook completo em
+  `infra/deploy/README.md` cobrindo preparacao do `/srv/nfse/<env>`
+  (symlinks para compose files + `deploy.sh`), `docker login ghcr.io`
+  com PAT `read:packages`, os 4 secrets do repo
+  (`SSH_HOST`/`SSH_USER`/`SSH_KEY`/`GHCR_TOKEN` opcional),
+  environment `prod` com approval manual, roteiro do DoD (rollback
+  via `HEALTH_URL` falso + `workflow_dispatch`) e operacao
+  (disparo manual, promocao staging->prod, rollback manual, logs).
+  Concurrency `deploy-staging`/`deploy-prod` nao cancela em voo.
+  Execucao real fica a cargo do owner — DoD (PR em main dispara
+  staging; tag `v0.0.1` dispara prod; rollback manual ok) valida apos
+  provisionamento dos secrets e do `/srv/nfse/` na VPS
+  (PR a abrir — Closes #11).
+
 - **INFRA-07** — Stack de observabilidade minima em
   `infra/compose/docker-compose.obs.yml`: `loki` (v2.9, retencao 14d,
   filesystem/boltdb-shipper), `promtail` (coleta
@@ -378,6 +411,25 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-14
+- PR: (a abrir) — INFRA-09: pipeline de deploy (GitHub Actions -> SSH).
+  Workflows `.github/workflows/deploy-staging.yml` (push em `main`) e
+  `deploy-prod.yml` (push de tag `v*` + `workflow_dispatch`) fazem
+  `docker/build-push-action@v6` do `apps/api/Dockerfile` para GHCR
+  (`ghcr.io/<owner>/nfse-api:<tag>` + `latest-{staging,prod}`) via
+  `GITHUB_TOKEN` com cache GHA, e `appleboy/ssh-action@v1.2.0` no VPS
+  rodando `infra/deploy/deploy.sh` — que grava a tag anterior em
+  `/srv/nfse/<env>/config/.last_deploy_tag`, faz
+  `docker compose pull && up -d --remove-orphans`, aguarda
+  `GET /health` (30x2s) e reverte para a tag anterior em caso de falha
+  (`exit 20` marca o workflow como falho pos-rollback). Override
+  `infra/compose/docker-compose.deploy.yml` adiciona o servico `api`
+  ancorado em `${DEPLOY_TAG}` (bloco do `worker` comentado ate
+  CORE-05). Runbook `infra/deploy/README.md` documenta provisionamento
+  do `/srv/nfse/<env>` (symlinks para compose + `deploy.sh`),
+  `docker login ghcr.io` com PAT `read:packages`, os 4 secrets do repo
+  e roteiro do DoD incluindo rollback manual via `workflow_dispatch`.
+  Move INFRA-09 de "bloqueadas" (dependias INFRA-02+GOV-06, ja
+  concluidas) para "Em Andamento". Closes #11.
 - PR: (a abrir) — API-05: CRUD de `/companies` em
   `apps/api/api/companies/` (router + `cnpj.py` validando DV + schemas
   Pydantic com normalizacao de CNPJ/UF e `extra=forbid` em PATCH);
