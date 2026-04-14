@@ -6,6 +6,7 @@ Segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- INFRA-02: runbook `infra/vps-docker.md` com instalacao do Docker Engine + buildx + Compose v2 pelo repo oficial `download.docker.com`, `deploy` adicionado ao grupo `docker`, `/etc/docker/daemon.json` com log-driver `json-file` rotacionado (10m/3) e `live-restore`, e arvore `/srv/nfse/{prod,staging}/{data,backups,logs,config}` com owner `deploy:deploy` e mode `0750` (execucao manual pelo owner).
 - DATA-01: Alembic configurado em `apps/api/alembic/` + migration `0001_initial_identity.py` criando extensao `pgcrypto`, roles `app_admin` (BYPASSRLS) / `app_user` (NOBYPASSRLS), tabelas `tenants`, `users` e `tenant_users`, indices (`LOWER(email)` unico, `(tenant_id, role)`, `(user_id)`) e RLS com politicas em `tenants` e `tenant_users` via GUC `app.current_tenant`; `API_DATABASE_URL` em `config/.env.example`.
 - GOV-06: workflow `.github/workflows/ci.yml` com jobs `lint-python` (ruff), `test-python` (pytest), `lint-ts` (eslint + typecheck) em todo PR e push em `main`; cache pip/pnpm; `ruff.toml` conservador na raiz (regras E/F/W, E501 ignorada, isort desligado).
 - DOCS-03: runbook de credencial invalida em `docs/runbooks/credencial-invalida.md` e link no APP-06 para ocorrencias `CERT_EXPIRED`, `CRED_INVALID` e `CERT_REVOKED`.

@@ -60,6 +60,14 @@
   fail2ban, unattended-upgrades, TZ `America/Sao_Paulo`). Execucao na
   VPS real fica a cargo do owner — DoD dos checks `ssh`/`ufw`/`fail2ban`/
   `timedatectl` e validado apos aplicacao manual.
+- **INFRA-02** — Docker Engine + Compose v2 + diretorios padrao:
+  runbook em `infra/vps-docker.md` (repo oficial `download.docker.com`,
+  `docker-ce` + `buildx` + `compose-plugin`, `deploy` no grupo `docker`,
+  log-driver `json-file` com rotacao 10m/3 e `live-restore`, arvore
+  `/srv/nfse/{prod,staging}/{data,backups,logs,config}` com owner
+  `deploy:deploy` e mode `0750`). Execucao na VPS real fica a cargo do
+  owner — DoD (`docker compose version` >= 2.20, `docker ps` sem sudo,
+  permissoes dos diretorios) validado apos aplicacao manual.
 - **INFRA-03** — Runbook de DNS no Cloudflare em `infra/dns.md`: tabela
   de registros A para `app`/`api`/`ops`/`www`/apex com DNS-only
   obrigatorio em `api` e `ops` (preservar mTLS das prefeituras — ADR-003),
@@ -114,10 +122,11 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-14
-- PR: (a abrir) — DATA-01: Alembic + migration `0001_initial_identity`
-  com tabelas `tenants`/`users`/`tenant_users`, roles `app_admin` /
-  `app_user`, RLS via GUC `app.current_tenant`. Move DATA-01 de
-  "Proximas Destravadas" para "Em Andamento".
+- PR: (a abrir) — INFRA-02: runbook `infra/vps-docker.md` instalando
+  Docker Engine + Compose v2 pelo repo oficial, adicionando `deploy` ao
+  grupo `docker`, fixando log-rotation em `/etc/docker/daemon.json` e
+  criando `/srv/nfse/{prod,staging}/{data,backups,logs,config}` com
+  owner `deploy:deploy` e mode `0750`. Move INFRA-02 para "Concluidos".
 - Autor: @LevyOliveirabr
 - Nota: workflow `pr-guardrail` exige STATE.md + CHANGELOG.md + `Closes #N` em todo PR para main.
 
