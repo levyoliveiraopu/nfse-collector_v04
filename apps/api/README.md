@@ -242,6 +242,106 @@ INSERT INTO company_credentials
 ROLLBACK;
 ```
 
+## Middleware de tenant — API-03
+
+Toda request protegida passa por tres dependencies encadeadas
+(`apps/api/api/deps.py`), que materializam o "middleware de tenant":
+
+1. `get_current_claims` — le `Authorization: Bearer <jwt>`, valida via
+   `decode_access_token`. Ausencia de header, esquema != Bearer ou JWT
+   invalido/expirado -> **401** com `WWW-Authenticate: Bearer`.
+2. `assert_tenant_active` — consulta `tenants.status` via
+   `get_admin_session` (BYPASSRLS). Tenant inexistente, `suspended` ou
+   `canceled` -> **403**.
+3. `get_tenant_db` — abre sessao com `SET LOCAL app.current_tenant = :tid`
+   dentro da transacao (via `get_tenant_session` do `api.db`). No
+   commit/rollback o escopo do `SET LOCAL` morre, portanto a conexao
+   devolvida ao pool **nao vaza** GUC entre requests.
+
+Handlers protegidos declaram:
+
+```python
+from api.deps import assert_tenant_active, get_tenant_db
+
+@router.get("/rota-privada")
+def handler(
+    claims: AccessClaims = Depends(assert_tenant_active),
+    db: Session = Depends(get_tenant_db),
+): ...
+```
+
+Rotas publicas (`/health`, `/version`, `/auth/signup`, `/auth/login`,
+`/auth/refresh`, `/auth/logout`) nao declaram essas dependencies e
+seguem como antes.
+
+### `GET /auth/me` (prova de vida)
+
+Responde 200 com `{tenant_id, user_id, role, memberships_visible}`. A
+contagem em `tenant_users` e RLS-gated: se o middleware nao tivesse
+setado `app.current_tenant`, a query retornaria `0`.
+
+```bash
+ACCESS=$(jq -r .access_token /tmp/login.json)
+
+curl -sS "$BASE/auth/me" \
+  -H "Authorization: Bearer $ACCESS"
+# {"tenant_id":"...","user_id":"...","role":"owner","memberships_visible":1}
+
+curl -sS -o /dev/null -w '%{http_code}\n' "$BASE/auth/me"
+# 401 (sem token)
+
+curl -sS -o /dev/null -w '%{http_code}\n' "$BASE/auth/me" \
+  -H "Authorization: Bearer not-a-jwt"
+# 401
+```
+
+### Runbook manual de isolamento cross-tenant
+
+Com `alembic upgrade head` e a API subida, crie dois tenants via signup
+e valide que cada token so enxerga o proprio tenant:
+
+```bash
+# Tenant A
+curl -sS -X POST "$BASE/auth/signup" \
+  -H 'content-type: application/json' \
+  -d '{"tenant_name":"Acme","tenant_slug":"acme","name":"Ana",
+       "email":"a@acme.test","password":"super-senha-123"}' | tee /tmp/a.json
+AT=$(jq -r .access_token /tmp/a.json)
+
+# Tenant B
+curl -sS -X POST "$BASE/auth/signup" \
+  -H 'content-type: application/json' \
+  -d '{"tenant_name":"Beta","tenant_slug":"beta","name":"Bia",
+       "email":"b@beta.test","password":"super-senha-456"}' | tee /tmp/b.json
+BT=$(jq -r .access_token /tmp/b.json)
+
+# Cada /auth/me deve reportar memberships_visible == 1 (so a propria).
+curl -sS "$BASE/auth/me" -H "Authorization: Bearer $AT" | jq
+curl -sS "$BASE/auth/me" -H "Authorization: Bearer $BT" | jq
+
+# Suspender tenant A via SQL e validar 403:
+psql "$API_DATABASE_URL" -c \
+  "UPDATE tenants SET status='suspended' WHERE slug='acme';"
+curl -sS -o /dev/null -w '%{http_code}\n' "$BASE/auth/me" \
+  -H "Authorization: Bearer $AT"
+# 403
+```
+
+### Testes
+
+Unitarios (sem DB):
+
+```bash
+cd apps/api
+PYTHONPATH=. pytest tests/test_tenant_middleware.py -v
+```
+
+E2E (gated por `TEST_DATABASE_URL`, mesmo padrao do API-02):
+
+```bash
+PYTHONPATH=. pytest tests/test_tenant_middleware_integration.py -v
+```
+
 ## Build Docker
 
 ```bash
