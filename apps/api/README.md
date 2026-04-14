@@ -45,6 +45,21 @@ Estrutura em `apps/api/alembic/`:
   `company_credentials` (PFX A1 cifrado) com FK composta para
   `companies(tenant_id, id)`, indice em `cert_not_after` para alerta
   de vencimento e RLS (DATA-02).
+- `alembic/versions/0011_files.py` — tabela `files` (id, tenant_id,
+  kind, object_key, bytes, checksum_sha256, source_execution_id,
+  expires_at) sem `storage_tier` (ADR-003), com RLS. Tambem faz o
+  **merge dos dois heads** Alembic (`0003_company_credentials` e
+  `0010_auth_refresh_tokens`) — a partir daqui a arvore e linear
+  novamente (DATA-05).
+- `alembic/versions/0012_schedules.py` — tabela `schedules` (cron
+  por tenant/company) com FK composta para `companies(tenant_id, id)`,
+  indice `(enabled, next_run_at)` e RLS (DATA-05).
+- `alembic/versions/0013_audit_logs.py` — tabela `audit_logs`
+  (bigserial, metadata jsonb) com indices `(tenant_id, created_at
+  DESC)` e `(resource_type, resource_id)` e RLS (DATA-05).
+- `alembic/versions/0014_plans_subscriptions.py` — tabelas `plans`
+  (catalogo global, sem RLS) e `subscriptions` (uma por tenant, com
+  RLS); promove `tenants.plan_id` a FK -> `plans.code` (DATA-05).
 - `alembic/versions/0004_executions.py` — tabela `executions`
   (uma corrida de coleta por tenant+company) com FK composta para
   `companies(tenant_id, id)`, indice `(tenant_id, company_id,
@@ -253,6 +268,52 @@ INSERT INTO company_credentials
 ROLLBACK;
 ```
 
+## DATA-05 — tabelas de suporte
+
+Criadas em 4 migrations (`0011_files`, `0012_schedules`, `0013_audit_logs`,
+`0014_plans_subscriptions`):
+
+- **`files`**: referencias de objetos no S3 (INFRA-06). `kind` aceita
+  `nfse_xml`, `export`, `pfx`, `report`, `other`. Sem `storage_tier`
+  (ADR-003). Unique `(tenant_id, object_key)`, indice partial em
+  `expires_at` para o cron de purga 90d.
+- **`schedules`**: cron por tenant (com `company_id` opcional). FK
+  composta `(tenant_id, company_id) -> companies` como defesa em
+  profundidade. Indice `(enabled, next_run_at)` para o scheduler.
+- **`audit_logs`**: append-only. `id bigint IDENTITY`, `actor_user_id`
+  nullable (`ON DELETE SET NULL`), `metadata jsonb` default `'{}'`.
+  Indices `(tenant_id, created_at DESC)` e `(resource_type,
+  resource_id)`.
+- **`plans`** (catalogo global, sem RLS): `code` PK TEXT, `limits jsonb`,
+  `price_cents int`, `active bool`. `app_user` tem apenas `SELECT`.
+- **`subscriptions`** (RLS): unica por tenant (`UNIQUE(tenant_id)`),
+  FK -> `plans(code)` com `ON DELETE RESTRICT`. Status `trialing` |
+  `active` | `past_due` | `canceled` | `paused`. Billing adiado
+  (ADR-004) — os campos `gateway*` ficam NULL ate a integracao real.
+- **Promocao** da coluna `tenants.plan_id` a FK `-> plans(code)`
+  (mantida `NULL`-able para tenants em trial).
+
+### Merge de heads Alembic (nota operacional)
+
+Ate DATA-02/API-02 a arvore tinha dois heads (`0003_company_credentials`
+e `0010_auth_refresh_tokens`). A migration `0011_files` declara
+`down_revision = ("0003_company_credentials", "0010_auth_refresh_tokens")`,
+funcionando como ponto de merge explicito. Apos `alembic upgrade head`
+a arvore volta a ser linear.
+
+### Teste manual de insercao massiva (DoD audit_logs 10k rows)
+
+Com `TEST_DATABASE_URL` apontando para um Postgres isolado e
+`alembic upgrade head` aplicado:
+
+```bash
+export TEST_DATABASE_URL="postgresql+psycopg://app_admin:***@localhost:5432/nfse_test"
+alembic -x url="$TEST_DATABASE_URL" upgrade head
+PYTHONPATH=. pytest tests/test_audit_logs_bulk.py -v
+```
+
+O teste insere 10k linhas em batch num tenant ficticio e valida
+timeline com `EXPLAIN`.
 ### Teste manual de isolamento RLS — executions/execution_items (DATA-03 DoD)
 
 Com `alembic upgrade head` aplicado, conectado como `app_user`

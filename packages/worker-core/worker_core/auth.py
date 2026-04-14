@@ -2,23 +2,33 @@
 Autenticação mTLS para a API ADN do Sistema Nacional NFS-e.
 
 Cada cliente possui um certificado digital e-CNPJ A1 (.pfx). Este módulo
-carrega esse certificado, extrai a chave privada e o certificado público em
-memória, os grava em arquivos PEM temporários e devolve uma requests.Session
-pronta para fazer chamadas autenticadas via mTLS.
+carrega esse certificado a partir de **bytes em memória** (vindos do banco
+cifrado em AES-GCM — ADR-003), extrai a chave privada e o certificado
+público, materializa arquivos PEM temporários em `tmpfs` (/dev/shm) com
+permissão 600 e devolve uma ``requests.Session`` pronta para fazer chamadas
+autenticadas via mTLS.
 
-Uso típico:
-    session, cert_tmp, key_tmp = criar_session_cliente(cert_path, senha)
+Uso recomendado (CORE-02+):
+    with mtls_session(pfx_bytes, pfx_password) as session:
+        resp = session.get(url)
+    # PEMs removidos automaticamente ao sair do with (sucesso ou excecao).
+
+Uso legado (path em disco) — preservado como wrapper de compat enquanto os
+chamadores (batch_processor, diagnostico) não migram para a API nova:
+    session, cert_tmp, key_tmp, cert = criar_session_cliente(path, senha)
     try:
-        resultado = testar_autenticacao(session)
+        ...
     finally:
         limpar_temporarios(cert_tmp, key_tmp)
 """
 
+import contextlib
 import logging
 import os
 import re
 import tempfile
 from datetime import datetime, timezone
+from typing import Iterator
 
 import requests
 from cryptography import x509
@@ -89,76 +99,124 @@ class _TimeoutAdapter(HTTPAdapter):
 
 
 # ---------------------------------------------------------------------------
-# Função principal: criar_session_cliente
+# API nova (CORE-02): mtls_session — PFX em memória + tmpfs + context manager
 # ---------------------------------------------------------------------------
 
-def criar_session_cliente(
-    cert_pfx_path: str,
-    cert_password: str,
-) -> tuple[requests.Session, str, str, x509.Certificate]:
-    """Cria uma requests.Session autenticada via mTLS usando o certificado .pfx.
+# Diretório preferido para PEMs temporários. tmpfs (volátil, sem paginar para
+# disco) reduz a janela de exposição da chave privada caso o processo receba
+# SIGKILL antes do cleanup.
+_TMPFS_PREFERIDO = "/dev/shm"
 
-    O certificado e a chave privada são extraídos do .pfx e gravados em
-    arquivos PEM temporários no disco (necessário porque requests não aceita
-    dados em memória para o parâmetro `cert`). Os caminhos dos temporários são
-    retornados para que o chamador possa removê-los com `limpar_temporarios`
-    após o uso.
 
-    Args:
-        cert_pfx_path: Caminho para o arquivo .pfx do cliente.
-        cert_password: Senha do arquivo .pfx.
+def _escolher_dir_tmpfs() -> str:
+    """Retorna `/dev/shm` se disponível/gravável, senão o tempdir padrão.
 
-    Returns:
-        Tupla (session, caminho_cert_pem_tmp, caminho_key_pem_tmp, certificate).
-        O objeto certificate pode ser passado a
-        ``extrair_cnpj_do_certificado_obj`` para obter o CNPJ sem recarregar
-        o .pfx.
-
-    Raises:
-        FileNotFoundError: Se o arquivo .pfx não existir no caminho informado.
-        ValueError: Se a senha estiver incorreta ou o certificado estiver vencido.
+    `/dev/shm` não existe em macOS (dev local de alguns agentes) nem em
+    alguns runners de CI containerizados. Quando indisponível, caímos para
+    ``tempfile.gettempdir()`` — seguro em VPS Linux de produção (nosso
+    target — ADR-005), mas registrado em debug para auditoria.
     """
-    if not os.path.isfile(cert_pfx_path):
-        raise FileNotFoundError(
-            f"Arquivo de certificado não encontrado: {cert_pfx_path}"
-        )
+    if os.path.isdir(_TMPFS_PREFERIDO) and os.access(_TMPFS_PREFERIDO, os.W_OK):
+        return _TMPFS_PREFERIDO
+    fallback = tempfile.gettempdir()
+    logger.debug(
+        "tmpfs '%s' indisponivel; usando fallback '%s' para PEM temporario.",
+        _TMPFS_PREFERIDO,
+        fallback,
+    )
+    return fallback
 
-    # --- Carregar o .pfx ---
-    with open(cert_pfx_path, "rb") as f:
-        pfx_data = f.read()
+
+def _gravar_pem_seguro(dados_pem: bytes, sufixo: str) -> str:
+    """Grava bytes PEM em tmpfs com permissão 0600 desde a criação do inode.
+
+    Usa ``O_CREAT|O_EXCL|O_WRONLY`` com mode 0o600 para evitar janela de
+    corrida onde outro processo no mesmo host poderia abrir o arquivo antes
+    do `chmod` (defense-in-depth — ADR-003).
+    """
+    diretorio = _escolher_dir_tmpfs()
+    # tempfile.mkstemp já cria com 0600 e garante nome único, mas não permite
+    # escolher o diretório de forma totalmente portável com os flags que
+    # queremos; usamos mkstemp + fchmod defensivo.
+    fd, caminho = tempfile.mkstemp(suffix=sufixo, dir=diretorio)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "wb") as f:
+            f.write(dados_pem)
+    except Exception:
+        # Se falhar na escrita, remove o inode vazio para não vazar arquivo.
+        try:
+            os.remove(caminho)
+        except OSError:
+            pass
+        raise
+    return caminho
+
+
+def _remover_silencioso(caminho: str) -> None:
+    """Remove um arquivo, logando apenas em debug se não existir."""
+    if not caminho:
+        return
+    try:
+        os.remove(caminho)
+        logger.debug("PEM temporario removido.")
+    except FileNotFoundError:
+        # Já removido — fluxo idempotente, OK.
+        pass
+    except OSError as exc:
+        # Nunca propaga: cleanup não pode mascarar a exceção original.
+        logger.warning("Falha ao remover PEM temporario: %s", exc)
+
+
+def _carregar_pfx(
+    pfx_bytes: bytes, pfx_password: str
+) -> tuple[object, x509.Certificate, list]:
+    """Carrega PFX a partir de bytes e devolve (private_key, cert, cadeia).
+
+    Não inclui o caminho do arquivo em nenhuma mensagem de erro (pode não
+    existir — PFX pode vir direto do banco cifrado). Também não inclui a
+    senha (obvio, mas reforçado aqui para auditoria de logs).
+    """
+    if not isinstance(pfx_bytes, (bytes, bytearray)):
+        raise TypeError("pfx_bytes deve ser bytes")
+    if not pfx_bytes:
+        raise ValueError("PFX vazio")
 
     try:
         private_key, certificate, additional_certs = pkcs12.load_key_and_certificates(
-            pfx_data, cert_password.encode()
+            pfx_bytes, pfx_password.encode()
         )
     except Exception as exc:
-        # A biblioteca cryptography levanta ValueError ou exceções internas
-        # quando a senha é inválida ou o arquivo está corrompido.
-        raise ValueError(
-            f"Senha incorreta para o certificado: {cert_pfx_path}"
-        ) from exc
+        # cryptography levanta ValueError/exceções internas para senha errada
+        # ou PFX corrompido. Mensagem neutra — sem path, sem senha, sem bytes.
+        raise ValueError("Senha incorreta ou PFX invalido") from exc
 
-    # --- Verificar validade do certificado ---
-    _verificar_validade(certificate, cert_pfx_path)
+    if certificate is None or private_key is None:
+        raise ValueError("PFX nao contem certificado ou chave privada")
 
-    # --- Serializar para PEM em memória ---
+    return private_key, certificate, additional_certs or []
+
+
+def _pem_bytes_from_pfx(
+    private_key: object,
+    certificate: x509.Certificate,
+    additional_certs: list,
+) -> tuple[bytes, bytes]:
+    """Serializa (cert + cadeia) e chave privada em PEM — em memória."""
     cert_pem = certificate.public_bytes(serialization.Encoding.PEM)
+    for extra in additional_certs:
+        cert_pem += extra.public_bytes(serialization.Encoding.PEM)
+
     key_pem = private_key.private_bytes(
         serialization.Encoding.PEM,
         serialization.PrivateFormat.TraditionalOpenSSL,
         serialization.NoEncryption(),
     )
+    return cert_pem, key_pem
 
-    # Incluir certificados intermediários se existirem
-    if additional_certs:
-        for extra in additional_certs:
-            cert_pem += extra.public_bytes(serialization.Encoding.PEM)
 
-    # --- Gravar PEMs em arquivos temporários ---
-    cert_tmp = _gravar_temporario(cert_pem, sufixo="_cert.pem")
-    key_tmp = _gravar_temporario(key_pem, sufixo="_key.pem")
-
-    # --- Montar a Session ---
+def _montar_session(cert_tmp: str, key_tmp: str) -> requests.Session:
+    """Monta ``requests.Session`` mTLS com timeout padrão."""
     session = requests.Session()
     session.cert = (cert_tmp, key_tmp)
     session.verify = True
@@ -171,9 +229,126 @@ def criar_session_cliente(
     adapter = _TimeoutAdapter(timeout=timeout_http)
     session.mount("https://", adapter)
     session.mount("http://", adapter)
+    return session
 
+
+@contextlib.contextmanager
+def mtls_session(
+    pfx_bytes: bytes, pfx_password: str
+) -> Iterator[requests.Session]:
+    """Context manager que expõe ``requests.Session`` mTLS a partir de PFX em memória.
+
+    Ciclo:
+      1. Carrega e valida o PFX (senha, expiração) direto dos bytes.
+      2. Materializa cert PEM (com cadeia) e key PEM em tmpfs (`/dev/shm`)
+         com permissão 0600.
+      3. Entrega a ``Session`` configurada para mTLS.
+      4. Ao sair do ``with`` — em sucesso OU exceção — fecha a session e
+         remove os dois PEMs. A limpeza nunca propaga exceção nova.
+
+    Args:
+        pfx_bytes: Conteúdo do .pfx já descriptografado (vindo do banco).
+        pfx_password: Senha do PFX. Nunca é logada.
+
+    Yields:
+        ``requests.Session`` pronta para chamadas mTLS. O objeto
+        ``x509.Certificate`` fica acessível em ``session.nfse_certificate``
+        para quem precisar (ex.: extrair CNPJ sem reabrir o PFX).
+
+    Raises:
+        ValueError: PFX vazio, senha incorreta, PFX corrompido ou certificado
+            vencido.
+        TypeError: ``pfx_bytes`` não é ``bytes``.
+    """
+    private_key, certificate, additional_certs = _carregar_pfx(
+        pfx_bytes, pfx_password
+    )
+    # path=None: mensagem de erro de cert vencido não referencia arquivo
+    # (PFX pode ter vindo direto do banco).
+    _verificar_validade(certificate, None)
+
+    cert_pem, key_pem = _pem_bytes_from_pfx(
+        private_key, certificate, additional_certs
+    )
+
+    cert_tmp = key_tmp = None
+    session: requests.Session | None = None
+    try:
+        cert_tmp = _gravar_pem_seguro(cert_pem, sufixo="_cert.pem")
+        key_tmp = _gravar_pem_seguro(key_pem, sufixo="_key.pem")
+        session = _montar_session(cert_tmp, key_tmp)
+        # Expõe o certificate para consumidores que precisem sem reabrir PFX.
+        setattr(session, "nfse_certificate", certificate)
+        logger.debug("Session mTLS criada (PFX em memoria).")
+        yield session
+    finally:
+        if session is not None:
+            try:
+                session.close()
+            except Exception as exc:  # noqa: BLE001 — cleanup não pode levantar
+                logger.warning("Falha ao fechar session mTLS: %s", exc)
+        if cert_tmp:
+            _remover_silencioso(cert_tmp)
+        if key_tmp:
+            _remover_silencioso(key_tmp)
+
+
+# ---------------------------------------------------------------------------
+# API legada: criar_session_cliente (wrapper de compat)
+# ---------------------------------------------------------------------------
+
+def criar_session_cliente(
+    cert_pfx_path: str,
+    cert_password: str,
+) -> tuple[requests.Session, str, str, x509.Certificate]:
+    """Wrapper de compat da API legada baseada em path de arquivo .pfx.
+
+    .. deprecated:: CORE-02
+        Novos chamadores devem usar ``mtls_session(pfx_bytes, senha)`` —
+        que carrega o PFX direto da memória (vindo do banco cifrado, sem
+        trampolim em disco) e garante cleanup via context manager.
+
+    Mantido enquanto ``batch_processor`` e ``diagnostico`` ainda operam com
+    paths do filesystem local. Delega a lógica de extração/serialização ao
+    mesmo caminho-de-código de ``mtls_session``, mas devolve a tupla
+    histórica ``(session, cert_tmp, key_tmp, certificate)`` e deixa o
+    cleanup por conta do chamador (``limpar_temporarios``).
+
+    Args:
+        cert_pfx_path: Caminho para o arquivo .pfx do cliente.
+        cert_password: Senha do arquivo .pfx.
+
+    Returns:
+        Tupla ``(session, caminho_cert_pem_tmp, caminho_key_pem_tmp, certificate)``.
+
+    Raises:
+        FileNotFoundError: Se o arquivo .pfx não existir no caminho informado.
+        ValueError: Se a senha estiver incorreta ou o certificado estiver vencido.
+    """
+    if not os.path.isfile(cert_pfx_path):
+        raise FileNotFoundError(
+            f"Arquivo de certificado não encontrado: {cert_pfx_path}"
+        )
+
+    with open(cert_pfx_path, "rb") as f:
+        pfx_data = f.read()
+
+    private_key, certificate, additional_certs = _carregar_pfx(
+        pfx_data, cert_password
+    )
+    # Path conhecido — mantém mensagem histórica de cert vencido.
+    _verificar_validade(certificate, cert_pfx_path)
+
+    cert_pem, key_pem = _pem_bytes_from_pfx(
+        private_key, certificate, additional_certs
+    )
+    cert_tmp = _gravar_pem_seguro(cert_pem, sufixo="_cert.pem")
+    key_tmp = _gravar_pem_seguro(key_pem, sufixo="_key.pem")
+
+    session = _montar_session(cert_tmp, key_tmp)
     logger.debug(
-        "Session mTLS criada para o certificado '%s'.", os.path.basename(cert_pfx_path)
+        "Session mTLS criada para o certificado '%s'.",
+        os.path.basename(cert_pfx_path),
     )
     return session, cert_tmp, key_tmp, certificate
 
@@ -439,8 +614,15 @@ def limpar_temporarios(cert_file_path: str, key_file_path: str) -> None:
 # Funções auxiliares privadas
 # ---------------------------------------------------------------------------
 
-def _verificar_validade(certificate: x509.Certificate, cert_pfx_path: str) -> None:
-    """Levanta ValueError se o certificado estiver vencido."""
+def _verificar_validade(
+    certificate: x509.Certificate, cert_pfx_path: str | None
+) -> None:
+    """Levanta ValueError se o certificado estiver vencido.
+
+    ``cert_pfx_path`` é opcional — quando o PFX vem direto de memória
+    (``mtls_session``) não há path associado, e a mensagem de erro omite o
+    sufixo ``: <path>`` do caminho legado.
+    """
     agora = datetime.now(tz=timezone.utc)
 
     # A partir da versão 42 da biblioteca cryptography, not_valid_after foi
@@ -453,9 +635,11 @@ def _verificar_validade(certificate: x509.Certificate, cert_pfx_path: str) -> No
 
     if agora > expiracao:
         data_formatada = expiracao.strftime("%d/%m/%Y")
-        raise ValueError(
-            f"Certificado vencido em {data_formatada}: {cert_pfx_path}"
-        )
+        if cert_pfx_path:
+            raise ValueError(
+                f"Certificado vencido em {data_formatada}: {cert_pfx_path}"
+            )
+        raise ValueError(f"Certificado vencido em {data_formatada}")
 
 
 def _gravar_temporario(dados_pem: bytes, sufixo: str) -> str:
