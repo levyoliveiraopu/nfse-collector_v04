@@ -41,6 +41,20 @@
   `apps/api/alembic/versions/`. Testes estaticos em `apps/api/tests/`
   e runbook manual de isolamento cross-tenant em `apps/api/README.md`
   (PR a abrir — Closes #13).
+- **DATA-03** — Schema de `executions` + `execution_items`:
+  migrations `0004_executions.py` (uma corrida de coleta por
+  tenant+company com FK composta para `companies`, indice
+  `(tenant_id, company_id, started_at DESC)`, CHECKs de
+  `trigger`/`status`/ordem do periodo/soma de itens, RLS) e
+  `0005_execution_items.py` (um item por NFS-e processada com FK
+  composta para `executions`, indices `(execution_id)` e
+  `(tenant_id, data_emissao)`, indice unico parcial
+  `(tenant_id, chave_nfse) WHERE chave_nfse IS NOT NULL`, RLS) em
+  `apps/api/alembic/versions/`. Testes estaticos em
+  `apps/api/tests/test_migration_0004.py` e `test_migration_0005.py`;
+  runbook manual de isolamento cross-tenant + EXPLAIN verde da query
+  de listagem por periodo em `apps/api/README.md`
+  (PR a abrir — Closes #14).
 - **API-03** — Middleware de tenant (GUC para RLS): dependencies
   `get_current_claims` / `assert_tenant_active` / `get_tenant_db` em
   `apps/api/api/deps.py`; endpoint `GET /auth/me` como prova de vida
@@ -232,6 +246,12 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
   `(tenant_id, cnpj)`, FK composta `(tenant_id, company_id)` e indice
   em `cert_not_after`. Tambem move DATA-01 de "Em Andamento" para
   "Concluidos" com referencia ao PR #95 (mergeado em main).
+- PR: (a abrir) — DATA-03: migrations `0004_executions` (FK composta
+  para `companies`, indice `(tenant_id, company_id, started_at DESC)`,
+  CHECKs de trigger/status/periodo/soma, RLS) e
+  `0005_execution_items` (FK composta para `executions`, indice
+  unico parcial em `(tenant_id, chave_nfse)`, RLS). Move DATA-03 de
+  "Proximas Destravadas" para "Em Andamento". Closes #14.
 - PR: (a abrir) — INFRA-02: runbook `infra/vps-docker.md` instalando
   Docker Engine + Compose v2 pelo repo oficial, adicionando `deploy` ao
   grupo `docker`, fixando log-rotation em `/etc/docker/daemon.json` e
