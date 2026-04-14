@@ -6,6 +6,7 @@ Segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- DS-03: `<AppShell>` em `apps/web-app/components/app-shell/` (sidebar colapsavel 256px/64px em desktop e drawer em <1024px, topbar fixa com breadcrumbs derivados de `usePathname`, tenant switcher placeholder, bell de notificacoes, theme toggle e user menu); dropdowns leves sem Radix (fecham em click-outside e Esc); rota `/dashboard` com layout que envolve children no shell + pagina de exemplo com KPIs e tabela placeholder; landmarks ARIA (`aside`/`header`/`main`/`nav`), skip-link "Pular para o conteudo" e `focus-visible:ring` em elementos interativos.
 - DATA-01: Alembic configurado em `apps/api/alembic/` + migration `0001_initial_identity.py` criando extensao `pgcrypto`, roles `app_admin` (BYPASSRLS) / `app_user` (NOBYPASSRLS), tabelas `tenants`, `users` e `tenant_users`, indices (`LOWER(email)` unico, `(tenant_id, role)`, `(user_id)`) e RLS com politicas em `tenants` e `tenant_users` via GUC `app.current_tenant`; `API_DATABASE_URL` em `config/.env.example`.
 - GOV-06: workflow `.github/workflows/ci.yml` com jobs `lint-python` (ruff), `test-python` (pytest), `lint-ts` (eslint + typecheck) em todo PR e push em `main`; cache pip/pnpm; `ruff.toml` conservador na raiz (regras E/F/W, E501 ignorada, isort desligado).
 - DOCS-03: runbook de credencial invalida em `docs/runbooks/credencial-invalida.md` e link no APP-06 para ocorrencias `CERT_EXPIRED`, `CRED_INVALID` e `CERT_REVOKED`.
