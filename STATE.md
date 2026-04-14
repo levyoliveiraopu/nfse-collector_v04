@@ -232,6 +232,23 @@
   `apps/api/alembic/versions/`. Testes estaticos em
   `apps/api/tests/test_migration_000{6,7,8}.py`
   (PR a abrir — Closes #15).
+- **API-05** — CRUD de `/companies`: router em
+  `apps/api/api/companies/` com `GET` paginado (filtros `status`/`uf`),
+  `GET /{id}`, `POST` (valida DV de CNPJ e aplica limite de plano via
+  `plans.limits.max_companies`), `PATCH` (CNPJ imutavel via
+  `extra=forbid`) e `DELETE` soft (grava `deleted_at`). Nova migration
+  `0015_companies_deleted_at.py` adiciona coluna `deleted_at
+  TIMESTAMPTZ` e troca `uq_companies_tenant_cnpj` por UNIQUE parcial
+  `WHERE deleted_at IS NULL` (permite reusar CNPJ apos soft-delete),
+  alem de indice parcial de listagem. RBAC da matriz
+  `docs/architecture/rbac-matrix.md`: leitura = todos; POST/PATCH =
+  `owner|admin|operator`; DELETE = `owner|admin`. Validador de CNPJ
+  (`companies/cnpj.py`) rejeita DV invalido e sequencias repetidas.
+  38 testes unitarios (CNPJ, schemas, migration estatica) + 16 testes
+  de integracao gated por `TEST_DATABASE_URL` cobrindo CRUD, cross-
+  tenant via RLS, RBAC (viewer -> 403), soft-delete idempotente,
+  reaproveitamento de CNPJ, filtros/paginacao e limite de plano
+  (PR a abrir — Closes #29).
 
 ## Concluidos
 
@@ -413,6 +430,16 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
   e roteiro do DoD incluindo rollback manual via `workflow_dispatch`.
   Move INFRA-09 de "bloqueadas" (dependias INFRA-02+GOV-06, ja
   concluidas) para "Em Andamento". Closes #11.
+- PR: (a abrir) — API-05: CRUD de `/companies` em
+  `apps/api/api/companies/` (router + `cnpj.py` validando DV + schemas
+  Pydantic com normalizacao de CNPJ/UF e `extra=forbid` em PATCH);
+  dependencies FastAPI `require_role` aplicadas pela matriz RBAC;
+  limite `plans.limits.max_companies` aplicado no POST; soft-delete via
+  `deleted_at`. Nova migration `0015_companies_deleted_at.py`
+  (coluna + UNIQUE parcial + indice de listagem). Router registrado em
+  `api/main.py` (OpenAPI `/docs`). 38 unit tests (CNPJ + schemas +
+  migration estatica) + 16 integracao gated por `TEST_DATABASE_URL`.
+  Move API-05 de "Bloqueadas" para "Em Andamento". Closes #29.
 - PR: (a abrir) — INFRA-07: stack de observabilidade
   (Loki 2.9 + Promtail + Grafana 10.4 + Uptime Kuma 1.23) em
   `infra/compose/docker-compose.obs.yml`, com configs versionados
