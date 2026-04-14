@@ -15,6 +15,28 @@
 
 ## Em Andamento
 
+- **DATA-07** — Seed de dev idempotente em
+  `apps/api/scripts/seed.py`: popula `plans` (`starter`/`pro`/`scale`
+  com limites `jsonb` e precos em centavos), tenant `demo` (slug
+  `demo`, plan `pro`, status `active`), user global `admin@demo.local`
+  (senha vinda de `API_SEED_ADMIN_PASSWORD`, fallback `demo12345`
+  apenas em `API_ENVIRONMENT=development`; aborta em staging/prod)
+  e membership `owner`. Todas as escritas usam
+  `ON CONFLICT ... DO UPDATE` (`plans.code`, `tenants.slug`,
+  expressao `LOWER(email)` em `users`, PK composta em
+  `tenant_users`), entao re-rodar nao duplica linhas. Usa
+  `get_admin_session()` (BYPASSRLS) por rodar sem
+  `app.current_tenant`. Invocavel via
+  `cd apps/api && python -m scripts.seed` (pacote `scripts/` com
+  `__init__.py`). 9 testes unitarios em
+  `apps/api/tests/test_seed.py` (constantes, limites jsonb,
+  fallback/abort da senha, `ON CONFLICT` nos 3 upserts) + 1 teste de
+  integracao gated por `TEST_DATABASE_URL` rodando `run_seed()` duas
+  vezes e validando idempotencia. Nova env
+  `API_SEED_ADMIN_PASSWORD` em `config/.env.example`. Nao insere
+  linha em `subscriptions` (billing adiado — ADR-004)
+  (PR a abrir — Closes #18).
+
 - **INFRA-07** — Stack de observabilidade minima em
   `infra/compose/docker-compose.obs.yml`: `loki` (v2.9, retencao 14d,
   filesystem/boltdb-shipper), `promtail` (coleta
@@ -361,6 +383,18 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-14
+- PR: (a abrir) — DATA-07: seed de dev idempotente em
+  `apps/api/scripts/seed.py` (plans `starter`/`pro`/`scale` +
+  tenant `demo` + user `admin@demo.local` + membership `owner`).
+  Todas as escritas usam `ON CONFLICT ... DO UPDATE`. Senha vem de
+  `API_SEED_ADMIN_PASSWORD` com fallback dev (`demo12345`) e abort
+  em staging/prod. Pacote `apps/api/scripts/` com `__init__.py`
+  destravando `python -m scripts.seed`. 9 testes unitarios + 1 de
+  integracao (idempotencia) gated por `TEST_DATABASE_URL` em
+  `apps/api/tests/test_seed.py`. Nova env
+  `API_SEED_ADMIN_PASSWORD` em `config/.env.example`. Nova secao
+  "Seeds de dev" em `apps/api/README.md`. Move DATA-07 de
+  "Bloqueadas" para "Em Andamento". Closes #18.
 - PR: (a abrir) — INFRA-07: stack de observabilidade
   (Loki 2.9 + Promtail + Grafana 10.4 + Uptime Kuma 1.23) em
   `infra/compose/docker-compose.obs.yml`, com configs versionados
