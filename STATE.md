@@ -41,6 +41,15 @@
   `apps/api/alembic/versions/`. Testes estaticos em `apps/api/tests/`
   e runbook manual de isolamento cross-tenant em `apps/api/README.md`
   (PR a abrir — Closes #13).
+- **API-03** — Middleware de tenant (GUC para RLS): dependencies
+  `get_current_claims` / `assert_tenant_active` / `get_tenant_db` em
+  `apps/api/api/deps.py`; endpoint `GET /auth/me` como prova de vida
+  (RLS-gated count em `tenant_users`); 15 testes unitarios e 6 de
+  integracao (gated por `TEST_DATABASE_URL`) em
+  `apps/api/tests/test_tenant_middleware*.py`; runbook manual em
+  `apps/api/README.md`. Tenant inexistente/`suspended`/`canceled` ->
+  403; token ausente/invalido -> 401 com `WWW-Authenticate: Bearer`
+  (PR a abrir — Closes #27).
 
 ## Concluidos
 
@@ -70,6 +79,22 @@
   `next lint` verdes (PR a abrir, issue #42).
 
 ## Concluidos
+
+- **DS-05** — Componente `KPIStatCard` em
+  `apps/web-app/components/ui/kpi-stat-card.tsx` (props `title`, `value`,
+  `deltaPercent?`, `trendData?`, `icon?`, `state?`, `hint?`,
+  `errorMessage?`): card com valor grande, delta colorido (success/
+  destructive/muted com seta Lucide), mini-sparkline via SVG inline
+  (sem Recharts — evita dep extra e `use client` obrigatorio) e estados
+  `ready`/`loading` (skeleton)/`empty` (valor `—`)/`error`
+  (AlertTriangle + mensagem). Demo no `/styleguide` com 7 cards (4 em
+  `ready` + loading/empty/error) via `app/styleguide/kpi-stat-card-demo.tsx`;
+  `app/dashboard/page.tsx` refatorado para consumir o componente.
+  Spec `components/ui/kpi-stat-card.test.tsx` com 7 snapshots cobrindo
+  ready (sem delta/sparkline, delta positivo, delta negativo, delta
+  zero), loading, empty e error, mais asserts de `aria-label`,
+  `aria-busy` e de que `trendData` com <2 pontos nao renderiza a
+  sparkline. Typecheck e `next lint` verdes (PR a abrir — Closes #44).
 
 - **DS-04** — Componente `StatusBadge` (10 variantes) em
   `apps/web-app/components/ui/status-badge.tsx` com `variant`
@@ -190,6 +215,13 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
   `<RequireAuth>`; spec Playwright local; envs
   `NEXT_PUBLIC_API_BASE_URL`/`API_BASE_URL` em `config/.env.example`.
   Move APP-01 de "Bloqueadas" para "Em Andamento". Closes #49.
+- PR: (a abrir) — API-03: middleware de tenant via dependencies FastAPI
+  (`get_current_claims`/`assert_tenant_active`/`get_tenant_db`) em
+  `apps/api/api/deps.py`, reusa `get_tenant_session` para `SET LOCAL
+  app.current_tenant` sem vazamento de GUC no pool; `GET /auth/me` como
+  prova de vida RLS-gated; 15 testes unitarios + 6 de integracao
+  (gated por `TEST_DATABASE_URL`); runbook manual de isolamento
+  cross-tenant no `apps/api/README.md`. Move API-03 para "Em Andamento".
 - PR: (a abrir) — API-02: autenticacao completa em
   `apps/api/api/auth/` (signup/login/refresh/logout), argon2id, JWT
   access 15min + refresh opaco 7d com rotacao e detecao de reuso,
@@ -208,6 +240,11 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 - PR: (a abrir) — DS-03: `<AppShell>` (sidebar colapsavel + topbar com
   breadcrumbs, tenant switcher, bell, theme toggle e user menu) e rota
   `/dashboard` consumindo o shell. Move DS-03 para "Em Andamento".
+- PR: (a abrir) — DS-05: componente `KPIStatCard` com estados
+  `ready`/`loading`/`empty`/`error`, delta colorido e mini-sparkline
+  em SVG inline; demo com 7 cards no `/styleguide` e refactor do
+  `/dashboard` para usar o componente; spec com 7 snapshots + asserts
+  de acessibilidade. Closes #44.
 - PR: (a abrir) — DS-04: componente `StatusBadge` com 10 variantes
   + tamanhos `sm`/`md` em `apps/web-app/components/ui/status-badge.tsx`,
   demo no `/styleguide` e primeiro spec (vitest + RTL) do `apps/web-app`

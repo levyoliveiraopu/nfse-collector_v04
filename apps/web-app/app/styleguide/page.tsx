@@ -1,4 +1,5 @@
 import { ThemeToggle } from "@/components/theme-toggle";
+import { KPIStatCardDemo } from "./kpi-stat-card-demo";
 import { StatusBadgeDemo } from "./status-badge-demo";
 
 const colorTokens: Array<{ name: string; varName: string }> = [
@@ -228,6 +229,13 @@ console.log(\`hello \${tenant}\`);`}
         description="DS-04 — 10 variantes para status de execucoes, credenciais e ocorrencias. Tamanhos sm e md. Tooltip via atributo title."
       >
         <StatusBadgeDemo />
+      </Section>
+
+      <Section
+        title="KPIStatCard"
+        description="DS-05 — card de indicador com valor, delta vs periodo anterior e mini-sparkline (SVG inline). Estados: ready / loading / empty / error."
+      >
+        <KPIStatCardDemo />
       </Section>
     </main>
   );

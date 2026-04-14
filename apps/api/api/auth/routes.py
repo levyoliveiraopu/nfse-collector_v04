@@ -24,7 +24,8 @@ from sqlalchemy.exc import IntegrityError
 
 from ..config import Settings, get_settings
 from ..db import get_admin_session
-from ..security.jwt import create_access_token
+from ..deps import assert_tenant_active, get_tenant_db
+from ..security.jwt import AccessClaims, create_access_token
 from ..security.password import hash_password, verify_password
 from ..security.tokens import (
     RefreshTokenError,
@@ -38,6 +39,7 @@ from .schemas import (
     LoginIn,
     LogoutIn,
     LogoutOut,
+    MeOut,
     RefreshIn,
     SignupIn,
 )
@@ -325,3 +327,31 @@ def logout(payload: LogoutIn) -> LogoutOut:
         ok = revoke_refresh_token(session, plain=payload.refresh_token)
     # Sempre 200, mesmo sem match — nao vazar se o token existia.
     return LogoutOut(revoked=ok)
+
+
+@router.get("/me", response_model=MeOut)
+def me(
+    claims: AccessClaims = Depends(assert_tenant_active),
+    db=Depends(get_tenant_db),
+) -> MeOut:
+    """Identidade corrente + prova de vida do middleware de tenant (API-03).
+
+    Responde 200 apenas quando:
+    - o JWT foi validado (`get_current_claims`);
+    - o tenant existe e nao esta suspenso/cancelado (`assert_tenant_active`);
+    - a sessao RLS-gated foi aberta (`get_tenant_db`) — a contagem em
+      `tenant_users` comprova que as politicas RLS enxergam somente o
+      tenant corrente.
+    """
+    count_row = db.execute(
+        text(
+            "SELECT COUNT(*) AS n FROM tenant_users WHERE user_id = :uid"
+        ),
+        {"uid": str(claims.sub)},
+    ).one()
+    return MeOut(
+        tenant_id=str(claims.tid),
+        user_id=str(claims.sub),
+        role=claims.role,
+        memberships_visible=int(count_row.n),
+    )
