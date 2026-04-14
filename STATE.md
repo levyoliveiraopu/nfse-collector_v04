@@ -21,6 +21,15 @@
   (NOBYPASSRLS), tabelas `tenants`, `users`, `tenant_users`, RLS +
   politicas em `tenants` e `tenant_users` via GUC `app.current_tenant`
   (PR a abrir, issue #12).
+- **DS-03** — Layout shell: componente `<AppShell>` em
+  `apps/web-app/components/app-shell/` com sidebar colapsavel
+  (256px/64px em desktop, drawer em <1024px), topbar fixa com
+  breadcrumbs (derivados de `usePathname`), tenant switcher placeholder,
+  bell de notificacoes, theme toggle e user menu; dropdowns leves sem
+  Radix (fecham em click-outside/Esc); rota `/dashboard` consumindo o
+  shell com KPIs e tabela placeholder; landmarks ARIA + skip-link
+  "Pular para o conteudo" + `focus-visible:ring`. Typecheck e
+  `next lint` verdes (PR a abrir, issue #42).
 
 ## Concluidos
 
@@ -127,6 +136,9 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-14
+- PR: (a abrir) — DS-03: `<AppShell>` (sidebar colapsavel + topbar com
+  breadcrumbs, tenant switcher, bell, theme toggle e user menu) e rota
+  `/dashboard` consumindo o shell. Move DS-03 para "Em Andamento".
 - PR: (a abrir) — DS-04: componente `StatusBadge` com 10 variantes
   + tamanhos `sm`/`md` em `apps/web-app/components/ui/status-badge.tsx`,
   demo no `/styleguide` e primeiro spec (vitest + RTL) do `apps/web-app`
