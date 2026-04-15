@@ -15,6 +15,10 @@
 
 ## Em Andamento
 
+- **DS-07** — Inputs especiais de formulario (FileDropzone,
+  SecretField, CNPJInput, PeriodPicker) em
+  `apps/web-app/components/ui/` (PR a abrir — Closes #46).
+
 ## Concluidos
 
 - **DATA-06** — Teste automatizado de isolamento cross-tenant: suite
