@@ -40,6 +40,8 @@ from tenacity import (
     wait_exponential,
 )
 
+from worker_core.nsu_tracker import NsuSource
+
 logger = logging.getLogger(__name__)
 
 # URLs base por ambiente
@@ -173,9 +175,10 @@ def buscar_lote_dfe(session: requests.Session, ultimo_nsu: int, cnpj: str) -> di
 def buscar_todos_dfe_novos(
     session: requests.Session,
     cnpj: str,
-    ultimo_nsu_salvo: int,
-    rate_limit_delay: int,
+    ultimo_nsu_salvo: int = 0,
+    rate_limit_delay: int = 0,
     max_documentos: int | None = None,
+    nsu_source: NsuSource | None = None,
 ) -> tuple[list[dict], int]:
     """Pagina a API ADN até esgotar os documentos disponíveis para o CNPJ.
 
@@ -188,9 +191,18 @@ def buscar_todos_dfe_novos(
         session:           Session mTLS configurada.
         cnpj:              CNPJ de 14 dígitos do contribuinte.
         ultimo_nsu_salvo:  NSU registrado na última execução bem-sucedida.
+                           Ignorado quando ``nsu_source`` é fornecido — nesse
+                           caso o valor vem de ``nsu_source.get(cnpj)``.
         rate_limit_delay:  Segundos a aguardar entre chamadas de paginação.
         max_documentos:    Limite máximo de documentos a buscar nesta execução.
                            ``None`` (padrão) significa sem limite.
+        nsu_source:        Implementação opcional de
+                           ``worker_core.nsu_tracker.NsuSource``. Se fornecida,
+                           ``get(cnpj)`` é usado como NSU inicial e
+                           ``set(cnpj, maior_nsu)`` é chamado ao fim da
+                           paginação (apenas se o NSU progrediu). Se ``None``,
+                           o comportamento legado é preservado: o chamador
+                           recebe ``maior_nsu`` no retorno e persiste por fora.
 
     Returns:
         Tupla ``(lista_dfe, maior_nsu)`` onde:
@@ -198,9 +210,14 @@ def buscar_todos_dfe_novos(
             pela API (objetos DistribuicaoNSU).
           - ``maior_nsu`` é o maior NSU encontrado (para persistir no estado).
     """
+    if nsu_source is not None:
+        nsu_inicial = nsu_source.get(cnpj)
+    else:
+        nsu_inicial = ultimo_nsu_salvo
+
     todos_dfe: list[dict] = []
-    nsu_atual = ultimo_nsu_salvo
-    maior_nsu = ultimo_nsu_salvo
+    nsu_atual = nsu_inicial
+    maior_nsu = nsu_inicial
 
     logger.info(
         "Iniciando busca de DFe — CNPJ=%s | NSU inicial=%d | limite=%s",
@@ -284,10 +301,13 @@ def buscar_todos_dfe_novos(
     logger.info(
         "Busca concluída — CNPJ=%s | NSU inicial=%d | NSU final=%d | total docs=%d",
         cnpj,
-        ultimo_nsu_salvo,
+        nsu_inicial,
         maior_nsu,
         len(todos_dfe),
     )
+
+    if nsu_source is not None and maior_nsu > nsu_inicial:
+        nsu_source.set(cnpj, maior_nsu)
 
     return todos_dfe, maior_nsu
 
