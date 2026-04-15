@@ -18,6 +18,7 @@ from .companies.credentials import router as credentials_router
 from .companies.routes import router as companies_router
 from .config import Settings, get_settings
 from .logging import configure_logging
+from .occurrences.routes import router as occurrences_router
 
 
 def _rate_limit_handler(request, exc: RateLimitExceeded):  # noqa: ARG001
@@ -67,6 +68,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(companies_router)
     app.include_router(credentials_router)
+    app.include_router(occurrences_router)
 
     return app
 
