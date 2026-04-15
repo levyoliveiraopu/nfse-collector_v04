@@ -212,6 +212,14 @@ Application Key foi restrita ao prefix `tenants/` (least privilege).
 
 ## 5. Checklist de Definition of Done (INFRA-06)
 
+> **Status em 2026-04-15:** parte automatizada entregue em PR #79;
+> os 7 itens `(owner)` abaixo **seguem em aberto** e o issue #8
+> permanece aberto ate a validacao manual do bucket B2. Consumidores
+> da infra (CORE-05 / API-06 / API-11 / INFRA-08) ja podem usar o
+> template de lifecycle, as variaveis `S3_*` e o smoke test versionados
+> no repo — mas o upload real contra o bucket so funciona apos o setup
+> manual descrito em §2.1–§2.5.
+
 - [x] Template de lifecycle commitado (`infra/s3-lifecycle.json`).
 - [x] Variaveis de ambiente documentadas (`config/.env.example`).
 - [x] Runbook documentado (este arquivo).
