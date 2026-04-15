@@ -1,6 +1,10 @@
 import { ThemeToggle } from "@/components/theme-toggle";
+import { CNPJInputDemo } from "./cnpj-input-demo";
 import { DataTableDemo } from "./data-table-demo";
+import { FileDropzoneDemo } from "./file-dropzone-demo";
 import { KPIStatCardDemo } from "./kpi-stat-card-demo";
+import { PeriodPickerDemo } from "./period-picker-demo";
+import { SecretFieldDemo } from "./secret-field-demo";
 import { StatusBadgeDemo } from "./status-badge-demo";
 
 const colorTokens: Array<{ name: string; varName: string }> = [
@@ -244,6 +248,34 @@ console.log(\`hello \${tenant}\`);`}
         description="DS-06 — tabela reutilizavel server-side (TanStack Table + react-query) com filtros (texto/select/date-range), saved filters, paginacao, ordenacao, export CSV e preservacao de estado na URL. Dataset de demo com 10.000 linhas mockadas."
       >
         <DataTableDemo />
+      </Section>
+
+      <Section
+        title="CNPJInput"
+        description="DS-07 — input mascarado 00.000.000/0000-00 com validacao de digito verificador (mesmo algoritmo do backend em apps/api/api/companies/cnpj.py). Emite valor normalizado (so digitos) via onChange."
+      >
+        <CNPJInputDemo />
+      </Section>
+
+      <Section
+        title="SecretField"
+        description="DS-07 — input type=password com toggle mostrar/esconder e botao copiar (navigator.clipboard com fallback execCommand). Pensado para senhas de PFX e tokens de API."
+      >
+        <SecretFieldDemo />
+      </Section>
+
+      <Section
+        title="FileDropzone"
+        description="DS-07 — drag&drop + clique com validacao de accept (extensao/MIME) e maxSize antes de chamar onUpload. Usado no upload de PFX A1 em APP-04."
+      >
+        <FileDropzoneDemo />
+      </Section>
+
+      <Section
+        title="PeriodPicker"
+        description="DS-07 — 4 presets (mes atual, mes anterior, ultimos 7/30 dias) + range custom com dois input[type=date]. Datas em UTC para evitar off-by-one por timezone."
+      >
+        <PeriodPickerDemo />
       </Section>
     </main>
   );

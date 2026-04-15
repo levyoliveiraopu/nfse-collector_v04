@@ -15,6 +15,10 @@
 
 ## Em Andamento
 
+- **DS-07** — Inputs especiais de formulario (FileDropzone,
+  SecretField, CNPJInput, PeriodPicker) em
+  `apps/web-app/components/ui/` (PR a abrir — Closes #46).
+
 ## Concluidos
 
 - **CORE-03** — Refactor: NSU via callback (sem arquivo). Introduz em
