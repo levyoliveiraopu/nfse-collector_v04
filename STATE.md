@@ -15,6 +15,30 @@
 
 ## Em Andamento
 
+- **APP-10** — Pagina `/assinatura` (placeholder sem gateway, ADR-004):
+  rota `apps/web-app/app/dashboard/assinatura/page.tsx` (server
+  component) renderiza plano atribuido + status via `<StatusBadge>`,
+  tres `UsageCard` locais (CNPJs, Execucoes no mes, Usuarios) com
+  contador `used/limit`, percentual, `role="progressbar"` e tom
+  ok/warn/full (>=80% warn, 100% full — usuarios 5/5 no mock), callout
+  "Para alterar plano, entre em contato com o suporte" com botoes
+  WhatsApp + email (placeholders ate SITE-* destravar nome comercial)
+  e secao "Historico de faturas" vazia. **Sem** botao de upgrade —
+  cobranca manual reforcada (ADR-004). Dados de teste isolados em
+  `apps/web-app/lib/subscription/mock.ts` (`SubscriptionSnapshot` com
+  shape alinhado a `plans.limits` do seed DATA-07 e `plans.code`
+  tipado como `starter|pro|scale`) para que um endpoint futuro troque
+  a funcao `getSubscriptionSnapshot()` sem tocar no layout. Novo item
+  `Assinatura` (icone `CreditCard`) em
+  `apps/web-app/components/app-shell/nav-items.ts`. Spec vitest
+  `app/dashboard/assinatura/page.test.tsx` (6 casos): render do plano
+  + badge `Ativo`, tres cards com `used/limit` + progressbar, card de
+  usuarios marcado `data-tone="full"` com 5/5, mensagem de suporte +
+  links `wa.me`/`mailto`, ausencia defensiva de botoes/links
+  "upgrade|fazer upgrade|assinar|mudar plano" (prova do DoD) e
+  placeholder vazio de faturas. `tsc --noEmit`, `next lint` e
+  `vitest run` = 128 testes verdes (PR a abrir — Closes #58).
+
 - **DS-07** — Inputs especiais de formulario (FileDropzone,
   SecretField, CNPJInput, PeriodPicker) em
   `apps/web-app/components/ui/` (PR a abrir — Closes #46).
@@ -535,6 +559,24 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-15
+- PR: (a abrir) — APP-10: pagina `/assinatura` placeholder sem
+  gateway. Nova rota `apps/web-app/app/dashboard/assinatura/page.tsx`
+  (server component) mostra plano atribuido + status (`<StatusBadge>`),
+  tres cards de uso (CNPJs, Execucoes no mes, Usuarios) com
+  `used/limit` + `role="progressbar"` + tom ok/warn/full, mensagem
+  "Para alterar plano, entre em contato com o suporte" com links
+  WhatsApp + email (placeholders ate SITE-*) e placeholder vazio de
+  historico de faturas. **Sem** botao de upgrade (ADR-004). Dados
+  de teste em `apps/web-app/lib/subscription/mock.ts` com shape
+  alinhado a `plans.limits` (DATA-07) para plug-in do endpoint
+  futuro. Novo item `Assinatura` (icone `CreditCard`) em
+  `components/app-shell/nav-items.ts`. Spec
+  `app/dashboard/assinatura/page.test.tsx` (6 casos: plano+badge,
+  3 cards com progressbar, tone=full em 5/5, links wa.me/mailto,
+  ausencia defensiva de CTAs de upgrade, placeholder vazio de
+  faturas). `tsc --noEmit`, `next lint` e `vitest run` verdes
+  (128 testes). APP-10 estava `ready` apos DS-03 (ja concluido) —
+  move para "Em Andamento". Closes #58.
 - PR: (a abrir) — CORE-03: refactor do `nsu_tracker` para callbacks.
   Novo protocolo `NsuSource` (`get`/`set`) em
   `packages/worker-core/worker_core/nsu_tracker.py` com duas
