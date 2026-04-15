@@ -15,6 +15,38 @@
 
 ## Em Andamento
 
+- **API-11** — `/files` (listar + URL pre-assinada 1h): novo pacote
+  `apps/api/api/files/` com `routes.py` (`GET /files` paginado com
+  filtros `kind`/`company`/`from`/`to`; `GET /files/{id}/url` gera
+  presigned 3600s) e `schemas.py` (`FileKind`, `FileOut`, `FileListOut`,
+  `FileUrlOut`). Novo helper `generate_presigned_get_url` em
+  `apps/api/api/storage.py` (usa `boto3.generate_presigned_url` com
+  `ExpiresIn=3600` fixo; TTL exposto como argumento mas clampado em
+  0 < s <= 7d). Filtro por `company` usa JOIN em `executions` via
+  `files.source_execution_id` — files sem execution nao aparecem
+  quando o filtro e usado (comportamento desejado). RBAC: leitura e
+  geracao de URL liberadas para todos os papeis (viewer incluido),
+  alinhado com a linha "Download de XLSX / artefatos" da matriz.
+  Cross-tenant cai naturalmente em 404 via RLS de `files` (policy
+  `files_isolation` da migration `0011_files`). Audit log
+  `file.download_url` grava metadata publica (`file_id`, `kind`,
+  `object_key`, `bytes`, `expires_in`) e **nunca** a URL em si — a
+  URL assinada e credencial temporaria. Router registrado em
+  `apps/api/api/main.py`. 4 unit tests em
+  `apps/api/tests/test_storage_presigned.py` (URL contem
+  `X-Amz-Signature`/`X-Amz-Expires=3600`, default 1h, rejeita key
+  vazia, rejeita TTL invalido) + 12 integracao gated por
+  `TEST_DATABASE_URL` + moto em
+  `apps/api/tests/test_files_routes_integration.py` (isolamento por
+  tenant, filtros kind/company/periodo, paginacao, viewer consegue
+  ler, URL tem `expires_in=3600`, cross-tenant -> 404, audit grava
+  sem vazar URL, 404 para id inexistente, viewer consegue gerar URL).
+  `pytest apps/api`: 153 passed + 79 skipped (todos os testes novos
+  de unit passam). Sem migration nova. DoD manual "URL funciona no
+  navegador" valida apos setup do bucket B2 real pelo owner (rastreio
+  em #8) — moto nao serve HTTP, apenas assina URL estruturalmente
+  (PR a abrir — Closes #35).
+
 - **DS-07** — Inputs especiais de formulario (FileDropzone,
   SecretField, CNPJInput, PeriodPicker) em
   `apps/web-app/components/ui/` (PR a abrir — Closes #46).
@@ -510,12 +542,13 @@
   `proxy_pass` em `infra/nginx/sites-available/{app,api}.conf`.
 
 > INFRA-05 saiu de "Proximas Destravadas" para "Em Andamento" nesta
-> atualizacao. CORE-05, API-06, API-11 e INFRA-08 continuam parcialmente
+> atualizacao. CORE-05, API-06 e INFRA-08 continuam parcialmente
 > bloqueados pelas dependencias de codigo (CORE-01 / API-05 / DATA-05 /
 > INFRA-05); a parte automatizada de INFRA-06 (template de lifecycle,
 > variaveis `S3_*`, smoke test) ja esta disponivel para esses tickets
 > consumirem, e o setup manual do bucket B2 segue em aberto no issue #8
-> sem bloquear o desenvolvimento das integracoes.
+> sem bloquear o desenvolvimento das integracoes. API-11 sai desta lista
+> e entra em "Em Andamento" nesta atualizacao.
 
 ## Bloqueadas
 
@@ -535,6 +568,22 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-15
+- PR: (a abrir) — API-11: `/files` com listagem paginada e URL
+  pre-assinada (1h). Novo pacote `apps/api/api/files/`
+  (`schemas.py` + `routes.py`) expondo `GET /files` com filtros
+  `kind`/`company`/`from`/`to` + paginacao e
+  `GET /files/{id}/url` gerando presigned GET de 3600s e auditando
+  `file.download_url` sem gravar a URL em si. Filtro por `company`
+  usa JOIN em `executions` via `files.source_execution_id`. Novo
+  helper `generate_presigned_get_url` em `apps/api/api/storage.py`
+  (TTL clampado em 0 < s <= 7d). RBAC: leitura liberada para todos
+  os papeis (viewer incluido) alinhado com a matriz. Cross-tenant
+  -> 404 via RLS de `files`. Router registrado em
+  `apps/api/api/main.py`. 4 unit tests + 12 integracao gated por
+  `TEST_DATABASE_URL` + moto. `pytest apps/api`: 153 passed + 79
+  skipped. Sem migration nova. Move API-11 de "Proximas
+  Destravadas" para "Em Andamento". DoD manual (URL no navegador)
+  fica para owner apos setup real do B2. Closes #35.
 - PR: (a abrir) — CORE-03: refactor do `nsu_tracker` para callbacks.
   Novo protocolo `NsuSource` (`get`/`set`) em
   `packages/worker-core/worker_core/nsu_tracker.py` com duas
