@@ -17,6 +17,36 @@
 
 ## Concluidos
 
+- **CORE-03** — Refactor: NSU via callback (sem arquivo). Introduz em
+  `packages/worker-core/worker_core/nsu_tracker.py` o protocolo
+  `NsuSource` (`typing.Protocol` runtime-checkable, metodos
+  `get(cnpj) -> int` e `set(cnpj, nsu)`) e duas implementacoes:
+  `InMemoryNsuSource` (dict em memoria, `set` respeita "NSU nunca
+  regride", expoe `snapshot()` para testes) e `FileNsuSource` (wrapper
+  sobre `carregar_estado`/`salvar_estado`/`atualizar_nsu` preservando
+  escrita atomica `.tmp` + `os.replace` e nao regressao; `set` so
+  regrava o arquivo quando o dict muda de fato). As funcoes legadas
+  (`carregar_estado`/`salvar_estado`/`obter_ultimo_nsu`/`atualizar_nsu`/
+  `resetar_cnpj`) permanecem intactas para compat com `main.py --reset-nsu`
+  e `src/diagnostico.py`. `worker_core.fetcher.buscar_todos_dfe_novos`
+  ganha kwarg opcional `nsu_source: NsuSource | None = None`: quando
+  fornecido, usa `source.get(cnpj)` como NSU inicial e chama
+  `source.set(cnpj, maior_nsu)` no fim (so se o NSU progrediu);
+  sem `nsu_source`, comportamento legado 100% preservado (o
+  `batch_processor` e o CLI nao mudam de assinatura neste ticket). Tests
+  novos: 16 casos em `tests/test_nsu_tracker.py` (InMemory/File — default
+  zero, persistencia cross-instance, nao regressao em memoria e em disco,
+  isolamento por CNPJ, `isinstance(..., NsuSource)`, nao-reescrita quando
+  valor nao progride) e 5 casos em `tests/test_nfse_fetcher.py` cobrindo
+  as 4 combinacoes (`get` define NSU inicial; `set` persistido com
+  progresso; `set` nao chamado sem progresso; comportamento legado sem
+  source) + integracao real com `InMemoryNsuSource`. `pytest tests/` em
+  108 testes verdes. Re-exports em `worker_core/__init__.py`
+  (`NsuSource`, `InMemoryNsuSource`, `FileNsuSource`) e nota no
+  `packages/worker-core/README.md`. Adapter DB-backed fica para API-13
+  conforme previsto no ticket
+  (PR a abrir — Closes #21).
+
 - **DATA-06** — Teste automatizado de isolamento cross-tenant: suite
   `apps/api/tests/test_rls_isolation.py` com 31 casos parametrizados
   que semeiam 2 tenants (A e B) em todas as 14 tabelas RLS (`tenants`,
@@ -464,6 +494,24 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-15
+- PR: (a abrir) — CORE-03: refactor do `nsu_tracker` para callbacks.
+  Novo protocolo `NsuSource` (`get`/`set`) em
+  `packages/worker-core/worker_core/nsu_tracker.py` com duas
+  implementacoes padrao — `InMemoryNsuSource` (estado em dict, usada em
+  testes e como buffer do worker DB-backed) e `FileNsuSource` (compat
+  com `config/estado/ultimo_nsu.json`, preserva escrita atomica e a
+  regra "NSU nunca regride"). `worker_core.fetcher.buscar_todos_dfe_novos`
+  aceita `nsu_source: NsuSource | None = None`: quando fornecido, o
+  fetcher le/escreve o NSU pelo source; sem ele, comportamento legado
+  (batch_processor intocado). Funcoes legadas mantidas para
+  `main.py --reset-nsu` e `src/diagnostico.py`. 16 novos testes em
+  `tests/test_nsu_tracker.py` (InMemory/File) + 5 em
+  `tests/test_nfse_fetcher.py` (integracao `fetcher` x `NsuSource`).
+  `pytest tests/` = 108 passed. Re-exports em
+  `packages/worker-core/worker_core/__init__.py` e nota no
+  `packages/worker-core/README.md`. Adapter DB-backed fica para
+  API-13. Move CORE-03 de "Bloqueadas" (dependia de CORE-01, ja
+  mergeado em PR #80) para "Concluidos". Closes #21.
 - PR: (a abrir) — INFRA-06 (follow-up administrativo): atualiza entrada
   em "Concluidos" com a descoberta do layout `tenants/` (90d) +
   `tenants-exports/` (30d) imposta pelo prefix-literal do B2 e explicita
