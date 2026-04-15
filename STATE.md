@@ -18,6 +18,43 @@
 - **DS-07** — Inputs especiais de formulario (FileDropzone,
   SecretField, CNPJInput, PeriodPicker) em
   `apps/web-app/components/ui/` (PR a abrir — Closes #46).
+- **API-06** — Upload `/companies/{id}/credential` com cifra
+  AES-256-GCM por tenant: novo `apps/api/api/crypto.py` (envelope
+  encryption KEK -> HKDF-SHA256 -> DEK por tenant; ciphertext = `\x01`
+  + nonce(12B) + GCM ct+tag, AAD = bytes do `tenant_id`); novo
+  `apps/api/api/storage.py` (boto3 S3-compat, `put`/`get`/`delete`
+  sob prefix dedicado `S3_CREDENTIALS_PREFIX=tenants-credentials/`,
+  **sem lifecycle** — credencial e viva); router em
+  `apps/api/api/companies/credentials.py` (POST multipart `pfx`+
+  `password` para `owner|admin`, parseia PKCS#12, extrai
+  fingerprint/validade/CN, valida CN vs CNPJ com warn em mismatch,
+  cifra senha + PFX, INSERE em `company_credentials` revogando ativas
+  anteriores na mesma transacao, PUT no S3 com rollback em falha,
+  audit_log `credential.upload` sem segredo; DELETE marca status
+  `revoked`, remove blob best-effort, audita `credential.revoke`).
+  Settings novas: `API_CREDENTIAL_KEK_B64` (obrigatorio em
+  staging/prod via `model_validator`), `API_CREDENTIAL_MAX_PFX_BYTES`
+  (default 1 MiB) e `S3_CREDENTIALS_PREFIX`. Runbook
+  `infra/s3-bucket.md` atualizado: layout passa a expor
+  `tenants-credentials/` sem rule de TTL e Application Key precisa
+  cobrir os 3 prefixos (ou key dedicada por prefix). Deps novas:
+  `cryptography>=42`, `boto3>=1.34`, `python-multipart>=0.0.9` (run)
+  + `moto[s3]>=5.0` (dev). 14 testes unitarios novos
+  (`test_crypto.py` cobre round-trip, AAD, tampering, KEK
+  ausente/invalida; `test_storage_credentials.py` cobre layout de
+  chave, round-trip via moto e `StorageError` em bucket inexistente)
+  + suite de integracao `test_credentials_routes_integration.py`
+  (gated `TEST_DATABASE_URL` + `moto`) cobrindo upload feliz com
+  audit, decifragem ponta-a-ponta abrindo o PFX (DoD "worker decifra
+  e usa"), senha errada -> 400, PFX > teto -> 413, cross-tenant ->
+  404, viewer -> 403, revogacao limpa o blob e re-upload revoga o
+  anterior, mais ajuste cirurgico em `test_seed.py` para tambem setar
+  `API_CREDENTIAL_KEK_B64` ao testar abort em production. `pytest`
+  local: 163 passed + 68 skipped. Execucao do DoD manual (criar 3a
+  Application Key ou rever a existente para enxergar
+  `tenants-credentials/`) fica para o owner — sem isso, o PUT real
+  contra B2 retorna 401; o smoke test esta documentado no runbook
+  (PR a abrir — Closes #30).
 
 ## Concluidos
 

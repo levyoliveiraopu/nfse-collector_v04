@@ -69,13 +69,20 @@ Nenhuma credencial e commitada. Nenhum bucket real e criado pelo agente.
 > em `tenants/{tid}/exports/`.
 >
 > Layout efetivo de chaves no bucket:
-> - `tenants/{tid}/executions/{eid}/{nsu}.xml`    -> 90d
-> - `tenants/{tid}/credentials/{cid}.pfx.enc`     -> 90d (tolerado)
-> - `tenants-exports/{tid}/{file_id}.{ext}`       -> 30d
+> - `tenants/{tid}/executions/{eid}/{nsu}.xml`    -> 90d  (lifecycle 1)
+> - `tenants-exports/{tid}/{file_id}.{ext}`       -> 30d  (lifecycle 2)
+> - `tenants-credentials/{tid}/{cid}.pfx.enc`     -> **sem TTL** (API-06)
 >
 > Quando os tickets de worker/API implementarem upload (CORE-05,
-> API-06, API-11), eles devem usar as variaveis `S3_EXECUTIONS_PREFIX`
-> e `S3_EXPORTS_PREFIX` (ver secao 3) em vez de montar paths fixos.
+> API-06, API-11), eles devem usar as variaveis `S3_EXECUTIONS_PREFIX`,
+> `S3_EXPORTS_PREFIX` e `S3_CREDENTIALS_PREFIX` (ver secao 3) em vez de
+> montar paths fixos.
+>
+> **API-06 — `tenants-credentials/`:** este prefix hospeda os PFX
+> cifrados das companies. **Nao deve ter regra de lifecycle**, porque
+> credenciais sao vivas enquanto a company existir; apaga-las por TTL
+> quebraria o coletor sem aviso. O passo 2.3 abaixo deixa este prefix
+> intencionalmente fora das duas rules do JSON versionado.
 
 **Aplicar via B2 CLI (recomendado — usa o JSON versionado):**
 
@@ -107,7 +114,10 @@ b2 bucket update \
 4. **Update Bucket**.
 
 Confirme no console: **Buckets -> nfse-saas-prod -> Lifecycle Settings**
-deve mostrar exatamente duas regras com os prefixos e janelas acima.
+deve mostrar exatamente **duas** regras com os prefixos e janelas acima.
+Especificamente: **nao crie** uma terceira regra cobrindo
+`tenants-credentials/` — esse prefix recebe os PFX cifrados (API-06) e
+**precisa ficar sem TTL**.
 
 ### 2.4 Criar Application Key (least privilege)
 
@@ -117,8 +127,13 @@ deve mostrar exatamente duas regras com os prefixos e janelas acima.
    - **Allow access to Bucket(s):** `nfse-saas-prod` (somente este).
    - **Type of Access:** `Read and Write`.
    - **Allow List All Bucket Names:** **desmarcado** (least privilege).
-   - **File name prefix:** `tenants/`
-     (chave nao consegue ler/escrever fora de `tenants/`).
+   - **File name prefix:** *(em branco)* — a key precisa enxergar
+     `tenants/` (XML), `tenants-exports/` (exports) e
+     `tenants-credentials/` (PFX cifrados — API-06). Para isolamento
+     mais forte, gere **uma key por prefix** e mantenha o `prefix`
+     restrito; nesse caso configure `S3_KEY_ID`/`S3_APPLICATION_KEY`
+     da key que cobre `tenants-credentials/` na API e a do worker
+     com o prefix `tenants/`.
    - **Duration:** em branco (sem expiracao) ou 365 dias
      (se optar por rotacao anual, crie lembrete no calendario).
 3. **Create New Key**.
@@ -157,6 +172,7 @@ S3_APPLICATION_KEY=
 S3_FORCE_PATH_STYLE=true
 S3_EXECUTIONS_PREFIX=tenants/
 S3_EXPORTS_PREFIX=tenants-exports/
+S3_CREDENTIALS_PREFIX=tenants-credentials/
 ```
 
 - `S3_ENDPOINT` — URL completa do endpoint regional do bucket.
