@@ -284,3 +284,169 @@ class TestMaxNsuDoLote:
     def test_sem_campo_nsu(self):
         docs = [{"ChaveAcesso": "abc"}, {"ChaveAcesso": "def"}]
         assert nfse_fetcher._max_nsu_do_lote(docs) == 0
+
+
+# ---------------------------------------------------------------------------
+# buscar_todos_dfe_novos com NsuSource injetado (CORE-03)
+# ---------------------------------------------------------------------------
+
+
+class _StubSource:
+    """NsuSource mínimo para tests — registra chamadas feitas pelo fetcher."""
+
+    def __init__(self, inicial: int = 0) -> None:
+        self._estado: dict[str, int] = {}
+        self._inicial = inicial
+        self.gets: list[str] = []
+        self.sets: list[tuple[str, int]] = []
+
+    def get(self, cnpj: str) -> int:
+        self.gets.append(cnpj)
+        return self._estado.get(cnpj, self._inicial)
+
+    def set(self, cnpj: str, nsu: int) -> None:
+        self.sets.append((cnpj, nsu))
+        atual = self._estado.get(cnpj, 0)
+        if nsu > atual:
+            self._estado[cnpj] = nsu
+
+
+class TestBuscarTodosDfeNovosComNsuSource:
+    def test_get_define_nsu_inicial(self, monkeypatch):
+        """Quando `nsu_source` é passado, o fetcher consulta get() em vez de usar ultimo_nsu_salvo."""
+        source = _StubSource(inicial=500)
+        chamadas: list[int] = []
+
+        def fake_buscar_lote(session, ultimo_nsu, cnpj):
+            chamadas.append(ultimo_nsu)
+            return {"StatusProcessamento": "NENHUM_DOCUMENTO_LOCALIZADO", "LoteDFe": []}
+
+        import worker_core.fetcher as wc_fetcher
+
+        monkeypatch.setattr(wc_fetcher, "buscar_lote_dfe", fake_buscar_lote)
+
+        lista, maior = nfse_fetcher.buscar_todos_dfe_novos(
+            session=None,
+            cnpj="12345678000199",
+            ultimo_nsu_salvo=0,  # ignorado quando source é passado
+            rate_limit_delay=0,
+            nsu_source=source,
+        )
+
+        assert chamadas == [500]
+        assert source.gets == ["12345678000199"]
+        assert lista == []
+        assert maior == 500
+        # Sem progressão, não deve persistir.
+        assert source.sets == []
+
+    def test_set_persiste_quando_nsu_progride(self, monkeypatch):
+        source = _StubSource(inicial=100)
+        lotes = iter([
+            {
+                "StatusProcessamento": "DOCUMENTOS_LOCALIZADOS",
+                "LoteDFe": [
+                    {"NSU": 150, "TipoDocumento": "NFSE", "ChaveAcesso": "c1"},
+                    {"NSU": 200, "TipoDocumento": "NFSE", "ChaveAcesso": "c2"},
+                ],
+            },
+            {"StatusProcessamento": "NENHUM_DOCUMENTO_LOCALIZADO", "LoteDFe": []},
+        ])
+
+        import worker_core.fetcher as wc_fetcher
+
+        monkeypatch.setattr(
+            wc_fetcher,
+            "buscar_lote_dfe",
+            lambda session, nsu, cnpj: next(lotes),
+        )
+
+        lista, maior = nfse_fetcher.buscar_todos_dfe_novos(
+            session=None,
+            cnpj="12345678000199",
+            rate_limit_delay=0,
+            nsu_source=source,
+        )
+
+        assert maior == 200
+        assert len(lista) == 2
+        assert source.sets == [("12345678000199", 200)]
+
+    def test_set_nao_chamado_sem_progresso(self, monkeypatch):
+        """Se `maior_nsu` não avança, o fetcher não chama set()."""
+        source = _StubSource(inicial=300)
+        import worker_core.fetcher as wc_fetcher
+
+        monkeypatch.setattr(
+            wc_fetcher,
+            "buscar_lote_dfe",
+            lambda session, nsu, cnpj: {
+                "StatusProcessamento": "NENHUM_DOCUMENTO_LOCALIZADO",
+                "LoteDFe": [],
+            },
+        )
+
+        nfse_fetcher.buscar_todos_dfe_novos(
+            session=None,
+            cnpj="12345678000199",
+            rate_limit_delay=0,
+            nsu_source=source,
+        )
+
+        assert source.sets == []
+
+    def test_sem_nsu_source_comportamento_legado(self, monkeypatch):
+        """Sem `nsu_source`, usa `ultimo_nsu_salvo` e não tenta persistir."""
+        chamadas: list[int] = []
+
+        def fake_buscar_lote(session, ultimo_nsu, cnpj):
+            chamadas.append(ultimo_nsu)
+            return {"StatusProcessamento": "NENHUM_DOCUMENTO_LOCALIZADO", "LoteDFe": []}
+
+        import worker_core.fetcher as wc_fetcher
+
+        monkeypatch.setattr(wc_fetcher, "buscar_lote_dfe", fake_buscar_lote)
+
+        lista, maior = nfse_fetcher.buscar_todos_dfe_novos(
+            session=None,
+            cnpj="12345678000199",
+            ultimo_nsu_salvo=777,
+            rate_limit_delay=0,
+        )
+
+        assert chamadas == [777]
+        assert maior == 777
+        assert lista == []
+
+    def test_integracao_com_in_memory_nsu_source(self, monkeypatch):
+        """InMemoryNsuSource real deve persistir o progresso do fetcher."""
+        from worker_core.nsu_tracker import InMemoryNsuSource
+
+        source = InMemoryNsuSource({"12345678000199": 50})
+        lotes = iter([
+            {
+                "StatusProcessamento": "DOCUMENTOS_LOCALIZADOS",
+                "LoteDFe": [
+                    {"NSU": 80, "TipoDocumento": "NFSE"},
+                    {"NSU": 120, "TipoDocumento": "NFSE"},
+                ],
+            },
+            {"StatusProcessamento": "NENHUM_DOCUMENTO_LOCALIZADO", "LoteDFe": []},
+        ])
+        import worker_core.fetcher as wc_fetcher
+
+        monkeypatch.setattr(
+            wc_fetcher,
+            "buscar_lote_dfe",
+            lambda session, nsu, cnpj: next(lotes),
+        )
+
+        _, maior = nfse_fetcher.buscar_todos_dfe_novos(
+            session=None,
+            cnpj="12345678000199",
+            rate_limit_delay=0,
+            nsu_source=source,
+        )
+
+        assert maior == 120
+        assert source.get("12345678000199") == 120
