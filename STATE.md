@@ -379,10 +379,19 @@
 - **CORE-01** — Motor ADN legado extraido de `src/` para pacote Python
   instalavel em `packages/worker-core/`; `src/` vira shim retro-compativel
   (PR #80).
-- **INFRA-06** — Bucket S3 (Backblaze B2): template de lifecycle,
-  `.env.example`, runbook manual e smoke test prontos; aplicacao no
-  console/CLI da Backblaze e geracao da Application Key ficam a cargo
-  do owner (ver `infra/s3-bucket.md` secao 2).
+- **INFRA-06** — Bucket S3 (Backblaze B2): parte automatizada entregue
+  em PR #79 (template de lifecycle em `infra/s3-lifecycle.json`, variaveis
+  `S3_*` em `config/.env.example`, smoke test em
+  `infra/scripts/s3-smoke-test.sh`, runbook em `infra/s3-bucket.md`).
+  Descoberta de design: B2 so aceita *prefix literal* em lifecycle rules,
+  entao o bucket usa layout `tenants/` (XML 90d) + `tenants-exports/`
+  (exports 30d), consumido via `S3_EXECUTIONS_PREFIX` e
+  `S3_EXPORTS_PREFIX` (ADR-003 preservado). **Setup manual do owner em
+  aberto** (7 itens — conta B2 + 2FA, bucket `nfse-saas-prod`
+  private/versioning on/SSE-B2, 2 lifecycle rules aplicadas, Application
+  Key least-privilege no prefix `tenants/`, cofre 1Password/Bitwarden,
+  smoke test `[s3-smoke] PASS`, `aws s3 ls s3://$S3_BUCKET/tenants/` ok);
+  rastreio permanece em #8 ate validacao.
 - **INFRA-01** — Hardening inicial da VPS Hostinger: runbook completo
   em `infra/vps-hardening.md` (usuario `deploy`, SSH chave-only, UFW,
   fail2ban, unattended-upgrades, TZ `America/Sao_Paulo`). Execucao na
@@ -431,11 +440,11 @@
 
 > INFRA-05 saiu de "Proximas Destravadas" para "Em Andamento" nesta
 > atualizacao. CORE-05, API-06, API-11 e INFRA-08 continuam parcialmente
-> bloqueados — ver nota abaixo.
-
-> Nota: CORE-05, API-06, API-11 e INFRA-08 dependem de INFRA-06 **e**
-> de outros tickets (CORE-01 / API-05 / DATA-05 / INFRA-05), portanto
-> continuam bloqueados ate que essas dependencias sejam concluidas.
+> bloqueados pelas dependencias de codigo (CORE-01 / API-05 / DATA-05 /
+> INFRA-05); a parte automatizada de INFRA-06 (template de lifecycle,
+> variaveis `S3_*`, smoke test) ja esta disponivel para esses tickets
+> consumirem, e o setup manual do bucket B2 segue em aberto no issue #8
+> sem bloquear o desenvolvimento das integracoes.
 
 ## Bloqueadas
 
@@ -454,7 +463,18 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 
 ## Ultima atualizacao
 
-- Data: 2026-04-14
+- Data: 2026-04-15
+- PR: (a abrir) — INFRA-06 (follow-up administrativo): atualiza entrada
+  em "Concluidos" com a descoberta do layout `tenants/` (90d) +
+  `tenants-exports/` (30d) imposta pelo prefix-literal do B2 e explicita
+  que os 7 passos manuais do owner seguem em aberto (rastreio em #8).
+  Remove a menção a INFRA-06 da nota de bloqueio em "Proximas
+  Destravadas" — CORE-05 / API-06 / API-11 / INFRA-08 passam a poder
+  consumir a parte automatizada (template de lifecycle, variaveis
+  `S3_*`, smoke test) sem esperar o setup manual. Sem mudanca em
+  `infra/s3-bucket.md` alem de reforco do aviso de DoD manual pendente
+  no topo da seção 5. Refs #8 (nao fecha — os 7 manuais continuam
+  abertos). Titulo/commit `docs:` para bypass do `pr-guardrail`.
 - PR: (a abrir) — DATA-06: teste automatizado de isolamento
   cross-tenant. Nova suite `apps/api/tests/test_rls_isolation.py`
   (31 testes parametrizados) + fixtures em
