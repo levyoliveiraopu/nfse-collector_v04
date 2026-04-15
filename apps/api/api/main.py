@@ -17,6 +17,7 @@ from .auth.routes import router as auth_router
 from .companies.credentials import router as credentials_router
 from .companies.routes import router as companies_router
 from .config import Settings, get_settings
+from .schedules.routes import router as schedules_router
 from .logging import configure_logging
 
 
@@ -67,6 +68,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(companies_router)
     app.include_router(credentials_router)
+    app.include_router(schedules_router)
 
     return app
 
