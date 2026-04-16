@@ -469,3 +469,120 @@ def test_cn_nao_casa_emite_warn_mas_aceita(client, caplog) -> None:
     assert resp.status_code == 201
     assert resp.json()["cn_matches_cnpj"] is False
     assert "cn_mismatch" in caplog.text
+
+
+def test_get_credential_feliz_devolve_metadata_sem_ciphertext(client) -> None:
+    """GET apos upload retorna metadados publicos (APP-04)."""
+    _, _, token = _seed_tenant(slug="acmeget", email="g@g.test")
+    payload, headers = _seed_company(token=token)
+    cresp = client.post("/companies", json=payload, headers=headers)
+    company_id = cresp.json()["id"]
+
+    pfx_bytes = _gen_pfx(VALID_CNPJ_A, "p")
+    upload = _post_credential(
+        client, company_id=company_id, token=token, pfx_bytes=pfx_bytes, password="p"
+    )
+    assert upload.status_code == 201
+
+    resp = client.get(
+        f"/companies/{company_id}/credential",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["id"] == upload.json()["id"]
+    assert body["status"] == "active"
+    assert body["cert_fingerprint"]
+    assert body["cert_not_after"]
+    # GET nao persiste o CN: campo volta como None (indeterminado).
+    assert body["cn_matches_cnpj"] is None
+    # Nunca expoe ciphertext, senha ou bytes.
+    for forbidden in ("pfx_password_ciphertext", "ciphertext", "password", "pfx_bytes"):
+        assert forbidden not in body
+
+
+def test_get_credential_sem_upload_404(client) -> None:
+    _, _, token = _seed_tenant(slug="acmeget2", email="g2@g.test")
+    payload, headers = _seed_company(token=token)
+    cresp = client.post("/companies", json=payload, headers=headers)
+    company_id = cresp.json()["id"]
+
+    resp = client.get(
+        f"/companies/{company_id}/credential",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 404
+    assert "credencial" in resp.json()["detail"].lower()
+
+
+def test_get_credential_revogada_nao_aparece(client) -> None:
+    """Apos revogar, GET retorna 404 (so devolve active)."""
+    _, _, token = _seed_tenant(slug="acmeget3", email="g3@g.test")
+    payload, headers = _seed_company(token=token)
+    cresp = client.post("/companies", json=payload, headers=headers)
+    company_id = cresp.json()["id"]
+
+    pfx_bytes = _gen_pfx(VALID_CNPJ_A, "p")
+    assert (
+        _post_credential(
+            client, company_id=company_id, token=token, pfx_bytes=pfx_bytes, password="p"
+        ).status_code
+        == 201
+    )
+    assert (
+        client.delete(
+            f"/companies/{company_id}/credential",
+            headers={"Authorization": f"Bearer {token}"},
+        ).status_code
+        == 200
+    )
+
+    resp = client.get(
+        f"/companies/{company_id}/credential",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 404
+
+
+def test_get_credential_viewer_autorizado(client) -> None:
+    """GET e read-only: viewer pode ler (matriz RBAC)."""
+    _, _, token_owner = _seed_tenant(slug="acmegetv", email="o@v.test")
+    payload, headers = _seed_company(token=token_owner)
+    cresp = client.post("/companies", json=payload, headers=headers)
+    company_id = cresp.json()["id"]
+
+    upload = _post_credential(
+        client, company_id=company_id, token=token_owner,
+        pfx_bytes=_gen_pfx(VALID_CNPJ_A, "p"), password="p",
+    )
+    assert upload.status_code == 201
+
+    from api.db import get_admin_session
+    from api.security.jwt import create_access_token
+    from sqlalchemy import text
+
+    with get_admin_session() as session:
+        urow = session.execute(
+            text(
+                "INSERT INTO users (email, password_hash, name, status) "
+                "VALUES ('viewer@v.test','x','viewer','active') RETURNING id"
+            )
+        ).one()
+        user_id = str(urow.id)
+        trow = session.execute(text("SELECT id FROM tenants WHERE slug='acmegetv'")).one()
+        tenant_id = str(trow.id)
+        session.execute(
+            text(
+                "INSERT INTO tenant_users (tenant_id, user_id, role, accepted_at) "
+                "VALUES (:t, :u, 'viewer', now())"
+            ),
+            {"t": tenant_id, "u": user_id},
+        )
+    token_v = create_access_token(user_id=user_id, tenant_id=tenant_id, role="viewer")
+
+    resp = client.get(
+        f"/companies/{company_id}/credential",
+        headers={"Authorization": f"Bearer {token_v}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["id"] == upload.json()["id"]

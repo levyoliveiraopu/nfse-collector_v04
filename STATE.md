@@ -15,6 +15,147 @@
 
 ## Em Andamento
 
+- **INFRA-08** — Backup diario do Postgres para S3: script
+  `infra/scripts/backup-postgres.sh` executa `pg_dump -Fc -Z 9` dentro
+  do container do Postgres (INFRA-05) via `docker compose exec -T`
+  (evita instalar `postgresql-client` no host), classifica o dump em
+  `daily/YYYY-MM-DD.dump` nos dias 2-31 e `monthly/YYYY-MM.dump` no dia
+  1, cifra opcionalmente com `age` (default ON em staging/prod, chave
+  publica em `BACKUP_AGE_RECIPIENT` e privada apenas no cofre do
+  owner), faz upload para `s3://$S3_BUCKET/backups/postgres/<kind>/`
+  via `aws s3 cp`, limpa dumps locais com
+  `find -mtime +$BACKUP_RETENTION_LOCAL_DAYS -delete` (default 3d) e
+  registra 1 linha JSON por execucao em
+  `/srv/nfse/<env>/logs/backup-postgres.log` (status/size/duration/sha256).
+  Script `infra/scripts/restore-postgres.sh` aceita `--latest` ou
+  `--key <s3-key>` + `--target-db <nome>` para drill isolado, decifra
+  age se necessario (`BACKUP_AGE_IDENTITY` aponta para a privada
+  temporaria), cria DB alvo se nao existir, faz
+  `pg_restore --clean --if-exists --no-owner --no-privileges` e imprime
+  checksum de sanidade (`count(*)` em `tenants`/`users`/`tenant_users`/
+  `companies`/`audit_logs`). Systemd template
+  `infra/systemd/nfse-backup-postgres@.{service,timer}` (instancia com
+  `@prod`/`@staging`) dispara `OnCalendar=*-*-* 03:00:00` no TZ do host
+  (`America/Sao_Paulo` por INFRA-01), `Persistent=true`,
+  `RandomizedDelaySec=5min`, `EnvironmentFile=/srv/nfse/%i/config/.env`,
+  `User=deploy`, hardening basico (`NoNewPrivileges`,
+  `ProtectSystem=full`). Lifecycle do bucket B2 ganha 2 regras em
+  `infra/s3-lifecycle.json`: `backups/postgres/daily/` -> 30d e
+  `backups/postgres/monthly/` -> 365d (separacao por prefix porque B2
+  nao suporta lifecycle por tag — mesmo workaround que
+  `tenants-exports/` em INFRA-06); total passa de 2 para 4 rules no
+  bucket. Novo bloco `# Backup Postgres (INFRA-08)` em
+  `config/.env.example` com `BACKUP_LOCAL_DIR`, `BACKUP_S3_PREFIX`,
+  `BACKUP_RETENTION_LOCAL_DAYS`, `BACKUP_LOG_FILE`, `BACKUP_ENCRYPT`,
+  `BACKUP_AGE_RECIPIENT` e `BACKUP_AGE_IDENTITY`. Runbook completo em
+  `infra/backup.md` cobrindo instalacao (pre-requisitos + geracao do
+  par age + symlinks + `systemctl enable --now`), uso manual, aplicacao
+  das 2 novas rules via B2 CLI/console, drill de restore em staging
+  passo-a-passo (copia da chave privada para `/tmp`, `--target-db
+  nfse_restore_drill`, validacao com `md5(string_agg(...))`, cleanup
+  com `shred -u`), matriz de troubleshooting e checklist do DoD. Sem
+  execucao real possivel neste PR — DoD manual do owner (backup roda
+  por 2 dias seguidos + drill de restore em staging) valida apos
+  provisionamento na VPS e aplicacao das lifecycle rules (rastreio
+  segue em #10 ate validacao, mesmo padrao de INFRA-04/07/09).
+  `bash -n` e `systemd-analyze verify` verdes localmente
+  (PR a abrir — Closes #10).
+
+- **API-09** — Inbox de ocorrencias operacionais em
+  `apps/api/api/occurrences/`: `GET /occurrences` paginado com filtros
+  `status`/`severity`/`company_id`, `GET /occurrences/{id}`,
+  `POST /occurrences/{id}/acknowledge` (`open` -> `ack`, idempotente
+  em `ack`, 409 em `resolved`/`ignored`),
+  `POST /occurrences/{id}/resolve` (qualquer aberto -> `resolved`,
+  grava `resolved_at = now()`, exige `note` no body — 422 sem nota,
+  registrada em `audit_logs.metadata.note`),
+  `POST /occurrences/{id}/assign` (valida membership do tenant via
+  `tenant_users`; user de outro tenant ou inexistente -> 404). RBAC
+  pela matriz: leitura para todos os papeis, acoes mutadoras para
+  `owner|admin|operator` (viewer -> 403). Cada mutacao insere
+  `audit_logs` com `action='occurrence.<verb>'`,
+  `resource_type='occurrence'` e metadata publico (status_from/to,
+  note, assignee_user_id, previous_assignee_user_id) — `tenant_id`
+  injetado pela GUC `app.current_tenant`. Schemas em
+  `apps/api/api/occurrences/schemas.py` (`OccurrenceOut`/
+  `OccurrenceListOut`/`OccurrenceResolveIn` com
+  `note: str (1..2000) + extra='forbid'`/`OccurrenceAssignIn`). Router
+  registrado em `apps/api/api/main.py`. Catalogo canonico de codigos
+  em `docs/architecture/occurrence-codes.md` (CERT_EXPIRED,
+  CERT_EXPIRING, CERT_REVOKED, CRED_INVALID, PORTAL_5XX,
+  PORTAL_TIMEOUT, RATE_LIMIT, REPROCESS_NEEDED, PARSE_ERROR,
+  STORAGE_ERROR, UNKNOWN — com severity_default e link para o
+  runbook). Matriz RBAC atualizada em
+  `docs/architecture/rbac-matrix.md` com a nova secao "Occurrences
+  (inbox operacional)". Testes: `tests/test_occurrences_schemas.py`
+  (11 unitarios — note vazia/teto/extra=forbid, UUID invalido,
+  severity/status validos no `Out`) +
+  `tests/test_occurrences_routes_integration.py` (22 casos gated por
+  `TEST_DATABASE_URL` — lista/filtros/paginacao, detalhe + 404
+  cross-tenant via RLS, viewer -> 403, operator pode mudar,
+  acknowledge feliz com audit, idempotencia em ja-`ack`, 409 em
+  resolved/ignored, resolve grava `resolved_at` + audit com nota,
+  resolve sem nota -> 422, resolve em `ignored` -> 409, assign feliz,
+  user de outro tenant -> 404, reassign registra
+  `previous_assignee_user_id`, 401 sem token, OpenAPI lista os 5
+  endpoints). `pytest tests/ --ignore=tests/test_rbac.py`: 139 passed
+  + 83 skipped. Move API-09 de "Bloqueadas" para "Em Andamento" —
+  DATA-04 (dependencia) ja concluida
+  (PR a abrir — Closes #33).
+- **APP-03** — `/empresas` lista + detalhe (abas). Lista em
+  `apps/web-app/app/empresas/page.tsx` + `EmpresasView`/`EmpresasTable`
+  consumindo `<DataTable>` (DS-06) com filtros server-side `status`
+  (select 3-valores) e `uf` (text 2 letras), colunas
+  `cnpj/razao_social/uf/status (StatusBadge)/last_success_at/created_at`,
+  link no CNPJ -> `/empresas/[id]`, export CSV, `enableSorting=false`
+  porque API-05 ainda nao suporta `?sort=`. Filtro "ultimo sucesso" do
+  ticket fica como **coluna informativa apenas** (API-05 nao filtra por
+  `last_success_at`; comentario inline + nota no PR sugerindo extender o
+  endpoint num ticket futuro). Botao "Nova empresa" visivel para
+  `owner|admin|operator` abre `NovaEmpresaDialog` (modal sem Radix em
+  novo `components/ui/modal.tsx`, com focus trap, Esc/clique no backdrop
+  e bloqueio de scroll do body) com form react-hook-form + zod usando
+  `CNPJInput` (DS-07), select de UF (27 siglas) e codigo IBGE; tras
+  `409 -> mensagem clara` (CNPJ duplicado ou limite do plano), `403 ->
+  "sem permissao"` e em sucesso invalida o cache react-query
+  `[empresas:list]`. Detalhe `apps/web-app/app/empresas/[id]/page.tsx`
+  -> `CompanyDetailView` (header com CNPJ formatado + razao social +
+  StatusBadge) + `CompanyTabs` controlado por `?tab=...`, `role=tablist`/
+  `role=tab` com `aria-selected`/`aria-controls`/`tabIndex` corretos e
+  navegacao por teclado (Setas/Home/End). Cada painel e
+  `React.lazy(import(...))` com `Suspense` fallback — **prova de DoD
+  "abas carregam sob demanda"**: `data-tab-panel` de aba nao visitada
+  permanece vazio (validado em `company-tabs.test.tsx`). 6 paineis em
+  `app/empresas/[id]/tabs/`: `overview-tab.tsx` (dados cadastrais,
+  cards "ultima coleta com sucesso"/"proxima execucao agendada", botoes
+  Editar/Excluir gated por papel — Editar para `owner|admin|operator`,
+  Excluir para `owner|admin` — abrindo dialogs proprios que invalidam
+  os caches `[empresas:list]` e `[empresas:detail, id]` em sucesso e
+  redirecionam para `/empresas` apos delete) + 5 stubs informativos
+  (`executions-tab` -> APP-05/API-07, `credential-tab` -> APP-04
+  citando que o backend API-06 ja existe, `schedules-tab` -> APP-08/
+  API-09, `files-tab` -> APP-07/API-10 com nota da retencao 90d
+  ADR-003, `occurrences-tab` -> APP-06 com link DOCS-03/04). Cliente
+  HTTP novo em `apps/web-app/lib/api/companies.ts`
+  (`buildListQuery`/`listCompanies`/`getCompany`/`createCompany`/
+  `updateCompany`/`deleteCompany` reaproveitando `apiFetch` da APP-01
+  com `accessToken` + `onTokenRefreshed`; mapeia pageIndex 0-based ->
+  page 1-based, normaliza UF para uppercase, `extra=forbid` do PATCH
+  honrado pelo tipo `CompanyUpdatePayload`; helpers `formatCnpj` e
+  `COMPANY_STATUS_LABEL`). Item "Empresas" adicionado em
+  `components/app-shell/nav-items.ts` (substitui o placeholder
+  "Tenants" — rota `/empresas` real, fica destacado em todo
+  `/empresas/*` pelo `pathname.startsWith` ja existente no Sidebar).
+  20 testes vitest novos: `lib/api/companies.test.ts` (14 — query
+  string, header Authorization, propagacao de ApiError 403/404, PATCH
+  com campos parciais, DELETE 204 sem lancar, `formatCnpj`),
+  `app/empresas/empresas-view.test.tsx` (2 — viewer nao ve botao,
+  owner/admin/operator veem) e `app/empresas/[id]/company-tabs.test.tsx`
+  (4 — 6 abas com role=tab, so "overview" monta no default,
+  `data-tab-panel="credential"` continua vazio antes do clique, setas
+  navegam). Typecheck verde, `next lint` zero warnings, `vitest run`
+  142 passed (122 existentes + 20 novos)
+  (PR a abrir — Closes #51).
 - **API-12** — CRUD `/schedules` (agendamentos cron + TZ): pacote
   `apps/api/api/schedules/` com `cron.py` (valida cron 5-campos via
   `croniter` rejeitando 6/7, valida TZ IANA via `zoneinfo.ZoneInfo`,
@@ -229,6 +370,36 @@
   `tenants-credentials/`) fica para o owner — sem isso, o PUT real
   contra B2 retorna 401; o smoke test esta documentado no runbook
   (PR a abrir — Closes #30).
+- **APP-04** — Aba "Credencial" em
+  `/dashboard/empresas/[id]/credencial` (apps/web-app): painel com
+  `<StatusBadge>` + fingerprint SHA-256 (formato OpenSSL `aa:bb:..`)
+  + validade em pt-BR, botao "Atualizar credencial" abrindo dialog
+  com `<FileDropzone>` (.pfx/.p12 ate 1 MiB) + `<SecretField>`
+  (senha PFX), "Revogar" via ConfirmDialog "digite REVOGAR" e
+  "Testar agora" desabilitado (aguardando endpoint dedicado de
+  handshake — issue a abrir). Erros 400/413/502/403 traduzidos
+  para feedback acionavel em portugues ("senha incorreta ou PFX
+  invalido", "arquivo excede limite de 1 MiB", "falha ao gravar
+  no storage", "voce nao tem permissao"); badge vira
+  `cert_expiring` nos ultimos 30 dias, `failed` apos a validade,
+  `blocked` em revogada, `cred_invalid` em invalida.
+  Incluidos no escopo: (a) GET minimo
+  `/companies/{id}/credential` na API (RBAC leitura = todos os
+  papeis; devolve a credencial `active` mais recente ou 404; nunca
+  expoe ciphertext/senha; `cn_matches_cnpj` volta como `None`
+  porque o CN nao e persistido); (b) novo `components/ui/dialog.tsx`
+  (modal acessivel sem Radix, focus trap, Esc, overlay click);
+  (c) `lib/companies/credentials.ts` com cliente tipado + mapeador
+  de erros + `formatFingerprint` + `decideCredentialBadge`.
+  37 testes novos no apps/web-app (credentials helpers, status
+  block, upload dialog, revoke dialog e panel orquestrando estado
+  de auth) + 4 testes de integracao no apps/api cobrindo GET feliz
+  pos-upload sem ciphertext, GET 404 pre-upload, GET 404 apos
+  revoke (so retorna active) e GET RBAC permitindo viewer.
+  `pytest apps/api` = 163 passed + 72 skipped; `pnpm --filter
+  web-app test` = 164 passed; `pnpm typecheck` e `pnpm lint`
+  verdes; `ruff check apps/api` limpo
+  (PR a abrir — Closes #52).
 
 ## Concluidos
 
@@ -769,6 +940,12 @@
 > INFRA-05); a parte automatizada de INFRA-06 (template de lifecycle,
 > variaveis `S3_*`, smoke test) ja esta disponivel para esses tickets
 > consumirem, e o setup manual do bucket B2 segue em aberto no issue #8
+> sem bloquear o desenvolvimento das integracoes.
+>
+> Update 2026-04-16: INFRA-08 saiu dessa nota e foi para "Em Andamento"
+> (INFRA-05 ja esta em "Concluidos" via compose base; parte automatizada
+> de INFRA-06 consumida no backup script para upload via `aws s3 cp` e
+> nas 2 novas lifecycle rules em `infra/s3-lifecycle.json`).
 > sem bloquear o desenvolvimento das integracoes. API-11 sai desta lista
 > e entra em "Em Andamento" nesta atualizacao.
 
@@ -789,6 +966,76 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 
 ## Ultima atualizacao
 
+- Data: 2026-04-16
+- PR: (a abrir) — INFRA-08: backup diario do Postgres para S3.
+  Scripts `infra/scripts/backup-postgres.sh` (pg_dump -Fc via
+  `docker compose exec`, daily/monthly por prefix, cifra opcional com
+  age, upload via `aws s3 cp`, retencao local configuravel, log JSON
+  estruturado) e `infra/scripts/restore-postgres.sh` (--latest /
+  --key + --target-db para drill, decifra age se necessario,
+  `pg_restore --clean --if-exists --no-owner`, checksum de sanidade).
+  Systemd template `infra/systemd/nfse-backup-postgres@.{service,timer}`
+  com `OnCalendar=*-*-* 03:00:00` no TZ do host (`America/Sao_Paulo`
+  via INFRA-01), `Persistent=true`, `RandomizedDelaySec=5min`,
+  `EnvironmentFile=/srv/nfse/%i/config/.env`, hardening basico.
+  Duas rules novas em `infra/s3-lifecycle.json` (`backups/postgres/daily/`
+  30d, `backups/postgres/monthly/` 365d — separacao por prefix porque
+  B2 nao suporta lifecycle por tag). Novo bloco
+  `# Backup Postgres (INFRA-08)` em `config/.env.example` com 7
+  variaveis. Runbook completo em `infra/backup.md` (pre-requisitos,
+  geracao de par age, symlinks, install + enable do timer, uso manual,
+  drill de restore em staging, troubleshooting, checklist DoD). Atualiza
+  `infra/s3-bucket.md` para mencionar os 2 novos prefixos de backup no
+  layout de chaves e o total de 4 rules no bucket. Move INFRA-08 de
+  "Bloqueadas" para "Em Andamento" (dependencias INFRA-05 e parte
+  automatizada de INFRA-06 ja concluidas). Closes #10.
+- PR: (a abrir) — APP-04: aba "Credencial" em
+  `/dashboard/empresas/[id]/credencial` com `<StatusBadge>` +
+  fingerprint + validade, dialog de upload (`<FileDropzone>` + 
+  `<SecretField>`, erros 400/413/502/403 traduzidos), ConfirmDialog
+  de revogacao "digite REVOGAR" e placeholder desabilitado de
+  "Testar agora" (aguarda endpoint futuro de handshake). Inclui no
+  escopo o `GET /companies/{id}/credential` (RBAC leitura = todos;
+  devolve credencial `active` mais recente ou 404; `cn_matches_cnpj`
+  vira `None` porque o CN nao e persistido em
+  `company_credentials`). Novo `components/ui/dialog.tsx` (modal
+  acessivel sem Radix, focus trap + Esc + overlay click). Cliente
+  tipado + mapeador de erros + `formatFingerprint` +
+  `decideCredentialBadge` em
+  `apps/web-app/lib/companies/credentials.ts`. 37 testes novos no
+  web-app (helpers/status/upload/revoke/panel) + 4 testes de
+  integracao no api cobrindo GET feliz sem ciphertext, GET 404 sem
+  upload, GET 404 apos revoke e GET viewer autorizado. `pytest
+  apps/api` = 163 passed + 72 skipped; `pnpm --filter web-app
+  test` = 164 passed; `pnpm typecheck` / `pnpm lint` / `ruff
+  check apps/api` limpos. Move APP-04 de "Bloqueadas" para "Em
+  Andamento". Closes #52.
+- PR: (a abrir) — APP-03: paginas `/empresas` (lista com `<DataTable>`
+  filtrando `status` + `uf`, botao "Nova empresa" gated por papel) e
+  `/empresas/[id]` com 6 abas lazy (`React.lazy` + `Suspense` em
+  `company-tabs.tsx`; `data-tab-panel` so se preenche apos visita).
+  Aba "Visao geral" entrega CRUD completo (Editar para
+  `owner|admin|operator`, Excluir para `owner|admin`, com confirm
+  modal e invalidacao dos caches react-query); abas Execucoes/
+  Credencial/Agendamentos/Arquivos/Ocorrencias entram como stubs
+  informativos apontando os tickets que vao entrega-las (APP-04..08,
+  API-07/09/10). Novo cliente HTTP `lib/api/companies.ts`
+  reaproveitando `apiFetch` da APP-01. Novo `components/ui/modal.tsx`
+  (sem Radix — focus trap, Esc, click no backdrop, scroll lock no body)
+  consumido pelo `NovaEmpresaDialog` (form react-hook-form + zod
+  validando CNPJ via `isValidCnpj`/DS-07, UF e codigo IBGE) e pelos
+  dialogs Editar/Excluir do overview. Item "Empresas" adicionado em
+  `components/app-shell/nav-items.ts` (substitui placeholder
+  "Tenants"). Filtro "ultimo sucesso" do ticket fica como **coluna
+  apenas** porque API-05 nao expoe `?last_success_after=`; nota inline
+  no codigo + na descricao do PR sugerindo extender o endpoint num
+  ticket futuro. 20 novos testes vitest (`lib/api/companies.test.ts`,
+  `app/empresas/empresas-view.test.tsx`,
+  `app/empresas/[id]/company-tabs.test.tsx`) cobrindo querystring +
+  header Authorization, gating por papel, e prova de lazy mount nas
+  abas. Typecheck verde, `next lint` zero warnings, `vitest run` 142
+  passed (+20 vs main). Move APP-03 de "Bloqueadas" para "Em Andamento".
+  Closes #51.
 - Data: 2026-04-15
 - PR: (a abrir) — CORE-05: cliente S3 em
   `packages/worker-core/worker_core/storage.py` com `S3StorageClient`,
@@ -814,6 +1061,27 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
   o PUT em Backblaze retorna 401; o smoke test local via `moto` cobre o
   caminho feliz. Move CORE-05 de "Bloqueadas" para "Concluidos".
   Closes #23.
+- PR: (a abrir) — API-09: inbox de ocorrencias operacionais em
+  `apps/api/api/occurrences/` com `GET /occurrences` (paginado +
+  filtros `status`/`severity`/`company_id`), `GET /occurrences/{id}`,
+  `POST /occurrences/{id}/acknowledge` (idempotente em `ack`, 409 em
+  estado terminal), `POST /occurrences/{id}/resolve` (`note`
+  obrigatoria via `OccurrenceResolveIn` com `extra='forbid'`; nota
+  registrada em `audit_logs.metadata.note`; grava `resolved_at`) e
+  `POST /occurrences/{id}/assign` (valida membership do tenant
+  via `tenant_users`; 404 para user inexistente ou de outro tenant).
+  RBAC: leitura para todos os papeis, escrita para
+  `owner|admin|operator` (viewer -> 403). Cada acao mutadora grava
+  `audit_logs` com `action='occurrence.<verb>'` e metadata sem
+  segredos. Catalogo canonico de codigos em
+  `docs/architecture/occurrence-codes.md` (CERT_EXPIRED/EXPIRING/
+  REVOKED, CRED_INVALID, PORTAL_5XX/TIMEOUT, RATE_LIMIT,
+  REPROCESS_NEEDED, PARSE_ERROR, STORAGE_ERROR, UNKNOWN). Matriz RBAC
+  atualizada em `docs/architecture/rbac-matrix.md`. 11 testes
+  unitarios de schema + 22 testes de integracao gated por
+  `TEST_DATABASE_URL` cobrindo DoD (transicoes de status + audit log
+  por acao). Move API-09 de "Bloqueadas" para "Em Andamento" — DATA-04
+  ja concluida. Closes #33.
 - PR: (a abrir) — API-12: CRUD de `/schedules` em
   `apps/api/api/schedules/` (pacote novo com `cron.py` + `presets.py` +
   `schemas.py` + `routes.py`). Endpoints `GET /schedules` (paginado,

@@ -1,17 +1,29 @@
 {
-  "_readme": "Lifecycle rules para o bucket B2 nfse-saas-prod. Ver infra/s3-bucket.md secao 2.3 para limitacoes de prefix do B2 e o workaround aplicacional para exports 30d. Campos seguem o schema da B2 Native API (b2_update_bucket): https://www.backblaze.com/apidocs/b2-update-bucket",
+  "_readme": "Lifecycle rules para o bucket B2 nfse-saas-prod. Ver infra/s3-bucket.md secao 2.3 (executions/exports) e infra/backup.md secao 3 (backups) para limitacoes de prefix do B2 e o workaround aplicacional. Campos seguem o schema da B2 Native API (b2_update_bucket): https://www.backblaze.com/apidocs/b2-update-bucket",
   "lifecycleRules": [
     {
       "fileNamePrefix": "tenants/",
       "daysFromUploadingToHiding": 90,
       "daysFromHidingToDeleting": 1,
-      "_comment": "Regra default: todos os objetos sob tenants/ expiram em 90 dias (ADR-003). Cobre tenants/{tid}/executions/*.xml e tenants/{tid}/credentials/* sem problema. Para exports (30d), ver nota na regra abaixo."
+      "_comment": "Regra default: todos os objetos sob tenants/ expiram em 90 dias (ADR-003). Cobre tenants/{tid}/executions/*.xml sem problema. Para exports (30d) e credenciais (sem TTL), ver regras e comentarios abaixo."
     },
     {
       "fileNamePrefix": "tenants-exports/",
       "daysFromUploadingToHiding": 30,
       "daysFromHidingToDeleting": 1,
       "_comment": "Exports (Excel/ZIP) ficam em tenants-exports/{tid}/... em vez de tenants/{tid}/exports/. Isso contorna a limitacao do B2 de nao aceitar prefix glob (tenants/*/exports/). O worker usa S3_EXPORTS_PREFIX para apontar ao prefix correto. Ver ADR-003 + infra/s3-bucket.md secao 2.3."
+    },
+    {
+      "fileNamePrefix": "backups/postgres/daily/",
+      "daysFromUploadingToHiding": 30,
+      "daysFromHidingToDeleting": 1,
+      "_comment": "INFRA-08: backups diarios do Postgres (pg_dump -Fc). Retencao 30d — sucedidos pelo proximo daily. O script infra/scripts/backup-postgres.sh grava aqui nos dias 2-31 do mes; dia 1 vai para backups/postgres/monthly/ (regra abaixo). Chave: backups/postgres/daily/YYYY-MM-DD.dump[.age]."
+    },
+    {
+      "fileNamePrefix": "backups/postgres/monthly/",
+      "daysFromUploadingToHiding": 365,
+      "daysFromHidingToDeleting": 1,
+      "_comment": "INFRA-08: backup do dia 1 de cada mes. Retencao 12 meses. Separacao por prefix (nao por tag) porque o B2 so aceita prefix literal em lifecycle (mesma razao de tenants-exports/). Chave: backups/postgres/monthly/YYYY-MM.dump[.age]."
     }
   ]
 }
