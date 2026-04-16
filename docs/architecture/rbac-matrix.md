@@ -112,6 +112,20 @@ Regras escritas (aplicadas por `ensure_can_manage_member`):
 | `POST /executions/{id}/reprocess`     |   W   |   W   |    W     |   —    |
 | Download de XLSX / artefatos          |   R   |   R   |    R     |   R    |
 
+### Occurrences (inbox operacional) — implementacao em API-09
+
+| Endpoint                                       | owner | admin | operator | viewer |
+|------------------------------------------------|:-----:|:-----:|:--------:|:------:|
+| `GET /occurrences`                             |   R   |   R   |    R     |   R    |
+| `GET /occurrences/{id}`                        |   R   |   R   |    R     |   R    |
+| `POST /occurrences/{id}/acknowledge`           |   W   |   W   |    W     |   —    |
+| `POST /occurrences/{id}/resolve`               |   W   |   W   |    W     |   —    |
+| `POST /occurrences/{id}/assign`                |   W   |   W   |    W     |   —    |
+
+Catalogo de codigos (`code`) emitidos pelo worker e canonizados na UI
+esta em `docs/architecture/occurrence-codes.md`. Cada acao mutadora
+grava `audit_logs` com `action='occurrence.<verb>'`. A nota do
+`resolve` e obrigatoria e fica em `audit_logs.metadata.note`.
 ### Schedules (agendamentos) — implementacao em API-12
 
 | Endpoint                          | owner | admin | operator | viewer |

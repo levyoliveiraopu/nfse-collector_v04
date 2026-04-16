@@ -15,6 +15,47 @@
 
 ## Em Andamento
 
+- **API-09** — Inbox de ocorrencias operacionais em
+  `apps/api/api/occurrences/`: `GET /occurrences` paginado com filtros
+  `status`/`severity`/`company_id`, `GET /occurrences/{id}`,
+  `POST /occurrences/{id}/acknowledge` (`open` -> `ack`, idempotente
+  em `ack`, 409 em `resolved`/`ignored`),
+  `POST /occurrences/{id}/resolve` (qualquer aberto -> `resolved`,
+  grava `resolved_at = now()`, exige `note` no body — 422 sem nota,
+  registrada em `audit_logs.metadata.note`),
+  `POST /occurrences/{id}/assign` (valida membership do tenant via
+  `tenant_users`; user de outro tenant ou inexistente -> 404). RBAC
+  pela matriz: leitura para todos os papeis, acoes mutadoras para
+  `owner|admin|operator` (viewer -> 403). Cada mutacao insere
+  `audit_logs` com `action='occurrence.<verb>'`,
+  `resource_type='occurrence'` e metadata publico (status_from/to,
+  note, assignee_user_id, previous_assignee_user_id) — `tenant_id`
+  injetado pela GUC `app.current_tenant`. Schemas em
+  `apps/api/api/occurrences/schemas.py` (`OccurrenceOut`/
+  `OccurrenceListOut`/`OccurrenceResolveIn` com
+  `note: str (1..2000) + extra='forbid'`/`OccurrenceAssignIn`). Router
+  registrado em `apps/api/api/main.py`. Catalogo canonico de codigos
+  em `docs/architecture/occurrence-codes.md` (CERT_EXPIRED,
+  CERT_EXPIRING, CERT_REVOKED, CRED_INVALID, PORTAL_5XX,
+  PORTAL_TIMEOUT, RATE_LIMIT, REPROCESS_NEEDED, PARSE_ERROR,
+  STORAGE_ERROR, UNKNOWN — com severity_default e link para o
+  runbook). Matriz RBAC atualizada em
+  `docs/architecture/rbac-matrix.md` com a nova secao "Occurrences
+  (inbox operacional)". Testes: `tests/test_occurrences_schemas.py`
+  (11 unitarios — note vazia/teto/extra=forbid, UUID invalido,
+  severity/status validos no `Out`) +
+  `tests/test_occurrences_routes_integration.py` (22 casos gated por
+  `TEST_DATABASE_URL` — lista/filtros/paginacao, detalhe + 404
+  cross-tenant via RLS, viewer -> 403, operator pode mudar,
+  acknowledge feliz com audit, idempotencia em ja-`ack`, 409 em
+  resolved/ignored, resolve grava `resolved_at` + audit com nota,
+  resolve sem nota -> 422, resolve em `ignored` -> 409, assign feliz,
+  user de outro tenant -> 404, reassign registra
+  `previous_assignee_user_id`, 401 sem token, OpenAPI lista os 5
+  endpoints). `pytest tests/ --ignore=tests/test_rbac.py`: 139 passed
+  + 83 skipped. Move API-09 de "Bloqueadas" para "Em Andamento" —
+  DATA-04 (dependencia) ja concluida
+  (PR a abrir — Closes #33).
 - **APP-03** — `/empresas` lista + detalhe (abas). Lista em
   `apps/web-app/app/empresas/page.tsx` + `EmpresasView`/`EmpresasTable`
   consumindo `<DataTable>` (DS-06) com filtros server-side `status`
@@ -874,6 +915,27 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
   passed (+20 vs main). Move APP-03 de "Bloqueadas" para "Em Andamento".
   Closes #51.
 - Data: 2026-04-15
+- PR: (a abrir) — API-09: inbox de ocorrencias operacionais em
+  `apps/api/api/occurrences/` com `GET /occurrences` (paginado +
+  filtros `status`/`severity`/`company_id`), `GET /occurrences/{id}`,
+  `POST /occurrences/{id}/acknowledge` (idempotente em `ack`, 409 em
+  estado terminal), `POST /occurrences/{id}/resolve` (`note`
+  obrigatoria via `OccurrenceResolveIn` com `extra='forbid'`; nota
+  registrada em `audit_logs.metadata.note`; grava `resolved_at`) e
+  `POST /occurrences/{id}/assign` (valida membership do tenant
+  via `tenant_users`; 404 para user inexistente ou de outro tenant).
+  RBAC: leitura para todos os papeis, escrita para
+  `owner|admin|operator` (viewer -> 403). Cada acao mutadora grava
+  `audit_logs` com `action='occurrence.<verb>'` e metadata sem
+  segredos. Catalogo canonico de codigos em
+  `docs/architecture/occurrence-codes.md` (CERT_EXPIRED/EXPIRING/
+  REVOKED, CRED_INVALID, PORTAL_5XX/TIMEOUT, RATE_LIMIT,
+  REPROCESS_NEEDED, PARSE_ERROR, STORAGE_ERROR, UNKNOWN). Matriz RBAC
+  atualizada em `docs/architecture/rbac-matrix.md`. 11 testes
+  unitarios de schema + 22 testes de integracao gated por
+  `TEST_DATABASE_URL` cobrindo DoD (transicoes de status + audit log
+  por acao). Move API-09 de "Bloqueadas" para "Em Andamento" — DATA-04
+  ja concluida. Closes #33.
 - PR: (a abrir) — API-12: CRUD de `/schedules` em
   `apps/api/api/schedules/` (pacote novo com `cron.py` + `presets.py` +
   `schemas.py` + `routes.py`). Endpoints `GET /schedules` (paginado,
