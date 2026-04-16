@@ -1,6 +1,6 @@
 """merge heads: 0015_merge_heads + 0015_companies_deleted_at
 
-Revision ID: 0016_merge_companies_deleted_at_and_merge_heads
+Revision ID: 0016_merge_deleted_heads
 Revises: 0015_merge_heads, 0015_companies_deleted_at
 Create Date: 2026-04-14
 
@@ -12,6 +12,14 @@ Contexto:
 
 Esta revisao fecha o fork sem DDL adicional, preservando historico e
 mantendo o encadeamento correto para ambientes novos e existentes.
+
+Nota historica: o `revision` original deste merge
+(`0016_merge_companies_deleted_at_and_merge_heads`, 47 chars)
+excedia o default da coluna `alembic_version.version_num`
+(`VARCHAR(32)`). Em qualquer ambiente novo — incluindo o job
+`test-rls` do CI — o `alembic upgrade head` abortava com
+`StringDataRightTruncation`. Renomeado para
+`0016_merge_deleted_heads` (24 chars), dentro do limite default.
 """
 
 from __future__ import annotations
@@ -19,7 +27,7 @@ from __future__ import annotations
 from typing import Sequence, Union
 
 # revision identifiers, used by Alembic.
-revision: str = "0016_merge_companies_deleted_at_and_merge_heads"
+revision: str = "0016_merge_deleted_heads"
 down_revision: Union[str, Sequence[str], None] = (
     "0015_merge_heads",
     "0015_companies_deleted_at",
