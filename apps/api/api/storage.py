@@ -146,3 +146,51 @@ def get_credential_blob(object_key: str) -> Optional[bytes]:
             return None
         raise StorageError("falha ao ler credencial do storage") from exc
     return resp["Body"].read()
+
+
+# ---------------------------------------------------------------------------
+# URLs pre-assinadas (API-11)
+# ---------------------------------------------------------------------------
+
+
+def generate_presigned_get_url(
+    object_key: str,
+    *,
+    expires_seconds: int = 3600,
+) -> str:
+    """Gera uma URL pre-assinada GET para o objeto no bucket.
+
+    Usada pelo endpoint `GET /files/{id}/url` (API-11) para deixar o
+    browser baixar um artefato diretamente do S3/B2 sem passar pela API.
+
+    - `expires_seconds` padrao 3600 (1h), alinhado com DoD do API-11.
+    - Nao checa se o objeto existe (chamada S3 extra custaria uma
+      request sincrona; confiamos no registro em `files` que confirma
+      que o upload foi concluido). O cliente recebera 403/404 do S3 se
+      a chave sumiu entre o registro em DB e a tentativa de download.
+    - A URL retornada e sensivel (concede leitura temporaria). Callers
+      NAO devem loga-la nem grava-la em banco/audit.
+    """
+    if not object_key:
+        raise StorageError("object_key vazio")
+    if expires_seconds <= 0 or expires_seconds > 7 * 24 * 3600:
+        raise StorageError("expires_seconds fora do intervalo permitido")
+
+    settings = get_settings()
+    client = _get_s3_client()
+    try:
+        return client.generate_presigned_url(
+            ClientMethod="get_object",
+            Params={"Bucket": settings.s3_bucket, "Key": object_key},
+            ExpiresIn=expires_seconds,
+            HttpMethod="GET",
+        )
+    except ClientError as exc:
+        logger.error(
+            "storage.presign.failed",
+            extra={
+                "key": object_key,
+                "error_code": exc.response.get("Error", {}).get("Code"),
+            },
+        )
+        raise StorageError("falha ao gerar URL pre-assinada") from exc
