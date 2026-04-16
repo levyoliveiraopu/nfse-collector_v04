@@ -584,6 +584,98 @@
   verdes; `ruff check apps/api` limpo
   (PR a abrir — Closes #52).
 
+- **API-15** — Export ZIP assincrono (autor: Claude; 2026-04-16).
+  Nova tabela `exports` via migration `0017_exports.py` (colunas
+  `kind`, `period_start/end`, `status IN ('queued','running','ready',
+  'failed','empty')`, `file_id` FK para `files.id`, contadores,
+  `error_code`/`error_message`, timestamps) + RLS + 3 indices
+  (`tenant_created`, `tenant_company`, parcial `inflight` em
+  `(queued,running)`) + GRANTs DML para `app_user` + downgrade
+  completo. CHECK do `kind` hoje cobre apenas `zip_xml` —
+  `excel_consolidated` (previsto no ticket) foi deliberadamente
+  adiado para nao expor caminho morto na API; extensao do enum vira
+  migration futura no ticket do consolidado. Novo modulo
+  `apps/api/api/exports/`: `schemas.py` (`CreateExportIn` com
+  `extra='forbid'` + validator `period_end >= period_start`,
+  `CreateExportOut` com `export_id/status/job_id/enqueue_error`,
+  `ExportOut` incluindo `download_url` + `expires_in` preenchidos
+  **so** quando `status='ready'` + `file_id` populado) e
+  `routes.py`: `POST /exports` (RBAC `owner|admin|operator`)
+  valida company via RLS, pre-pinga Redis (502 sem tocar DB),
+  insere em `queued`, enfileira `worker_core.jobs.build_export` por
+  string (RQ; job_timeout=2h, meta com `tenant_id`); em enqueue-fail
+  pos-INSERT marca `failed`/`error_code='enqueue_failed'` e devolve
+  `job_id=null`. `GET /exports/{id}` libera para todos os papeis
+  (viewer incluido), faz LEFT JOIN em `files` e, se `ready`, gera
+  URL pre-assinada 1h via `generate_presigned_get_url` (reusa helper
+  API-11), grava audit `export.download_url` em `audit_logs` com
+  metadata publica (`export_id`, `file_id`, `object_key`, `bytes`,
+  `expires_in`) — a URL em si jamais e logada/persistida. Router
+  registrado em `apps/api/api/main.py`. Matriz em
+  `docs/architecture/rbac-matrix.md` ganha secao "Exports (ZIP
+  assincrono)". Worker: novo `packages/worker-core/worker_core/
+  jobs.py` com `build_export(export_id)` — entrypoint RQ sem
+  dependencia de `apps/api` (usa `psycopg` direto + envs
+  `WORKER_DATABASE_URL`/fallback `API_DATABASE_URL`). Fluxo:
+  (1) carrega `exports`, valida kind/status e marca `running` com
+  `started_at=now()`; (2) lista `execution_items.status='ok'` com
+  `xml_object_key` do tenant/company no periodo filtrando por
+  `data_emissao`; (3) se vazio -> `status='empty'` sem criar artefato;
+  (4) cria ZIP em tmpfs (`EXPORT_TMPFS_DIR` default `/dev/shm` com
+  fallback `tempfile.gettempdir()`), baixa cada XML via novo metodo
+  `S3StorageClient.download_bytes` (com mesma politica de retry do
+  PUT — tenacity 4 tentativas, backoff 0.5..8s em erros transientes)
+  e escreve `{nsu}.xml` no ZIP com `ZIP_DEFLATED`; (5) se bytes
+  acumulados excedem `EXPORT_MAX_BYTES` (default 2 GiB, DoD do
+  ticket), levanta `ExportError('size_limit_exceeded')` e a linha
+  vai para `failed` sem criar `file`; (6) sucesso -> `upload_export`
+  gera object_key canonico `tenants-exports/{tid}/{file_id}.zip`,
+  inserimos `files` com `id` **explicito** (mesmo UUID usado no
+  object_key para manter chave consistente), `kind='export'`,
+  `bytes=upload.size`, `checksum_sha256=upload.sha256` e
+  `expires_at=now()+30d` (menor que o default 90d do ADR-003 porque
+  export e artefato derivado); (7) marca `exports.status='ready'`
+  com `file_id`, `items_count`, `total_bytes`, `finished_at=now()`;
+  (8) enfileira 2 linhas em `notifications` (`channel='inapp'` +
+  `channel='email'`, `type='export.ready'`, payload
+  `{export_id,file_id,kind}`, `status='pending'`). Delivery real
+  (SMTP / push) fica para ticket futuro seguindo o mesmo padrao do
+  APP-09 (UI/contrato prontos antes do handler). Codigos de erro
+  canonicos: `size_limit_exceeded`, `db_error`, `s3_error`,
+  `kind_not_implemented`, `unexpected`. Tmpfs e sempre limpo no
+  `finally` mesmo em erro. Idempotencia: job re-picado em `ready`/
+  `failed`/`empty` sai com `reason='already_finalized'` sem reabrir.
+  Novas envs em `config/.env.example` no bloco `# Export ZIP
+  assincrono (API-15)`: `WORKER_DATABASE_URL`, `EXPORT_TMPFS_DIR=
+  /dev/shm`, `EXPORT_MAX_BYTES=2147483648`. Testes novos: 8 unit em
+  `apps/api/tests/test_exports_schemas.py` (defaults, extra=forbid,
+  period invalido, `same_day_ok`, `kind` so aceita `zip_xml` hoje,
+  envelope de resposta, `ExportOut` obriga campos), 4 estaticos em
+  `apps/api/tests/test_migration_0017.py` (revision/down_revision,
+  colunas, CHECKs, RLS+GUC, grants, downgrade simetrico, indice
+  parcial `inflight`), 12 integracao em `apps/api/tests/
+  test_exports_routes_integration.py` (gated `TEST_DATABASE_URL` +
+  fakeredis + moto: POST feliz + job enfileirado, viewer 403,
+  operator 201, company cross-tenant 422, period invalido 422,
+  Redis offline 502 sem tocar DB, enqueue estoura marca `failed`
+  com audit, GET `queued` sem URL, GET cross-tenant 404, GET
+  `ready` emite URL + audita sem vazar, viewer pode consultar) e
+  3 integracao em `tests/test_build_export.py` (gated + moto +
+  psycopg: happy path com 3 XMLs -> `ready` + file + 2
+  notifications + `expires_at ≈ now+30d`; `EXPORT_MAX_BYTES=100`
+  + 1 XML de 500B levanta `size_limit_exceeded` e zera
+  notifications/files; periodo vazio -> `empty`). `pytest
+  apps/api/tests/test_exports_schemas.py apps/api/tests/
+  test_migration_0017.py` = 12 passed. Testes gated em `TEST_
+  DATABASE_URL` seguem esqueleto de API-07/11. Nova dep run
+  nenhuma (boto3 + tenacity + psycopg ja existem no workspace).
+  DoD manual "export de 500 XMLs completa e download do ZIP abre"
+  fica a cargo do owner apos o setup do B2 real + CI com Postgres
+  (issue #8 + pipeline INFRA-09) — `moto` cobre o caminho feliz
+  localmente. `excel_consolidated` e delivery real de notificacao
+  ficam para tickets futuros conforme o escopo conservador deste
+  entregavel (PR a abrir — Closes #39).
+
 ## Concluidos
 
 - **CORE-05** — Cliente S3 do worker-core em

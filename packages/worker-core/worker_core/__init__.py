@@ -8,6 +8,7 @@ Refactor funcional entregue em CORE-02 (PFX em memoria), CORE-03
 """
 
 from worker_core.collector import FetchSummary, NfseItem, fetch_nfse
+from worker_core.jobs import ExportError, build_export
 from worker_core.db_nsu import DbNsuSource
 from worker_core.jobs import JobError, run_execution
 from worker_core.nsu_tracker import FileNsuSource, InMemoryNsuSource, NsuSource
@@ -38,5 +39,7 @@ __all__ = [
     "StorageError",
     "xml_object_key",
     "export_object_key",
+    "build_export",
+    "ExportError",
     "__version__",
 ]
