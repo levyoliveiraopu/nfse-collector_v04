@@ -1,8 +1,9 @@
-"""Schemas Pydantic dos endpoints de `/executions` (API-07)."""
+"""Schemas Pydantic dos endpoints de `/executions` (API-07 + API-08)."""
 
 from __future__ import annotations
 
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Literal, Optional
 from uuid import UUID
 
@@ -16,6 +17,9 @@ ExecutionTrigger = Literal["manual", "schedule", "api", "reprocess"]
 ExecutionStatus = Literal[
     "queued", "running", "succeeded", "failed", "cancelled", "partial"
 ]
+
+# Dominio alinhado com `ck_execution_items_status` em `0005_execution_items`.
+ExecutionItemStatus = Literal["ok", "failed", "skipped", "pending"]
 
 
 class CreateExecutionsIn(BaseModel):
@@ -104,3 +108,42 @@ class ExecutionOut(BaseModel):
     triggered_by_user_id: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime
+
+
+class ExecutionListOut(BaseModel):
+    """Envelope paginado do GET /executions e GET /companies/{id}/executions."""
+
+    items: list[ExecutionOut]
+    page: int
+    page_size: int
+    total: int
+
+
+class ExecutionItemOut(BaseModel):
+    """Linha de `execution_items` devolvida pelo GET /executions/{id}/items."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    tenant_id: UUID
+    execution_id: UUID
+    nsu: Optional[int] = None
+    chave_nfse: Optional[str] = None
+    cnpj_emitente: Optional[str] = None
+    data_emissao: Optional[datetime] = None
+    valor: Optional[Decimal] = None
+    xml_object_key: Optional[str] = None
+    status: ExecutionItemStatus
+    error_code: Optional[str] = None
+    error_message: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ExecutionItemListOut(BaseModel):
+    """Envelope paginado do GET /executions/{id}/items."""
+
+    items: list[ExecutionItemOut]
+    page: int
+    page_size: int
+    total: int

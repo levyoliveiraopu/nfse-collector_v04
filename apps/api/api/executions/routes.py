@@ -1,4 +1,4 @@
-"""Endpoints de `/executions` (API-07).
+"""Endpoints de `/executions` (API-07 + API-08).
 
 - `POST /executions` (owner|admin|operator): valida companies +
   credenciais, cria 1 linha em `executions` por company na mesma
@@ -9,8 +9,19 @@
   `error_summary='enqueue_failed'` e devolvida com `job_id=None`.
 
 - `GET /executions/{id}` (todos os papeis): devolve o detalhe
-  completo (status, contadores, NSU, periodo). RLS do
-  `get_tenant_db` garante 404 cross-tenant.
+  completo (status, contadores agregados via `items_total`/`items_ok`/
+  `items_fail`, NSU, periodo). RLS do `get_tenant_db` garante 404
+  cross-tenant.
+
+- `GET /executions` (todos os papeis): paginado, com filtros
+  `company_id`, `status`, `from`/`to` (sobre `started_at`). Usa o
+  indice `ix_executions_tenant_started` (0017) para ordenar por
+  `started_at DESC NULLS LAST`. Quando `company_id` esta presente,
+  o composto `ix_executions_tenant_company_started` (0004) entra.
+
+- `GET /executions/{id}/items` (todos os papeis): paginado, com
+  filtros `status`, `nsu`. Usa `ix_execution_items_execution_id`
+  (0005) para reduzir a uma execucao antes de filtrar.
 
 Relacao com outros tickets:
 
@@ -24,9 +35,11 @@ Relacao com outros tickets:
 from __future__ import annotations
 
 import logging
+from datetime import datetime
+from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -38,7 +51,12 @@ from .schemas import (
     CreateExecutionsIn,
     CreateExecutionsOut,
     CreatedExecution,
+    ExecutionItemListOut,
+    ExecutionItemOut,
+    ExecutionItemStatus,
+    ExecutionListOut,
     ExecutionOut,
+    ExecutionStatus,
 )
 
 logger = logging.getLogger("api.executions")
@@ -115,6 +133,96 @@ _EXECUTION_COLUMNS = (
     "nsu_from, nsu_to, items_total, items_ok, items_fail, "
     "error_summary, created_at, updated_at"
 )
+
+
+_EXECUTION_ITEM_COLUMNS = (
+    "id, tenant_id, execution_id, nsu, chave_nfse, cnpj_emitente, "
+    "data_emissao, valor, xml_object_key, status, error_code, "
+    "error_message, created_at, updated_at"
+)
+
+
+def query_executions(
+    db: Session,
+    *,
+    page: int,
+    page_size: int,
+    company_id: Optional[UUID] = None,
+    status_: Optional[ExecutionStatus] = None,
+    from_: Optional[datetime] = None,
+    to: Optional[datetime] = None,
+) -> ExecutionListOut:
+    """Listagem paginada de `executions` no tenant corrente.
+
+    Reusada por `GET /executions` e por `GET /companies/{id}/executions`
+    (atalho). RLS de `executions` ja injeta `WHERE tenant_id = GUC`,
+    entao nao precisamos repetir aqui — a clausula extra e apenas para
+    os filtros do usuario.
+    """
+    params: dict[str, object] = {
+        "limit": page_size,
+        "offset": (page - 1) * page_size,
+    }
+    where: list[str] = []
+
+    if company_id is not None:
+        where.append("company_id = :company_id")
+        params["company_id"] = str(company_id)
+    if status_ is not None:
+        where.append("status = :status")
+        params["status"] = status_
+    if from_ is not None:
+        where.append("started_at >= :from_")
+        params["from_"] = from_
+    if to is not None:
+        where.append("started_at < :to")
+        params["to"] = to
+
+    where_sql = (" WHERE " + " AND ".join(where)) if where else ""
+
+    total_row = db.execute(
+        text(f"SELECT COUNT(*) AS n FROM executions{where_sql}"),
+        params,
+    ).one()
+
+    rows = db.execute(
+        text(
+            f"""
+            SELECT {_EXECUTION_COLUMNS}
+              FROM executions
+              {where_sql}
+          ORDER BY started_at DESC NULLS LAST, id
+             LIMIT :limit OFFSET :offset
+            """
+        ),
+        params,
+    ).all()
+
+    return ExecutionListOut(
+        items=[_row_to_out(r) for r in rows],
+        page=page,
+        page_size=page_size,
+        total=int(total_row.n),
+    )
+
+
+def _row_to_item_out(row) -> ExecutionItemOut:
+    return ExecutionItemOut(
+        id=row.id,
+        tenant_id=row.tenant_id,
+        execution_id=row.execution_id,
+        nsu=row.nsu,
+        chave_nfse=row.chave_nfse,
+        cnpj_emitente=row.cnpj_emitente,
+        data_emissao=row.data_emissao,
+        valor=row.valor,
+        xml_object_key=row.xml_object_key,
+        status=row.status,
+        error_code=row.error_code,
+        error_message=row.error_message,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
 
 
 def _row_to_out(row) -> ExecutionOut:
@@ -284,6 +392,39 @@ def create_executions(
 
 
 @router.get(
+    "",
+    response_model=ExecutionListOut,
+    dependencies=[Depends(_ReadAccess)],
+    summary="Lista execucoes do tenant (paginado, com filtros)",
+)
+def list_executions(
+    db: Session = Depends(get_tenant_db),
+    page: int = Query(default=1, ge=1, le=10_000),
+    page_size: int = Query(default=20, ge=1, le=100),
+    company_id: Optional[UUID] = Query(default=None),
+    status_: Optional[ExecutionStatus] = Query(default=None, alias="status"),
+    from_: Optional[datetime] = Query(
+        default=None,
+        alias="from",
+        description="Inicio do periodo (started_at >=). ISO 8601 UTC.",
+    ),
+    to: Optional[datetime] = Query(
+        default=None,
+        description="Fim do periodo (started_at <). ISO 8601 UTC.",
+    ),
+) -> ExecutionListOut:
+    return query_executions(
+        db,
+        page=page,
+        page_size=page_size,
+        company_id=company_id,
+        status_=status_,
+        from_=from_,
+        to=to,
+    )
+
+
+@router.get(
     "/{execution_id}",
     response_model=ExecutionOut,
     dependencies=[Depends(_ReadAccess)],
@@ -302,3 +443,68 @@ def get_execution(
             detail="execution nao encontrada",
         )
     return _row_to_out(row)
+
+
+@router.get(
+    "/{execution_id}/items",
+    response_model=ExecutionItemListOut,
+    dependencies=[Depends(_ReadAccess)],
+    summary="Lista os items processados de uma execucao (paginado)",
+)
+def list_execution_items(
+    execution_id: UUID,
+    db: Session = Depends(get_tenant_db),
+    page: int = Query(default=1, ge=1, le=10_000),
+    page_size: int = Query(default=50, ge=1, le=200),
+    status_: Optional[ExecutionItemStatus] = Query(default=None, alias="status"),
+    nsu: Optional[int] = Query(default=None, ge=0),
+) -> ExecutionItemListOut:
+    # 404 antes de listar — RLS isola cross-tenant.
+    parent = db.execute(
+        text("SELECT id FROM executions WHERE id = :eid"),
+        {"eid": str(execution_id)},
+    ).one_or_none()
+    if parent is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="execution nao encontrada",
+        )
+
+    params: dict[str, object] = {
+        "eid": str(execution_id),
+        "limit": page_size,
+        "offset": (page - 1) * page_size,
+    }
+    where: list[str] = ["execution_id = :eid"]
+    if status_ is not None:
+        where.append("status = :status")
+        params["status"] = status_
+    if nsu is not None:
+        where.append("nsu = :nsu")
+        params["nsu"] = nsu
+    where_sql = " WHERE " + " AND ".join(where)
+
+    total_row = db.execute(
+        text(f"SELECT COUNT(*) AS n FROM execution_items{where_sql}"),
+        params,
+    ).one()
+
+    rows = db.execute(
+        text(
+            f"""
+            SELECT {_EXECUTION_ITEM_COLUMNS}
+              FROM execution_items
+              {where_sql}
+          ORDER BY nsu ASC NULLS LAST, id
+             LIMIT :limit OFFSET :offset
+            """
+        ),
+        params,
+    ).all()
+
+    return ExecutionItemListOut(
+        items=[_row_to_item_out(r) for r in rows],
+        page=page,
+        page_size=page_size,
+        total=int(total_row.n),
+    )

@@ -15,6 +15,189 @@
 
 ## Em Andamento
 
+- **API-13** — Worker consumer (Redis -> worker-core E2E):
+  `apps/worker/` RQ consumer orquestrando execucao ponta-a-ponta +
+  novos adapters em `packages/worker-core/worker_core/`. Handler
+  picado pelo RQ em `worker_core.jobs.run_execution(execution_id)`
+  (a **mesma string** enfileirada por API-07 em
+  `apps/api/api/queue.py` — por isso o handler vive em
+  `worker_core.jobs`, nao em `apps/worker/`). Fluxo: (1) le
+  `executions`+`companies`+`company_credentials` (admin + tenant
+  sessions com `SET LOCAL app.current_tenant`), (2) decifra PFX +
+  senha via `worker_core.crypto.decrypt` (envelope AES-256-GCM
+  compativel com API-06 — mesmo `_VERSION_TAG`/HKDF salt/KEK env
+  `API_CREDENTIAL_KEK_B64`, duplicacao intencional com comentario
+  apontando pra fonte canonica em `apps/api/api/crypto.py`), (3)
+  chama `fetch_nfse` (CORE-04) com `DbNsuSource` (persiste
+  `companies.last_nsu` via UPDATE only-if-greater, invariante "NSU
+  nunca regride") + callback que INSERT-a `execution_items` com
+  `ON CONFLICT (tenant_id, chave_nfse) DO NOTHING` (**idempotencia**
+  — retry do job nao duplica itens, satisfazendo DoD "crash no meio
+  do job + retry") e sobe o XML pro S3 via `S3StorageClient` (CORE-05),
+  (4) marca `executions.status` como `succeeded`/`partial`/`failed`
+  via `_decide_final_status` (`fatal_rejected` -> failed; nenhum
+  item + sem falha -> succeeded; fails > 0 com 0 ok -> failed; fails
+  ou storage_errors > 0 com ok > 0 -> partial; tudo ok -> succeeded),
+  (5) cria `occurrences` categorizadas (`CRED_INVALID`,
+  `CERT_EXPIRED`, `PORTAL_5XX`, `PARSE_ERROR`, `STORAGE_ERROR`,
+  `UNKNOWN`) alinhadas com `docs/architecture/occurrence-codes.md`.
+  `apps/worker/` expoe entry point `python -m worker.main` lendo
+  `API_REDIS_URL`+`API_QUEUE_NAME`+`WORKER_HEALTHZ_PORT` com
+  handlers SIGTERM/SIGINT para graceful shutdown (RQ drena o job
+  atual — compose deve setar `stop_grace_period: 60s` para cumprir
+  DoD "drena ate 60s") e `HealthzServer` stdlib (`http.server`) em
+  thread daemon expondo `GET /healthz -> 200 {"status":"ok"}` para
+  Uptime Kuma (INFRA-07). Dockerfile multi-stage com usuario nao-root
+  `worker:1002`, `HEALTHCHECK` contra `/healthz`, `STOPSIGNAL
+  SIGTERM`, `EXPOSE 8080`. Novas deps em
+  `packages/worker-core/pyproject.toml` (run: `sqlalchemy>=2.0`,
+  `psycopg[binary]>=3.1`, `redis>=5.0`, `rq>=1.16`; dev:
+  `fakeredis>=2.20`). Novo bloco `# Worker RQ (apps/worker -
+  API-13)` em `config/.env.example` com `WORKER_HEALTHZ_PORT` e
+  `WORKER_DATABASE_URL`. Testes: 10 em `tests/test_crypto_worker.py`
+  (round-trip com encrypt da API, tenant errado, versao
+  desconhecida, truncamento, tampering, ciphertext nao-bytes,
+  tenant_id invalido, KEK ausente em production, KEK base64
+  invalida, KEK tamanho errado), 9 em `tests/test_db_nsu.py`
+  (get feliz, company missing, cnpj mismatch, cnpj com mascara,
+  last_nsu null, UPDATE only-if-greater com filtro SQL correto,
+  rejeicao de nsu negativo/bool, noop quando rowcount=0), 13 em
+  `tests/test_jobs.py` (sucesso 2 itens, partial com parse_error +
+  occurrence PARSE_ERROR, credential decrypt failed -> occurrence
+  CRED_INVALID, idempotencia quando INSERT retorna None,
+  `fatal_rejected` -> failed + occurrence PORTAL_5XX, storage error
+  -> occurrence STORAGE_ERROR, execucao inexistente -> not_found,
+  `_decide_final_status` parametrico com 6 ramos), 3 em
+  `apps/worker/tests/test_healthz.py` (GET /healthz, 404 em path
+  desconhecido, start/stop idempotente) e 9 em
+  `apps/worker/tests/test_main.py` (resolvers de env com defaults e
+  validacao + `build_worker` com fakeredis + registro de handlers
+  SIGTERM/SIGINT). `pytest tests/ --ignore=tests/test_main.py
+  --ignore=tests/test_storage.py` = 140 passed; `pytest
+  apps/worker/tests/` = 12 passed. DoD E2E (POST /executions ->
+  fila -> worker -> items no DB + XML no S3) coberto estruturalmente
+  pelos testes unitarios + integracao-ready mas requer
+  postgres+redis+B2 reais para rodar end-to-end, validado
+  manualmente apos deploy. Move API-13 de "Bloqueadas" (deps
+  API-07/CORE-04/CORE-05/API-06 ja mergeadas em main) para "Em
+  Andamento" (PR a abrir — Closes #37).
+- **API-08** — Listagem/detalhe de executions + execution_items em
+  `apps/api/api/executions/routes.py`: novos endpoints `GET /executions`
+  (paginado, filtros `company_id`/`status`/`from`/`to` sobre
+  `started_at`, ISO 8601 UTC; ORDER `started_at DESC NULLS LAST, id`),
+  `GET /executions/{id}/items` (paginado, filtros `status`/`nsu`;
+  ORDER `nsu ASC NULLS LAST, id`; 404 antes de listar quando o id
+  parent nao existe — RLS isola cross-tenant) e atalho
+  `GET /companies/{id}/executions` em
+  `apps/api/api/companies/routes.py` (valida 404 da company antes de
+  delegar para `query_executions`, helper exportado de
+  `executions/routes.py`). `GET /executions/{id}` (entregue por
+  API-07) ja cobre "detalhe + contadores agregados" via
+  `items_total`/`items_ok`/`items_fail` — sem duplicacao. RBAC: leitura
+  liberada para `owner|admin|operator|viewer` (matriz). Schemas novos
+  em `apps/api/api/executions/schemas.py`: `ExecutionListOut`,
+  `ExecutionItemOut`, `ExecutionItemListOut`, `ExecutionItemStatus`
+  (Literal alinhado ao CHECK `ck_execution_items_status` da 0005).
+  Migration nova `0017_executions_listing_index.py` cria 2 indices
+  para satisfazer o DoD "EXPLAIN usa indice":
+  `ix_executions_tenant_started (tenant_id, started_at DESC NULLS
+  LAST, id)` (cobre `GET /executions` sem `company_id`) e
+  `ix_executions_tenant_status_started (tenant_id, status, started_at
+  DESC NULLS LAST)` (cobre `?status=`). O composto ja existente
+  `ix_executions_tenant_company_started` (0004) entra quando
+  `company_id` esta presente; `ix_execution_items_execution_id` (0005)
+  ja serve a listagem de items. 5 testes unitarios novos em
+  `tests/test_executions_schemas.py` (envelope lista, item com
+  opcionais None, status invalido, Decimal em valor, envelope items
+  vazio) + 14 testes de integracao novos em
+  `tests/test_executions_routes_integration.py` gated por
+  `TEST_DATABASE_URL` (lista feliz com ordenacao por `started_at DESC
+  NULLS LAST`, filtro por company/status/periodo, paginacao 5 linhas
+  em 3 paginas, isolamento cross-tenant via RLS, viewer pode ler,
+  atalho `/companies/{id}/executions` feliz, atalho com company
+  inexistente -> 404, atalho cross-tenant -> 404, items feliz com
+  ordenacao por nsu, items filtra por status/nsu, items cross-tenant
+  -> 404, items viewer pode ler) + 3 testes estaticos da migration em
+  `tests/test_migration_0017.py` (importavel, dois indices criados,
+  downgrade simetrico). Nova secao "Listagem de executions/
+  execution_items — API-08" em `apps/api/README.md` com 3 EXPLAINs
+  esperados + receita de validacao manual de paginacao em 10k items.
+  Sem mudanca em RBAC matrix (leitura ja era liberada para viewer em
+  todas as entradas relacionadas). AST verde em todos os arquivos
+  editados; pytest/ruff a cargo do CI
+  (PR a abrir — Closes #32).
+- **CORE-06** — Smoke test E2E `mtls_session` -> `fetch_nfse` ->
+  `S3StorageClient`: novo CLI
+  `packages/worker-core/scripts/smoke.py` (executavel via
+  `python -m scripts.smoke` a partir do diretorio do pacote) recebe
+  PFX A1 por `--pfx`, CNPJ por `--cnpj`, senha **apenas** via env
+  `NFSE_PFX_PASSWORD` (jamais via flag — apareceria em `ps`/history e
+  ja vinha sendo evitado em CORE-02). Flags adicionais: `--dias`
+  (default 7) faz filtro client-side por `data_emissao` no
+  `on_progress` (ADN nao aceita filtro por data — pagina por NSU);
+  `--max-documentos` impoe teto na paginacao do fetcher;
+  `--rate-limit` repassa ao `fetch_nfse`; `--ambiente`
+  `PRODUCAO|HOMOLOGACAO` seta `NFSE_AMBIENTE`; `--nsu-inicial`
+  permite retomar de um NSU especifico via `InMemoryNsuSource.set`
+  (default 0); `--tenant-id`/`--execution-id` aceitam UUID explicito
+  ou geram aleatorio para compor `object_key`; `--dry-run` curto-
+  circuita o `S3StorageClient` (so conta o que subiria) e e o caminho
+  default em ambiente sem `S3_*`; `--verbose` liga `logging.INFO` no
+  `worker_core`. Exit codes: `0` ok, `1` uso/config (incluindo
+  `NFSE_PFX_PASSWORD` ausente e `S3_BUCKET` ausente sem `--dry-run`),
+  `2` falha fatal (`ValueError` do `mtls_session` — PFX/senha/cert),
+  `3` rede ou upload (qualquer `Exception` propagada do
+  `fetch_nfse`, ou `uploads_failed > 0`). `_make_progress_callback`
+  encapsula a logica do callback: `parse_error` -> conta em
+  `parse_errors_skipped` e nao sobe; `data_emissao` fora da janela
+  (`< today - dias`) -> conta em `filtered_by_date` e nao sobe; data
+  ausente/invalida -> mantem (decisao conservadora — prefere subir
+  XML legitimo a descartar silenciosamente); item ok dentro da
+  janela -> chama `S3StorageClient.upload_xml(tenant_id,
+  execution_id, item.nsu, item.xml_bytes)` e acumula
+  `object_key`/`sha256`/`size` em `_UploadCounters` (lista de
+  `object_keys` e amostrada nos 3 primeiros no resumo final).
+  `_emit_log` imprime cada evento (`smoke.start`, `fetch_start`,
+  `fetch_complete`, `smoke.upload_ok`, `smoke.upload_failed`,
+  `smoke.dry_run.would_upload`, `smoke.skip_parse_error`,
+  `smoke.skip_no_xml`, `item_parse_error`, `callback_error`,
+  `fatal_error`) como JSON em uma linha (`json.dumps(...,
+  ensure_ascii=False, default=str)`) e **filtra explicitamente**
+  qualquer chave `pfx_password`/`pfx_bytes` que tente passar pelo
+  payload — defesa em profundidade alem do que o
+  `worker_core.collector.fetch_nfse` ja sanitiza. Resumo final
+  (legivel) imprime `cnpj`/`cutoff`/`nsu_from`/`nsu_to`/contadores do
+  `FetchSummary` + contadores do smoke + amostra de `object_keys`.
+  No `finally` do `main`, `pfx_bytes` e `password` sao reescritos
+  para vazio (best-effort — Python nao expoe zeragem de paginas, mas
+  evita reuso acidental no escopo). README do pacote ganha secao
+  "Smoke test E2E (CORE-06)" com bloco de envs (dry-run e real),
+  recomendacao de `--max-documentos 50` na primeira rodada e
+  alerta explicito "NUNCA commite `.pfx`, senha ou chaves S3". Testes
+  novos em `tests/test_smoke.py` (13 casos): `_within_window` (3 —
+  data dentro/fora da janela e fallback conservador para data
+  invalida/ausente/ISO); `_parse_args`/`_validate_args` (5 —
+  defaults minimos, CNPJ nao-14-digitos, PFX inexistente, `--dias 0`,
+  `--tenant-id` UUID invalido); `main` sem `NFSE_PFX_PASSWORD` ->
+  `EXIT_USAGE` + mensagem em stderr; `_emit_log` filtra
+  `pfx_password`/`pfx_bytes` mesmo se passados; `_make_progress_callback`
+  filtra por data sem chamar storage, dry-run conta sem tocar storage
+  e `parse_error` e pulado. Modulo carregado via `importlib.util`
+  registrando em `sys.modules` (necessario para `dataclasses` resolver
+  o tipo do `_UploadCounters`). `pytest tests/
+  --ignore=tests/test_main.py` = 151 passed (138 anteriores + 13
+  novos). Sem dependencias novas — script usa apenas stdlib +
+  `worker_core` (`InMemoryNsuSource`, `fetch_nfse`, `S3StorageClient`,
+  `S3Settings`, `StorageError`, `NfseItem`, `FetchSummary`). DoD do
+  ticket itens 1 e 2 ("smoke rodado com 1 CNPJ real" + "XML aparece
+  no bucket com object key correto") permanece a cargo do owner apos
+  setup manual do bucket B2 (issue #8) e disponibilidade de PFX A1
+  real — o caminho feliz local foi exercitado pela suite de testes
+  via mocks (CORE-04 fetcher + CORE-05 moto.mock_aws), e o `--dry-run`
+  permite validar o fluxo offline. Move CORE-06 para "Em Andamento"
+  (todas as dependencias CORE-02..05 ja em "Concluidos")
+  (PR a abrir — Closes #24).
+
 - **INFRA-08** — Backup diario do Postgres para S3: script
   `infra/scripts/backup-postgres.sh` executa `pg_dump -Fc -Z 9` dentro
   do container do Postgres (INFRA-05) via `docker compose exec -T`
@@ -1059,6 +1242,103 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-16
+- PR: (a abrir) — API-13: worker consumer RQ orquestrando execucao
+  ponta-a-ponta. Novo pacote `apps/worker/` (entry point `python -m
+  worker.main` lendo `API_REDIS_URL`+`API_QUEUE_NAME`; `HealthzServer`
+  stdlib com `GET /healthz` em porta `WORKER_HEALTHZ_PORT` default
+  8080; Dockerfile multi-stage non-root `worker:1002` com HEALTHCHECK
+  + `STOPSIGNAL SIGTERM`; SIGTERM/SIGINT handlers delegam pra
+  `Worker.request_stop` — graceful shutdown DoD cumprido com
+  `stop_grace_period: 60s` no compose). Novos adapters em
+  `packages/worker-core/worker_core/`: `crypto.py` (decrypt AES-GCM
+  compat API-06 — mesmo `_VERSION_TAG`/HKDF/KEK env, duplicacao
+  intencional com nota de fonte canonica), `db.py`
+  (`get_admin_session`/`get_tenant_session` SQLAlchemy + `SET LOCAL
+  app.current_tenant` para RLS), `db_nsu.py` (`DbNsuSource`
+  persistindo `companies.last_nsu` via UPDATE only-if-greater),
+  `jobs.py` (`run_execution(execution_id)` — fluxo 5 passos:
+  carrega contexto, decifra PFX, chama `fetch_nfse` com callback
+  que INSERT-a `execution_items` com `ON CONFLICT DO NOTHING`
+  (idempotencia DoD) + upload XML S3, marca status via
+  `_decide_final_status`, cria `occurrences` categorizadas
+  `CRED_INVALID`/`CERT_EXPIRED`/`PORTAL_5XX`/`PARSE_ERROR`/
+  `STORAGE_ERROR`/`UNKNOWN`). Novas deps run em worker-core
+  (`sqlalchemy>=2`, `psycopg[binary]>=3.1`, `redis>=5`, `rq>=1.16`)
+  + dev (`fakeredis>=2.20`). Novo bloco `# Worker RQ (apps/worker -
+  API-13)` em `config/.env.example`. Re-exports de `run_execution`
+  e `DbNsuSource` em `worker_core/__init__.py`. Testes: 10
+  `tests/test_crypto_worker.py` (round-trip, tampering, KEK
+  checks), 9 `tests/test_db_nsu.py` (UPDATE only-if-greater,
+  mismatch de CNPJ), 13 `tests/test_jobs.py` (sucesso/partial/
+  failed/idempotencia/fatal_rejected/storage_error/not_found +
+  `_decide_final_status` parametrico), 3
+  `apps/worker/tests/test_healthz.py` e 9
+  `apps/worker/tests/test_main.py`. `pytest tests/
+  --ignore=test_main.py --ignore=test_storage.py` = 140 passed;
+  `pytest apps/worker/tests/` = 12 passed. DoD E2E real
+  (postgres+redis+B2) validado manualmente pos-deploy; unit +
+  integracao-ready aqui. Move API-13 de "Bloqueadas" (deps
+  API-07/CORE-04/CORE-05/API-06 mergeadas em main) para "Em
+  Andamento". Closes #37.
+- PR: (a abrir) — API-08: listar/detalhar executions + execution_items.
+  Novos endpoints `GET /executions` (paginado, filtros
+  `company_id`/`status`/`from`/`to` sobre `started_at`),
+  `GET /executions/{id}/items` (paginado, filtros `status`/`nsu`,
+  ORDER `nsu ASC NULLS LAST`) e atalho
+  `GET /companies/{id}/executions` em
+  `apps/api/api/executions/routes.py` + `apps/api/api/companies/routes.py`
+  (atalho valida 404 da company antes de delegar ao helper compartilhado
+  `query_executions`). RBAC leitura liberada para todos os papeis
+  (matriz). Schemas novos `ExecutionListOut`/`ExecutionItemOut`/
+  `ExecutionItemListOut`/`ExecutionItemStatus` em
+  `apps/api/api/executions/schemas.py`. Migration
+  `0017_executions_listing_index.py` cria 2 indices auxiliares em
+  `executions` (`ix_executions_tenant_started`,
+  `ix_executions_tenant_status_started`) para satisfazer o DoD "EXPLAIN
+  usa indice"; composto existente
+  `ix_executions_tenant_company_started` (0004) entra quando
+  `company_id` esta presente; `ix_execution_items_execution_id` (0005)
+  ja serve a listagem de items. Detalhe `GET /executions/{id}` (entregue
+  por API-07) ja cobre "contadores agregados" via `items_total/ok/fail`.
+  5 testes unitarios em `test_executions_schemas.py` + 14 de integracao
+  gated por `TEST_DATABASE_URL` em
+  `test_executions_routes_integration.py` + 3 estaticos em
+  `test_migration_0017.py`. Secao "Listagem de executions/
+  execution_items — API-08" em `apps/api/README.md` com 3 EXPLAINs
+  esperados e receita de paginacao em 10k items. Move API-08 para
+  "Em Andamento" (dependencias API-07 + DATA-03 ambas concluidas).
+  Closes #32.
+- PR: (a abrir) — CORE-06: smoke test E2E
+  `mtls_session` -> `fetch_nfse` -> `S3StorageClient` em
+  `packages/worker-core/scripts/smoke.py` (executavel via
+  `python -m scripts.smoke`). Recebe PFX por `--pfx`, CNPJ por
+  `--cnpj`, senha **apenas** via env `NFSE_PFX_PASSWORD` (jamais
+  flag); flags `--dias` (filtro client-side por `data_emissao`),
+  `--max-documentos`, `--rate-limit`, `--ambiente`, `--nsu-inicial`,
+  `--tenant-id`/`--execution-id` (UUID explicito ou aleatorio),
+  `--dry-run` (curto-circuita o S3 e e default em ambiente sem
+  `S3_*`) e `--verbose`. Exit codes discretos: 0 ok, 1 uso/config,
+  2 fatal mTLS, 3 rede/upload. `_emit_log` imprime eventos JSON em
+  uma linha **filtrando explicitamente** `pfx_password`/`pfx_bytes`
+  alem do que o `worker_core.collector` ja sanitiza; resumo final
+  legivel cobre `nsu_from`/`nsu_to` + contadores do `FetchSummary` +
+  `uploads_ok`/`uploads_failed`/`filtered_by_date`/`bytes_total` +
+  amostra dos 3 primeiros `object_key`. README do worker-core ganha
+  secao "Smoke test E2E (CORE-06)" com bloco de envs (dry-run + real),
+  recomendacao de `--max-documentos 50` na primeira rodada e alerta
+  "NUNCA commite `.pfx`, senha ou chaves S3". Testes novos em
+  `tests/test_smoke.py` (13 casos cobrindo `_within_window`,
+  `_parse_args`/`_validate_args`, ausencia de `NFSE_PFX_PASSWORD`,
+  filtro de `pfx_password` em `_emit_log` e callback do
+  `_make_progress_callback` em 3 cenarios). `pytest tests/
+  --ignore=tests/test_main.py` = 151 passed (138 anteriores + 13
+  novos). Sem dependencias novas. DoD itens "smoke rodado com 1 CNPJ
+  real" e "XML aparece no bucket com object key correto" permanecem
+  a cargo do owner apos setup manual do bucket B2 (issue #8) e
+  disponibilidade de PFX A1 real — caminho feliz local validado pelos
+  testes de CORE-04 (fetcher mock) + CORE-05 (`moto.mock_aws`) e
+  exercitavel via `--dry-run`. Move CORE-06 para "Em Andamento" (todas
+  as dependencias CORE-02..05 ja em "Concluidos"). Closes #24.
 - PR: (a abrir) — INFRA-08: backup diario do Postgres para S3.
   Scripts `infra/scripts/backup-postgres.sh` (pg_dump -Fc via
   `docker compose exec`, daily/monthly por prefix, cifra opcional com

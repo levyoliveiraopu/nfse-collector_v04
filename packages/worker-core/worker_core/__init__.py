@@ -9,6 +9,8 @@ Refactor funcional entregue em CORE-02 (PFX em memoria), CORE-03
 
 from worker_core.collector import FetchSummary, NfseItem, fetch_nfse
 from worker_core.jobs import ExportError, build_export
+from worker_core.db_nsu import DbNsuSource
+from worker_core.jobs import JobError, run_execution
 from worker_core.nsu_tracker import FileNsuSource, InMemoryNsuSource, NsuSource
 from worker_core.storage import (
     S3Settings,
@@ -28,6 +30,9 @@ __all__ = [
     "NsuSource",
     "InMemoryNsuSource",
     "FileNsuSource",
+    "DbNsuSource",
+    "run_execution",
+    "JobError",
     "S3StorageClient",
     "S3Settings",
     "UploadResult",

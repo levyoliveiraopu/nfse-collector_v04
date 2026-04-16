@@ -1,8 +1,9 @@
-"""Testes unitarios dos schemas de `/executions` (API-07)."""
+"""Testes unitarios dos schemas de `/executions` (API-07 + API-08)."""
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
+from decimal import Decimal
 from uuid import uuid4
 
 import pytest
@@ -12,6 +13,9 @@ from api.executions.schemas import (
     CreateExecutionsIn,
     CreateExecutionsOut,
     CreatedExecution,
+    ExecutionItemListOut,
+    ExecutionItemOut,
+    ExecutionListOut,
     ExecutionOut,
 )
 
@@ -145,3 +149,88 @@ def test_execution_out_aceita_campos_opcionais_none() -> None:
     assert out.started_at is None
     assert out.finished_at is None
     assert out.triggered_by_user_id is None
+
+
+# ---------------------------------------------------------------------------
+# API-08: schemas de listagem
+# ---------------------------------------------------------------------------
+
+
+def _sample_execution_out() -> ExecutionOut:
+    now = datetime.now(timezone.utc)
+    return ExecutionOut(
+        id=uuid4(),
+        tenant_id=uuid4(),
+        company_id=uuid4(),
+        trigger="manual",
+        status="queued",
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 1, 31),
+        items_total=0,
+        items_ok=0,
+        items_fail=0,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def test_execution_list_out_envelope() -> None:
+    items = [_sample_execution_out(), _sample_execution_out()]
+    envelope = ExecutionListOut(items=items, page=2, page_size=20, total=42)
+    assert envelope.page == 2
+    assert envelope.page_size == 20
+    assert envelope.total == 42
+    assert len(envelope.items) == 2
+
+
+def test_execution_item_out_aceita_campos_opcionais_none() -> None:
+    now = datetime.now(timezone.utc)
+    item = ExecutionItemOut(
+        id=uuid4(),
+        tenant_id=uuid4(),
+        execution_id=uuid4(),
+        status="pending",
+        created_at=now,
+        updated_at=now,
+    )
+    assert item.nsu is None
+    assert item.chave_nfse is None
+    assert item.valor is None
+    assert item.status == "pending"
+
+
+def test_execution_item_out_recusa_status_invalido() -> None:
+    now = datetime.now(timezone.utc)
+    with pytest.raises(ValidationError):
+        ExecutionItemOut(
+            id=uuid4(),
+            tenant_id=uuid4(),
+            execution_id=uuid4(),
+            status="bogus",  # type: ignore[arg-type]
+            created_at=now,
+            updated_at=now,
+        )
+
+
+def test_execution_item_out_aceita_decimal_em_valor() -> None:
+    now = datetime.now(timezone.utc)
+    item = ExecutionItemOut(
+        id=uuid4(),
+        tenant_id=uuid4(),
+        execution_id=uuid4(),
+        status="ok",
+        valor=Decimal("1234.56"),
+        nsu=42,
+        chave_nfse="35200114200166000187550010000000071123456789",
+        cnpj_emitente="11222333000181",
+        created_at=now,
+        updated_at=now,
+    )
+    assert item.valor == Decimal("1234.56")
+    assert item.nsu == 42
+
+
+def test_execution_item_list_out_envelope_vazio() -> None:
+    envelope = ExecutionItemListOut(items=[], page=1, page_size=50, total=0)
+    assert envelope.items == []
+    assert envelope.total == 0

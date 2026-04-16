@@ -3,6 +3,11 @@
 Nao conecta ao Postgres: valida estrutura do arquivo (tabela, colunas,
 checks, RLS, politica, GUC, grants, downgrade). Cobertura funcional
 via `alembic upgrade head` fica por conta do CI job `test-rls`.
+"""Testes estaticos da migration 0017_executions_listing_index (API-08).
+
+Nao se conectam ao Postgres: validam que a migration existe, pode ser
+importada e contem os 2 indices auxiliares para `executions` exigidos
+pelo DoD do ticket ("query valida com EXPLAIN (usa indice)").
 """
 
 from __future__ import annotations
@@ -15,6 +20,7 @@ MIGRATION_PATH = (
     / "alembic"
     / "versions"
     / "0017_exports.py"
+    / "0017_executions_listing_index.py"
 )
 
 
@@ -26,12 +32,14 @@ def _load_migration_source() -> str:
 def test_migration_module_is_importable() -> None:
     spec = importlib.util.spec_from_file_location(
         "migration_0017_exports", MIGRATION_PATH
+        "migration_0017_executions_listing_index", MIGRATION_PATH
     )
     assert spec is not None
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(module)
     assert module.revision == "0017_exports"
+    assert module.revision == "0017_executions_listing_index"
     assert module.down_revision == "0016_merge_0015_heads"
     assert callable(module.upgrade)
     assert callable(module.downgrade)
@@ -76,6 +84,15 @@ def test_migration_mentions_core_fields() -> None:
         "GRANT SELECT, INSERT, UPDATE, DELETE ON exports TO app_user"
         in src
     )
+def test_migration_creates_two_indices_on_executions() -> None:
+    src = _load_migration_source()
+    # Indices exigidos.
+    assert "ix_executions_tenant_started" in src
+    assert "ix_executions_tenant_status_started" in src
+    # Cobertura: tenant + started_at DESC (NULLS LAST) + tiebreaker id.
+    assert "started_at DESC NULLS LAST" in src
+    assert '"executions"' in src or "'executions'" in src
+    assert "create_index" in src
 
 
 def test_migration_has_matching_downgrade() -> None:
@@ -92,3 +109,9 @@ def test_indices_incluem_parcial_de_inflight() -> None:
     # Parcial para o worker/admin acharem exports em voo.
     assert "ix_exports_inflight" in src
     assert "status IN ('queued','running')" in src
+    assert "drop_index" in src
+    for idx in (
+        "ix_executions_tenant_status_started",
+        "ix_executions_tenant_started",
+    ):
+        assert idx in src, idx

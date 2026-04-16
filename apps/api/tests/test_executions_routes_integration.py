@@ -534,3 +534,341 @@ def test_enqueue_falha_no_meio_marca_execution_como_failed(client, fake_redis) -
     assert from_db["status"] == "failed"
     assert from_db["error_summary"] == "enqueue_failed"
     assert from_db["finished_at"] is not None
+
+
+# ===========================================================================
+# API-08: GET /executions, GET /executions/{id}/items, GET /companies/{id}/executions
+# ===========================================================================
+
+
+def _seed_execution_directly(
+    *,
+    tenant_id: str,
+    company_id: str,
+    status_: str = "succeeded",
+    started_at_sql: str = "now() - interval '1 day'",
+    items_total: int = 0,
+    items_ok: int = 0,
+    items_fail: int = 0,
+) -> str:
+    """Insere uma execution direto no DB (admin), sem passar pela fila.
+
+    Permite testar a listagem com mistura de status/started_at controlada.
+    """
+    from api.db import get_admin_session
+    from sqlalchemy import text
+
+    with get_admin_session() as session:
+        row = session.execute(
+            text(
+                f"""
+                INSERT INTO executions (
+                    tenant_id, company_id, trigger,
+                    period_start, period_end, status,
+                    started_at, finished_at,
+                    items_total, items_ok, items_fail
+                ) VALUES (
+                    :tid, :cid, 'manual',
+                    DATE '2026-01-01', DATE '2026-01-31', :st,
+                    {started_at_sql},
+                    CASE WHEN :st IN ('succeeded','failed','partial','cancelled')
+                         THEN now() ELSE NULL END,
+                    :it, :iok, :ifa
+                )
+                RETURNING id
+                """
+            ),
+            {
+                "tid": tenant_id,
+                "cid": company_id,
+                "st": status_,
+                "it": items_total,
+                "iok": items_ok,
+                "ifa": items_fail,
+            },
+        ).one()
+    return str(row.id)
+
+
+def _seed_execution_item(
+    *,
+    tenant_id: str,
+    execution_id: str,
+    nsu: int | None,
+    status_: str = "ok",
+    chave_nfse: str | None = None,
+) -> str:
+    from api.db import get_admin_session
+    from sqlalchemy import text
+
+    with get_admin_session() as session:
+        row = session.execute(
+            text(
+                """
+                INSERT INTO execution_items (
+                    tenant_id, execution_id, nsu, chave_nfse, status
+                ) VALUES (:tid, :eid, :nsu, :chave, :st)
+                RETURNING id
+                """
+            ),
+            {
+                "tid": tenant_id,
+                "eid": execution_id,
+                "nsu": nsu,
+                "chave": chave_nfse,
+                "st": status_,
+            },
+        ).one()
+    return str(row.id)
+
+
+def test_list_executions_feliz_e_ordenacao(client) -> None:
+    tid, _, token = _seed_tenant(slug="acme", email="owner@acme.test")
+    cid_a = _seed_company(tenant_id=tid, cnpj=VALID_CNPJ_A)
+    cid_b = _seed_company(tenant_id=tid, cnpj=VALID_CNPJ_B)
+    eid_old = _seed_execution_directly(
+        tenant_id=tid,
+        company_id=cid_a,
+        started_at_sql="now() - interval '3 days'",
+    )
+    eid_new = _seed_execution_directly(
+        tenant_id=tid,
+        company_id=cid_b,
+        started_at_sql="now() - interval '1 hour'",
+    )
+    eid_queued = _seed_execution_directly(
+        tenant_id=tid,
+        company_id=cid_a,
+        status_="queued",
+        started_at_sql="NULL",
+    )
+
+    resp = client.get("/executions", headers=_auth(token))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["total"] == 3
+    assert body["page"] == 1
+    assert body["page_size"] == 20
+    # Ordenacao: started_at DESC NULLS LAST -> recente, antigo, queued.
+    ids = [item["id"] for item in body["items"]]
+    assert ids == [eid_new, eid_old, eid_queued]
+
+
+def test_list_executions_filtra_por_company(client) -> None:
+    tid, _, token = _seed_tenant(slug="acme", email="owner@acme.test")
+    cid_a = _seed_company(tenant_id=tid, cnpj=VALID_CNPJ_A)
+    cid_b = _seed_company(tenant_id=tid, cnpj=VALID_CNPJ_B)
+    _seed_execution_directly(tenant_id=tid, company_id=cid_a)
+    _seed_execution_directly(tenant_id=tid, company_id=cid_a)
+    _seed_execution_directly(tenant_id=tid, company_id=cid_b)
+
+    resp = client.get(
+        f"/executions?company_id={cid_a}", headers=_auth(token)
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 2
+    assert all(item["company_id"] == cid_a for item in body["items"])
+
+
+def test_list_executions_filtra_por_status(client) -> None:
+    tid, _, token = _seed_tenant(slug="acme", email="owner@acme.test")
+    cid = _seed_company(tenant_id=tid)
+    _seed_execution_directly(tenant_id=tid, company_id=cid, status_="succeeded")
+    _seed_execution_directly(tenant_id=tid, company_id=cid, status_="failed")
+    _seed_execution_directly(tenant_id=tid, company_id=cid, status_="failed")
+
+    resp = client.get("/executions?status=failed", headers=_auth(token))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 2
+    assert {item["status"] for item in body["items"]} == {"failed"}
+
+
+def test_list_executions_filtra_por_periodo_started_at(client) -> None:
+    tid, _, token = _seed_tenant(slug="acme", email="owner@acme.test")
+    cid = _seed_company(tenant_id=tid)
+    _seed_execution_directly(
+        tenant_id=tid,
+        company_id=cid,
+        started_at_sql="TIMESTAMPTZ '2026-01-10 12:00:00+00'",
+    )
+    _seed_execution_directly(
+        tenant_id=tid,
+        company_id=cid,
+        started_at_sql="TIMESTAMPTZ '2026-02-15 12:00:00+00'",
+    )
+    _seed_execution_directly(
+        tenant_id=tid,
+        company_id=cid,
+        started_at_sql="TIMESTAMPTZ '2026-03-20 12:00:00+00'",
+    )
+
+    resp = client.get(
+        "/executions"
+        "?from=2026-02-01T00:00:00Z"
+        "&to=2026-03-01T00:00:00Z",
+        headers=_auth(token),
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 1
+    assert body["items"][0]["started_at"].startswith("2026-02-15")
+
+
+def test_list_executions_pagina_server_side(client) -> None:
+    tid, _, token = _seed_tenant(slug="acme", email="owner@acme.test")
+    cid = _seed_company(tenant_id=tid)
+    # 5 execucoes com started_at decrescente para ordem deterministica.
+    ids = []
+    for i in range(5):
+        ids.append(
+            _seed_execution_directly(
+                tenant_id=tid,
+                company_id=cid,
+                started_at_sql=f"TIMESTAMPTZ '2026-01-0{i + 1} 12:00:00+00'",
+            )
+        )
+    # ids[0] = mais antigo (01), ids[4] = mais recente (05).
+
+    resp1 = client.get(
+        "/executions?page=1&page_size=2", headers=_auth(token)
+    )
+    resp2 = client.get(
+        "/executions?page=2&page_size=2", headers=_auth(token)
+    )
+    resp3 = client.get(
+        "/executions?page=3&page_size=2", headers=_auth(token)
+    )
+    assert resp1.json()["total"] == 5
+    assert [i["id"] for i in resp1.json()["items"]] == [ids[4], ids[3]]
+    assert [i["id"] for i in resp2.json()["items"]] == [ids[2], ids[1]]
+    assert [i["id"] for i in resp3.json()["items"]] == [ids[0]]
+
+
+def test_list_executions_cross_tenant_isolado_via_rls(client) -> None:
+    tid_a, _, token_a = _seed_tenant(slug="a", email="a@a.test")
+    tid_b, _, token_b = _seed_tenant(slug="b", email="b@b.test")
+    cid_a = _seed_company(tenant_id=tid_a, cnpj=VALID_CNPJ_A)
+    cid_b = _seed_company(tenant_id=tid_b, cnpj=VALID_CNPJ_B)
+    _seed_execution_directly(tenant_id=tid_a, company_id=cid_a)
+    _seed_execution_directly(tenant_id=tid_a, company_id=cid_a)
+    _seed_execution_directly(tenant_id=tid_b, company_id=cid_b)
+
+    body_a = client.get("/executions", headers=_auth(token_a)).json()
+    body_b = client.get("/executions", headers=_auth(token_b)).json()
+    assert body_a["total"] == 2
+    assert body_b["total"] == 1
+
+
+def test_list_executions_viewer_pode_ler(client) -> None:
+    tid, _, _ = _seed_tenant(slug="acme", email="owner@acme.test")
+    cid = _seed_company(tenant_id=tid)
+    _seed_execution_directly(tenant_id=tid, company_id=cid)
+    _, viewer_token = _add_user(tid, email="v@acme.test", role="viewer")
+
+    resp = client.get("/executions", headers=_auth(viewer_token))
+    assert resp.status_code == 200
+    assert resp.json()["total"] == 1
+
+
+def test_companies_executions_atalho_feliz(client) -> None:
+    tid, _, token = _seed_tenant(slug="acme", email="owner@acme.test")
+    cid_a = _seed_company(tenant_id=tid, cnpj=VALID_CNPJ_A)
+    cid_b = _seed_company(tenant_id=tid, cnpj=VALID_CNPJ_B)
+    _seed_execution_directly(tenant_id=tid, company_id=cid_a)
+    _seed_execution_directly(tenant_id=tid, company_id=cid_a)
+    _seed_execution_directly(tenant_id=tid, company_id=cid_b)
+
+    resp = client.get(f"/companies/{cid_a}/executions", headers=_auth(token))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 2
+    assert {item["company_id"] for item in body["items"]} == {cid_a}
+
+
+def test_companies_executions_atalho_company_inexistente_404(client) -> None:
+    _, _, token = _seed_tenant(slug="acme", email="owner@acme.test")
+    fake_cid = "00000000-0000-0000-0000-000000000000"
+    resp = client.get(
+        f"/companies/{fake_cid}/executions", headers=_auth(token)
+    )
+    assert resp.status_code == 404
+
+
+def test_companies_executions_atalho_cross_tenant_404(client) -> None:
+    tid_a, _, _ = _seed_tenant(slug="a", email="a@a.test")
+    _, _, token_b = _seed_tenant(slug="b", email="b@b.test")
+    cid_a = _seed_company(tenant_id=tid_a, cnpj=VALID_CNPJ_A)
+    _seed_execution_directly(tenant_id=tid_a, company_id=cid_a)
+
+    resp = client.get(
+        f"/companies/{cid_a}/executions", headers=_auth(token_b)
+    )
+    assert resp.status_code == 404
+
+
+def test_executions_items_feliz_e_ordenacao_por_nsu(client) -> None:
+    tid, _, token = _seed_tenant(slug="acme", email="owner@acme.test")
+    cid = _seed_company(tenant_id=tid)
+    eid = _seed_execution_directly(tenant_id=tid, company_id=cid)
+    iid_3 = _seed_execution_item(tenant_id=tid, execution_id=eid, nsu=3)
+    iid_1 = _seed_execution_item(tenant_id=tid, execution_id=eid, nsu=1)
+    iid_2 = _seed_execution_item(tenant_id=tid, execution_id=eid, nsu=2)
+
+    resp = client.get(f"/executions/{eid}/items", headers=_auth(token))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 3
+    assert body["page_size"] == 50
+    assert [i["id"] for i in body["items"]] == [iid_1, iid_2, iid_3]
+
+
+def test_executions_items_filtra_por_status_e_nsu(client) -> None:
+    tid, _, token = _seed_tenant(slug="acme", email="owner@acme.test")
+    cid = _seed_company(tenant_id=tid)
+    eid = _seed_execution_directly(tenant_id=tid, company_id=cid)
+    _seed_execution_item(tenant_id=tid, execution_id=eid, nsu=10, status_="ok")
+    fail_id = _seed_execution_item(
+        tenant_id=tid, execution_id=eid, nsu=11, status_="failed"
+    )
+    _seed_execution_item(
+        tenant_id=tid, execution_id=eid, nsu=12, status_="failed"
+    )
+
+    body_status = client.get(
+        f"/executions/{eid}/items?status=failed", headers=_auth(token)
+    ).json()
+    assert body_status["total"] == 2
+    assert {i["status"] for i in body_status["items"]} == {"failed"}
+
+    body_nsu = client.get(
+        f"/executions/{eid}/items?nsu=11", headers=_auth(token)
+    ).json()
+    assert body_nsu["total"] == 1
+    assert body_nsu["items"][0]["id"] == fail_id
+
+
+def test_executions_items_cross_tenant_404(client) -> None:
+    tid_a, _, _ = _seed_tenant(slug="a", email="a@a.test")
+    _, _, token_b = _seed_tenant(slug="b", email="b@b.test")
+    cid_a = _seed_company(tenant_id=tid_a, cnpj=VALID_CNPJ_A)
+    eid = _seed_execution_directly(tenant_id=tid_a, company_id=cid_a)
+    _seed_execution_item(tenant_id=tid_a, execution_id=eid, nsu=1)
+
+    resp = client.get(f"/executions/{eid}/items", headers=_auth(token_b))
+    assert resp.status_code == 404
+
+
+def test_executions_items_viewer_pode_ler(client) -> None:
+    tid, _, _ = _seed_tenant(slug="acme", email="owner@acme.test")
+    cid = _seed_company(tenant_id=tid)
+    eid = _seed_execution_directly(tenant_id=tid, company_id=cid)
+    _seed_execution_item(tenant_id=tid, execution_id=eid, nsu=1)
+    _, viewer_token = _add_user(tid, email="v@acme.test", role="viewer")
+
+    resp = client.get(
+        f"/executions/{eid}/items", headers=_auth(viewer_token)
+    )
+    assert resp.status_code == 200
+    assert resp.json()["total"] == 1

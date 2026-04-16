@@ -32,7 +32,11 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from datetime import datetime
+
 from ..deps import get_tenant_db
+from ..executions.routes import query_executions
+from ..executions.schemas import ExecutionListOut, ExecutionStatus
 from ..security.jwt import AccessClaims
 from ..security.rbac import require_role
 from .schemas import (
@@ -187,6 +191,53 @@ def get_company(
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="company nao encontrada")
     return _row_to_out(row)
+
+
+@router.get(
+    "/{company_id}/executions",
+    response_model=ExecutionListOut,
+    dependencies=[Depends(_ReadAccess)],
+    summary="Atalho: lista execucoes da company (API-08)",
+)
+def list_company_executions(
+    company_id: UUID,
+    db: Session = Depends(get_tenant_db),
+    page: int = Query(default=1, ge=1, le=10_000),
+    page_size: int = Query(default=20, ge=1, le=100),
+    status_: Optional[ExecutionStatus] = Query(default=None, alias="status"),
+    from_: Optional[datetime] = Query(
+        default=None,
+        alias="from",
+        description="Inicio do periodo (started_at >=). ISO 8601 UTC.",
+    ),
+    to: Optional[datetime] = Query(
+        default=None,
+        description="Fim do periodo (started_at <). ISO 8601 UTC.",
+    ),
+) -> ExecutionListOut:
+    # 404 se a company nao existe ou ja foi soft-deleted (RLS isola
+    # cross-tenant). Consistente com `get_company` acima.
+    row = db.execute(
+        text(
+            "SELECT id FROM companies WHERE id = :cid AND deleted_at IS NULL"
+        ),
+        {"cid": str(company_id)},
+    ).one_or_none()
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="company nao encontrada",
+        )
+
+    return query_executions(
+        db,
+        page=page,
+        page_size=page_size,
+        company_id=company_id,
+        status_=status_,
+        from_=from_,
+        to=to,
+    )
 
 
 @router.post(
