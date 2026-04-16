@@ -1,12 +1,8 @@
 import { Building2, CreditCard, Mail, MessageCircle, Play, Users } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 
 import { StatusBadge } from "@/components/ui/status-badge";
-import { cn } from "@/lib/utils";
-import {
-  getSubscriptionSnapshot,
-  type SubscriptionMetric,
-} from "@/lib/subscription/mock";
+import { UsageMeter } from "@/components/subscription/usage-meter";
+import { getSubscriptionSnapshot } from "@/lib/subscription/mock";
 
 /**
  * Contatos de suporte — placeholders ate SITE-* destravar (nome comercial).
@@ -14,77 +10,6 @@ import {
  */
 const SUPPORT_WHATSAPP_URL = "https://wa.me/5500000000000";
 const SUPPORT_EMAIL = "suporte@exemplo.local";
-
-function formatPercent(used: number, limit: number): string {
-  if (limit <= 0) return "-";
-  const pct = Math.min(100, Math.round((used / limit) * 100));
-  return `${pct}%`;
-}
-
-function usageTone(used: number, limit: number): "ok" | "warn" | "full" {
-  if (limit <= 0) return "ok";
-  const pct = used / limit;
-  if (pct >= 1) return "full";
-  if (pct >= 0.8) return "warn";
-  return "ok";
-}
-
-type UsageCardProps = {
-  title: string;
-  metric: SubscriptionMetric;
-  icon: LucideIcon;
-};
-
-function UsageCard({ title, metric, icon: Icon }: UsageCardProps) {
-  const { used, limit } = metric;
-  const tone = usageTone(used, limit);
-  const pctLabel = formatPercent(used, limit);
-  const pctWidth = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
-
-  const barColor =
-    tone === "full"
-      ? "bg-destructive"
-      : tone === "warn"
-        ? "bg-warning"
-        : "bg-primary";
-
-  return (
-    <article
-      aria-label={title}
-      data-tone={tone}
-      className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 text-card-foreground shadow-sm"
-    >
-      <header className="flex items-start justify-between gap-2">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          {title}
-        </p>
-        <Icon
-          aria-hidden="true"
-          className="h-4 w-4 shrink-0 text-muted-foreground"
-        />
-      </header>
-      <div className="flex items-baseline gap-2">
-        <p className="text-3xl font-semibold tracking-tight">{used}</p>
-        <p className="text-sm text-muted-foreground">
-          / {limit} <span className="text-xs">({pctLabel})</span>
-        </p>
-      </div>
-      <div
-        role="progressbar"
-        aria-valuenow={used}
-        aria-valuemin={0}
-        aria-valuemax={limit}
-        aria-label={`${title}: ${used} de ${limit}`}
-        className="h-1.5 w-full overflow-hidden rounded-full bg-muted"
-      >
-        <div
-          className={cn("h-full transition-all", barColor)}
-          style={{ width: `${pctWidth}%` }}
-        />
-      </div>
-    </article>
-  );
-}
 
 export default function AssinaturaPage() {
   const snapshot = getSubscriptionSnapshot();
@@ -139,17 +64,17 @@ export default function AssinaturaPage() {
         aria-label="Uso atual vs limite"
         className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3"
       >
-        <UsageCard
+        <UsageMeter
           title="CNPJs cadastrados"
           metric={usage.companies}
           icon={Building2}
         />
-        <UsageCard
+        <UsageMeter
           title="Execucoes no mes"
           metric={usage.executionsMonth}
           icon={Play}
         />
-        <UsageCard title="Usuarios" metric={usage.users} icon={Users} />
+        <UsageMeter title="Usuarios" metric={usage.users} icon={Users} />
       </section>
 
       <section
