@@ -29,5 +29,10 @@ Scripts, configs e documentacao de infraestrutura.
   `compose/{loki,promtail,grafana}/...` + `nginx/ops.conf.example` —
   stack Loki/Grafana/Promtail/Uptime Kuma exposta em `ops.<DOMINIO>`
   (INFRA-07).
+- `backup.md` + `scripts/backup-postgres.sh` +
+  `scripts/restore-postgres.sh` + `systemd/nfse-backup-postgres@.{service,timer}` —
+  backup diario do Postgres com `pg_dump -Fc`, cifra age, upload para
+  S3 (dailies 30d / monthlies 365d), script de restore e drill em
+  staging (INFRA-08).
 
 Inicializado em GOV-01; conteudo preenchido pelos tickets INFRA-*.

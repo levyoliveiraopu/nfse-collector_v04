@@ -112,6 +112,43 @@ Regras escritas (aplicadas por `ensure_can_manage_member`):
 | `POST /executions/{id}/reprocess`     |   W   |   W   |    W     |   —    |
 | Download de XLSX / artefatos          |   R   |   R   |    R     |   R    |
 
+### Occurrences (inbox operacional) — implementacao em API-09
+
+| Endpoint                                       | owner | admin | operator | viewer |
+|------------------------------------------------|:-----:|:-----:|:--------:|:------:|
+| `GET /occurrences`                             |   R   |   R   |    R     |   R    |
+| `GET /occurrences/{id}`                        |   R   |   R   |    R     |   R    |
+| `POST /occurrences/{id}/acknowledge`           |   W   |   W   |    W     |   —    |
+| `POST /occurrences/{id}/resolve`               |   W   |   W   |    W     |   —    |
+| `POST /occurrences/{id}/assign`                |   W   |   W   |    W     |   —    |
+
+Catalogo de codigos (`code`) emitidos pelo worker e canonizados na UI
+esta em `docs/architecture/occurrence-codes.md`. Cada acao mutadora
+grava `audit_logs` com `action='occurrence.<verb>'`. A nota do
+`resolve` e obrigatoria e fica em `audit_logs.metadata.note`.
+### Exports (ZIP assincrono) — implementacao em API-15
+
+| Endpoint                          | owner | admin | operator | viewer |
+|-----------------------------------|:-----:|:-----:|:--------:|:------:|
+| `GET /exports/{id}`               |   R   |   R   |    R     |   R    |
+| `POST /exports`                   |   W   |   W   |    W     |   —    |
+
+Viewer pode consultar o status de um export que ja foi pedido, mas
+nao pode criar novos pedidos. `GET` de export em `status='ready'`
+devolve URL pre-assinada 1h (mesmo TTL de API-11) e grava audit
+`export.download_url` — a URL em si nunca e persistida.
+
+### Schedules (agendamentos) — implementacao em API-12
+
+| Endpoint                          | owner | admin | operator | viewer |
+|-----------------------------------|:-----:|:-----:|:--------:|:------:|
+| `GET /schedules`                  |   R   |   R   |    R     |   R    |
+| `GET /schedules/{id}`             |   R   |   R   |    R     |   R    |
+| `GET /schedules/presets`          |   R   |   R   |    R     |   R    |
+| `POST /schedules`                 |   W   |   W   |    W     |   —    |
+| `PATCH /schedules/{id}`           |   W   |   W   |    W     |   —    |
+| `DELETE /schedules/{id}`          |   D   |   D   |    —     |   —    |
+
 ### Auditoria e observabilidade
 
 | Recurso                               | owner | admin | operator | viewer |

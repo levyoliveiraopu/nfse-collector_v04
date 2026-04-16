@@ -89,6 +89,20 @@ class Settings(BaseSettings):
         validation_alias="S3_CREDENTIALS_PREFIX",
     )
 
+    # -----------------------------------------------------------------
+    # Fila Redis (API-07)
+    # -----------------------------------------------------------------
+    # URL do Redis usado para enfileirar jobs do worker (RQ). Formato:
+    # "redis://[:password@]host:port/db". Vazio em development permite
+    # rodar a API sem fila; `POST /executions` so exige Redis online
+    # no momento do disparo e devolve 502 em indisponibilidade.
+    redis_url: str = Field(default="", validation_alias="API_REDIS_URL")
+    # Nome da fila RQ consumida pelo worker (CORE-05 / API-13).
+    queue_name: str = Field(
+        default="nfse-executions",
+        validation_alias="API_QUEUE_NAME",
+    )
+
     @model_validator(mode="after")
     def _validate_auth_secrets(self) -> "Settings":
         if self.environment in ("staging", "production") and not self.jwt_secret:

@@ -1,0 +1,28 @@
+[Unit]
+# INFRA-08 — Agenda diaria do backup-postgres.
+# Template unit: instancie com `%i` = ambiente (prod | staging).
+#   sudo systemctl enable --now nfse-backup-postgres@prod.timer
+# Runbook: infra/backup.md.
+Description=Agenda diaria do backup-postgres (%i)
+Documentation=https://github.com/levyoliveiraopu/nfse-collector_v04/blob/main/infra/backup.md
+
+[Timer]
+# 03:00 local. O timezone efetivo e o do host, configurado para
+# `America/Sao_Paulo` em INFRA-01 (`timedatectl set-timezone ...`).
+# Verifique com `timedatectl` antes de habilitar o timer em uma VPS
+# nova — se estiver em UTC, o backup rodara as 00:00 UTC-3.
+OnCalendar=*-*-* 03:00:00
+
+# Se o host estava desligado na hora planejada, dispara assim que ligar.
+Persistent=true
+
+# Jitter de ate 5 minutos para nao bater simultaneamente em varias VMs
+# (util se futuramente tivermos staging + prod na mesma hora).
+RandomizedDelaySec=5min
+
+# Amarra explicitamente ao service correspondente (o default seria
+# nfse-backup-postgres@%i.service — deixamos explicito por clareza).
+Unit=nfse-backup-postgres@%i.service
+
+[Install]
+WantedBy=timers.target

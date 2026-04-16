@@ -31,12 +31,31 @@ previstos: CORE-02 (PFX em memoria via `mtls_session`), CORE-03 (NSU via
   processa cada cliente e grava via backend de storage.
 - `storage_backend` — Protocol do contrato de persistencia.
 - `local_uploader`, `gdrive_uploader`, `noop_uploader` — backends.
+- `storage` (CORE-05) — cliente S3-compat para upload de XMLs e
+  exports (`S3StorageClient`, `upload_xml`, `upload_export`). Le as
+  vars `S3_*` via `S3Settings.from_env()`; devolve `UploadResult` com
+  `object_key`, `sha256` (hex) e `size`. Retry com backoff
+  exponencial em falhas transientes (`SlowDown`,
+  `ServiceUnavailable`, `InternalError`, `EndpointConnectionError`).
+  Integracao com `batch_processor` fica para API-11 / CORE-04.
 
 Ponto de atalho no nivel do pacote:
 
 ```python
 from worker_core import fetch_nfse, NfseItem, FetchSummary
 from worker_core import InMemoryNsuSource, FileNsuSource, NsuSource
+from worker_core import S3StorageClient  # CORE-05
+```
+
+Exemplo de upload S3 (CORE-05):
+
+```python
+from worker_core import S3StorageClient
+
+client = S3StorageClient()  # le S3_* do ambiente
+xml_res = client.upload_xml(tenant_id, execution_id, nsu=42, xml_bytes=b"<NFSe/>")
+exp_res = client.upload_export(tenant_id, file_id, path_or_bytes=excel_bytes, ext="xlsx")
+print(xml_res.object_key, xml_res.sha256, xml_res.size)
 ```
 
 ### `fetch_nfse` (CORE-04)
@@ -97,3 +116,57 @@ pip install -e "packages/worker-core[gdrive]"
 Os modulos em `src/` permanecem como shims finos que re-exportam de
 `worker_core`, preservando `main.py` e os testes existentes em
 `tests/`. Em proximos tickets os shims serao removidos.
+
+## Smoke test E2E (CORE-06)
+
+Script `scripts/smoke.py` roda o fluxo completo
+`mtls_session` -> `fetch_nfse` -> `S3StorageClient` contra o ADN real
+com 1 CNPJ + PFX A1 valido. Serve para provar que CORE-02..05
+funcionam fim-a-fim antes do worker SaaS (API-13) consumir o pacote.
+
+**Senha do PFX vai apenas pela env `NFSE_PFX_PASSWORD`** — nunca como
+flag de CLI (apareceria em `ps`/history) e nunca em log. Bytes do PFX
+e bytes do XML tambem nunca sao impressos.
+
+Dry run (nao sobe nada, so conta):
+
+```bash
+export NFSE_PFX_PASSWORD='senha-do-pfx'
+cd packages/worker-core
+python -m scripts.smoke \
+    --pfx /caminho/cliente.pfx \
+    --cnpj 12345678000199 \
+    --dias 7 \
+    --max-documentos 50 \
+    --dry-run
+```
+
+Execucao real (envs `S3_*` precisam estar setadas — veja
+`config/.env.example`):
+
+```bash
+export NFSE_PFX_PASSWORD='senha-do-pfx'
+export S3_BUCKET=...
+export S3_ENDPOINT=https://s3.us-west-004.backblazeb2.com
+export S3_REGION=us-west-004
+export S3_KEY_ID=...
+export S3_APPLICATION_KEY=...
+
+cd packages/worker-core
+python -m scripts.smoke --pfx /caminho/cliente.pfx --cnpj 12345678000199
+```
+
+O smoke imprime eventos JSON (`smoke.start`, `smoke.upload_ok`,
+`fetch_complete`, ...) em stdout e fecha com um resumo legivel
+contendo `nsu_from`/`nsu_to`, contadores do `FetchSummary`,
+`uploads_ok`/`uploads_failed`/`filtered_by_date` e amostra dos 3
+primeiros `object_key`.
+
+Exit codes: `0` sucesso, `1` erro de uso/config, `2` falha fatal
+(PFX/senha/cert), `3` erro de rede ou upload.
+
+> Sugestao: na primeira rodada num CNPJ ativo, sempre passe
+> `--max-documentos 50` para evitar baixar o historico inteiro de
+> uma vez (`--nsu-inicial 0` arranca do zero).
+>
+> NUNCA commite `.pfx`, senha ou as chaves S3 em arquivos do repo.
