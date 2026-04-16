@@ -1,0 +1,43 @@
+[build-system]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nfse-worker"
+version = "0.1.0"
+description = "RQ worker consumer do SaaS NFS-e (picka jobs enfileirados pela API e orquestra worker-core)."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+authors = [
+    { name = "Levy Oliveira" },
+]
+dependencies = [
+    "worker-core",
+    "redis>=5.0",
+    "rq>=1.16",
+    "sqlalchemy>=2.0",
+    "psycopg[binary]>=3.1",
+    "cryptography>=42.0",
+    "python-json-logger>=2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "fakeredis>=2.20",
+    "moto[s3]>=5.0",
+]
+
+[project.scripts]
+nfse-worker = "worker.main:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["worker"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "worker",
+    "README.md",
+    "pyproject.toml",
+]
