@@ -15,6 +15,73 @@
 
 ## Em Andamento
 
+- **API-13** — Worker consumer (Redis -> worker-core E2E):
+  `apps/worker/` RQ consumer orquestrando execucao ponta-a-ponta +
+  novos adapters em `packages/worker-core/worker_core/`. Handler
+  picado pelo RQ em `worker_core.jobs.run_execution(execution_id)`
+  (a **mesma string** enfileirada por API-07 em
+  `apps/api/api/queue.py` — por isso o handler vive em
+  `worker_core.jobs`, nao em `apps/worker/`). Fluxo: (1) le
+  `executions`+`companies`+`company_credentials` (admin + tenant
+  sessions com `SET LOCAL app.current_tenant`), (2) decifra PFX +
+  senha via `worker_core.crypto.decrypt` (envelope AES-256-GCM
+  compativel com API-06 — mesmo `_VERSION_TAG`/HKDF salt/KEK env
+  `API_CREDENTIAL_KEK_B64`, duplicacao intencional com comentario
+  apontando pra fonte canonica em `apps/api/api/crypto.py`), (3)
+  chama `fetch_nfse` (CORE-04) com `DbNsuSource` (persiste
+  `companies.last_nsu` via UPDATE only-if-greater, invariante "NSU
+  nunca regride") + callback que INSERT-a `execution_items` com
+  `ON CONFLICT (tenant_id, chave_nfse) DO NOTHING` (**idempotencia**
+  — retry do job nao duplica itens, satisfazendo DoD "crash no meio
+  do job + retry") e sobe o XML pro S3 via `S3StorageClient` (CORE-05),
+  (4) marca `executions.status` como `succeeded`/`partial`/`failed`
+  via `_decide_final_status` (`fatal_rejected` -> failed; nenhum
+  item + sem falha -> succeeded; fails > 0 com 0 ok -> failed; fails
+  ou storage_errors > 0 com ok > 0 -> partial; tudo ok -> succeeded),
+  (5) cria `occurrences` categorizadas (`CRED_INVALID`,
+  `CERT_EXPIRED`, `PORTAL_5XX`, `PARSE_ERROR`, `STORAGE_ERROR`,
+  `UNKNOWN`) alinhadas com `docs/architecture/occurrence-codes.md`.
+  `apps/worker/` expoe entry point `python -m worker.main` lendo
+  `API_REDIS_URL`+`API_QUEUE_NAME`+`WORKER_HEALTHZ_PORT` com
+  handlers SIGTERM/SIGINT para graceful shutdown (RQ drena o job
+  atual — compose deve setar `stop_grace_period: 60s` para cumprir
+  DoD "drena ate 60s") e `HealthzServer` stdlib (`http.server`) em
+  thread daemon expondo `GET /healthz -> 200 {"status":"ok"}` para
+  Uptime Kuma (INFRA-07). Dockerfile multi-stage com usuario nao-root
+  `worker:1002`, `HEALTHCHECK` contra `/healthz`, `STOPSIGNAL
+  SIGTERM`, `EXPOSE 8080`. Novas deps em
+  `packages/worker-core/pyproject.toml` (run: `sqlalchemy>=2.0`,
+  `psycopg[binary]>=3.1`, `redis>=5.0`, `rq>=1.16`; dev:
+  `fakeredis>=2.20`). Novo bloco `# Worker RQ (apps/worker -
+  API-13)` em `config/.env.example` com `WORKER_HEALTHZ_PORT` e
+  `WORKER_DATABASE_URL`. Testes: 10 em `tests/test_crypto_worker.py`
+  (round-trip com encrypt da API, tenant errado, versao
+  desconhecida, truncamento, tampering, ciphertext nao-bytes,
+  tenant_id invalido, KEK ausente em production, KEK base64
+  invalida, KEK tamanho errado), 9 em `tests/test_db_nsu.py`
+  (get feliz, company missing, cnpj mismatch, cnpj com mascara,
+  last_nsu null, UPDATE only-if-greater com filtro SQL correto,
+  rejeicao de nsu negativo/bool, noop quando rowcount=0), 13 em
+  `tests/test_jobs.py` (sucesso 2 itens, partial com parse_error +
+  occurrence PARSE_ERROR, credential decrypt failed -> occurrence
+  CRED_INVALID, idempotencia quando INSERT retorna None,
+  `fatal_rejected` -> failed + occurrence PORTAL_5XX, storage error
+  -> occurrence STORAGE_ERROR, execucao inexistente -> not_found,
+  `_decide_final_status` parametrico com 6 ramos), 3 em
+  `apps/worker/tests/test_healthz.py` (GET /healthz, 404 em path
+  desconhecido, start/stop idempotente) e 9 em
+  `apps/worker/tests/test_main.py` (resolvers de env com defaults e
+  validacao + `build_worker` com fakeredis + registro de handlers
+  SIGTERM/SIGINT). `pytest tests/ --ignore=tests/test_main.py
+  --ignore=tests/test_storage.py` = 140 passed; `pytest
+  apps/worker/tests/` = 12 passed. DoD E2E (POST /executions ->
+  fila -> worker -> items no DB + XML no S3) coberto estruturalmente
+  pelos testes unitarios + integracao-ready mas requer
+  postgres+redis+B2 reais para rodar end-to-end, validado
+  manualmente apos deploy. Move API-13 de "Bloqueadas" (deps
+  API-07/CORE-04/CORE-05/API-06 ja mergeadas em main) para "Em
+  Andamento" (PR a abrir — Closes #37).
+
 - **INFRA-08** — Backup diario do Postgres para S3: script
   `infra/scripts/backup-postgres.sh` executa `pg_dump -Fc -Z 9` dentro
   do container do Postgres (INFRA-05) via `docker compose exec -T`
@@ -967,6 +1034,44 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-16
+- PR: (a abrir) — API-13: worker consumer RQ orquestrando execucao
+  ponta-a-ponta. Novo pacote `apps/worker/` (entry point `python -m
+  worker.main` lendo `API_REDIS_URL`+`API_QUEUE_NAME`; `HealthzServer`
+  stdlib com `GET /healthz` em porta `WORKER_HEALTHZ_PORT` default
+  8080; Dockerfile multi-stage non-root `worker:1002` com HEALTHCHECK
+  + `STOPSIGNAL SIGTERM`; SIGTERM/SIGINT handlers delegam pra
+  `Worker.request_stop` — graceful shutdown DoD cumprido com
+  `stop_grace_period: 60s` no compose). Novos adapters em
+  `packages/worker-core/worker_core/`: `crypto.py` (decrypt AES-GCM
+  compat API-06 — mesmo `_VERSION_TAG`/HKDF/KEK env, duplicacao
+  intencional com nota de fonte canonica), `db.py`
+  (`get_admin_session`/`get_tenant_session` SQLAlchemy + `SET LOCAL
+  app.current_tenant` para RLS), `db_nsu.py` (`DbNsuSource`
+  persistindo `companies.last_nsu` via UPDATE only-if-greater),
+  `jobs.py` (`run_execution(execution_id)` — fluxo 5 passos:
+  carrega contexto, decifra PFX, chama `fetch_nfse` com callback
+  que INSERT-a `execution_items` com `ON CONFLICT DO NOTHING`
+  (idempotencia DoD) + upload XML S3, marca status via
+  `_decide_final_status`, cria `occurrences` categorizadas
+  `CRED_INVALID`/`CERT_EXPIRED`/`PORTAL_5XX`/`PARSE_ERROR`/
+  `STORAGE_ERROR`/`UNKNOWN`). Novas deps run em worker-core
+  (`sqlalchemy>=2`, `psycopg[binary]>=3.1`, `redis>=5`, `rq>=1.16`)
+  + dev (`fakeredis>=2.20`). Novo bloco `# Worker RQ (apps/worker -
+  API-13)` em `config/.env.example`. Re-exports de `run_execution`
+  e `DbNsuSource` em `worker_core/__init__.py`. Testes: 10
+  `tests/test_crypto_worker.py` (round-trip, tampering, KEK
+  checks), 9 `tests/test_db_nsu.py` (UPDATE only-if-greater,
+  mismatch de CNPJ), 13 `tests/test_jobs.py` (sucesso/partial/
+  failed/idempotencia/fatal_rejected/storage_error/not_found +
+  `_decide_final_status` parametrico), 3
+  `apps/worker/tests/test_healthz.py` e 9
+  `apps/worker/tests/test_main.py`. `pytest tests/
+  --ignore=test_main.py --ignore=test_storage.py` = 140 passed;
+  `pytest apps/worker/tests/` = 12 passed. DoD E2E real
+  (postgres+redis+B2) validado manualmente pos-deploy; unit +
+  integracao-ready aqui. Move API-13 de "Bloqueadas" (deps
+  API-07/CORE-04/CORE-05/API-06 mergeadas em main) para "Em
+  Andamento". Closes #37.
 - PR: (a abrir) — INFRA-08: backup diario do Postgres para S3.
   Scripts `infra/scripts/backup-postgres.sh` (pg_dump -Fc via
   `docker compose exec`, daily/monthly por prefix, cifra opcional com
