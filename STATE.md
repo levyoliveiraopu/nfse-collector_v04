@@ -56,6 +56,234 @@
   + 83 skipped. Move API-09 de "Bloqueadas" para "Em Andamento" —
   DATA-04 (dependencia) ja concluida
   (PR a abrir — Closes #33).
+- **APP-03** — `/empresas` lista + detalhe (abas). Lista em
+  `apps/web-app/app/empresas/page.tsx` + `EmpresasView`/`EmpresasTable`
+  consumindo `<DataTable>` (DS-06) com filtros server-side `status`
+  (select 3-valores) e `uf` (text 2 letras), colunas
+  `cnpj/razao_social/uf/status (StatusBadge)/last_success_at/created_at`,
+  link no CNPJ -> `/empresas/[id]`, export CSV, `enableSorting=false`
+  porque API-05 ainda nao suporta `?sort=`. Filtro "ultimo sucesso" do
+  ticket fica como **coluna informativa apenas** (API-05 nao filtra por
+  `last_success_at`; comentario inline + nota no PR sugerindo extender o
+  endpoint num ticket futuro). Botao "Nova empresa" visivel para
+  `owner|admin|operator` abre `NovaEmpresaDialog` (modal sem Radix em
+  novo `components/ui/modal.tsx`, com focus trap, Esc/clique no backdrop
+  e bloqueio de scroll do body) com form react-hook-form + zod usando
+  `CNPJInput` (DS-07), select de UF (27 siglas) e codigo IBGE; tras
+  `409 -> mensagem clara` (CNPJ duplicado ou limite do plano), `403 ->
+  "sem permissao"` e em sucesso invalida o cache react-query
+  `[empresas:list]`. Detalhe `apps/web-app/app/empresas/[id]/page.tsx`
+  -> `CompanyDetailView` (header com CNPJ formatado + razao social +
+  StatusBadge) + `CompanyTabs` controlado por `?tab=...`, `role=tablist`/
+  `role=tab` com `aria-selected`/`aria-controls`/`tabIndex` corretos e
+  navegacao por teclado (Setas/Home/End). Cada painel e
+  `React.lazy(import(...))` com `Suspense` fallback — **prova de DoD
+  "abas carregam sob demanda"**: `data-tab-panel` de aba nao visitada
+  permanece vazio (validado em `company-tabs.test.tsx`). 6 paineis em
+  `app/empresas/[id]/tabs/`: `overview-tab.tsx` (dados cadastrais,
+  cards "ultima coleta com sucesso"/"proxima execucao agendada", botoes
+  Editar/Excluir gated por papel — Editar para `owner|admin|operator`,
+  Excluir para `owner|admin` — abrindo dialogs proprios que invalidam
+  os caches `[empresas:list]` e `[empresas:detail, id]` em sucesso e
+  redirecionam para `/empresas` apos delete) + 5 stubs informativos
+  (`executions-tab` -> APP-05/API-07, `credential-tab` -> APP-04
+  citando que o backend API-06 ja existe, `schedules-tab` -> APP-08/
+  API-09, `files-tab` -> APP-07/API-10 com nota da retencao 90d
+  ADR-003, `occurrences-tab` -> APP-06 com link DOCS-03/04). Cliente
+  HTTP novo em `apps/web-app/lib/api/companies.ts`
+  (`buildListQuery`/`listCompanies`/`getCompany`/`createCompany`/
+  `updateCompany`/`deleteCompany` reaproveitando `apiFetch` da APP-01
+  com `accessToken` + `onTokenRefreshed`; mapeia pageIndex 0-based ->
+  page 1-based, normaliza UF para uppercase, `extra=forbid` do PATCH
+  honrado pelo tipo `CompanyUpdatePayload`; helpers `formatCnpj` e
+  `COMPANY_STATUS_LABEL`). Item "Empresas" adicionado em
+  `components/app-shell/nav-items.ts` (substitui o placeholder
+  "Tenants" — rota `/empresas` real, fica destacado em todo
+  `/empresas/*` pelo `pathname.startsWith` ja existente no Sidebar).
+  20 testes vitest novos: `lib/api/companies.test.ts` (14 — query
+  string, header Authorization, propagacao de ApiError 403/404, PATCH
+  com campos parciais, DELETE 204 sem lancar, `formatCnpj`),
+  `app/empresas/empresas-view.test.tsx` (2 — viewer nao ve botao,
+  owner/admin/operator veem) e `app/empresas/[id]/company-tabs.test.tsx`
+  (4 — 6 abas com role=tab, so "overview" monta no default,
+  `data-tab-panel="credential"` continua vazio antes do clique, setas
+  navegam). Typecheck verde, `next lint` zero warnings, `vitest run`
+  142 passed (122 existentes + 20 novos)
+  (PR a abrir — Closes #51).
+- **API-12** — CRUD `/schedules` (agendamentos cron + TZ): pacote
+  `apps/api/api/schedules/` com `cron.py` (valida cron 5-campos via
+  `croniter` rejeitando 6/7, valida TZ IANA via `zoneinfo.ZoneInfo`,
+  `compute_next_run` roda na TZ local e persiste em UTC), `presets.py`
+  (3 sugestoes: diario 03:00, semanal seg 06:00, mensal dia 1 05:00),
+  `schemas.py` (`ScheduleIn`/`ScheduleUpdate`/`ScheduleOut` com
+  `extra=forbid` protegendo `last_run_at`/`next_run_at`/etc como
+  read-only) e `routes.py` com `GET /schedules` paginado (filtros
+  `enabled`/`company_id`), `GET /{id}`, `GET /schedules/presets`,
+  `POST` (RBAC owner|admin|operator; valida cron+TZ com fallback
+  explicito para 400; valida company existente via RLS; calcula
+  `next_run_at` se `enabled=true`; grava `created_by_user_id`),
+  `PATCH` (recomputa `next_run_at` quando `cron_expr`/`timezone` mudam
+  ou `enabled` vira true; limpa quando vira false; `extra=forbid` ->
+  422 em tentativa de tocar read-only), `DELETE` hard (owner|admin).
+  Router registrado em `api/main.py`; matriz em
+  `docs/architecture/rbac-matrix.md` ganha secao Schedules. Nova dep
+  `croniter>=2.0` em `apps/api/pyproject.toml`. 31 unit tests de cron
+  (`test_schedules_cron.py` — 5-campos, rejeicao 6/7, sintaxe, TZ,
+  calculo em UTC para os 3 presets e cross-TZ) + 10 unit tests de
+  schemas (`test_schedules_schemas.py` — defaults, cron/TZ invalidos,
+  `extra=forbid`, PATCH parcial) + 18 integracao
+  (`test_schedules_routes_integration.py`, gated `TEST_DATABASE_URL`)
+  cobrindo CRUD feliz tenant-wide e company-scoped, `next_run_at`
+  coerente (hora UTC da primeira execucao), pause/resume limpa/recalcula,
+  cron/TZ invalidos -> 400/422 com mensagem clara, cross-tenant 404,
+  company de outro tenant 400, RBAC (viewer -> 403, operator -> 403
+  no DELETE), PATCH vazio 400, DELETE idempotente, presets com 3 itens,
+  filtros por `enabled`/`company_id`. `pytest apps/api`: 204 passed +
+  86 skipped, 0 falhas (PR a abrir — Closes #36).
+
+- **API-11** — `/files` (listar + URL pre-assinada 1h): novo pacote
+  `apps/api/api/files/` com `routes.py` (`GET /files` paginado com
+  filtros `kind`/`company`/`from`/`to`; `GET /files/{id}/url` gera
+  presigned 3600s) e `schemas.py` (`FileKind`, `FileOut`, `FileListOut`,
+  `FileUrlOut`). Novo helper `generate_presigned_get_url` em
+  `apps/api/api/storage.py` (usa `boto3.generate_presigned_url` com
+  `ExpiresIn=3600` fixo; TTL exposto como argumento mas clampado em
+  0 < s <= 7d). Filtro por `company` usa JOIN em `executions` via
+  `files.source_execution_id` — files sem execution nao aparecem
+  quando o filtro e usado (comportamento desejado). RBAC: leitura e
+  geracao de URL liberadas para todos os papeis (viewer incluido),
+  alinhado com a linha "Download de XLSX / artefatos" da matriz.
+  Cross-tenant cai naturalmente em 404 via RLS de `files` (policy
+  `files_isolation` da migration `0011_files`). Audit log
+  `file.download_url` grava metadata publica (`file_id`, `kind`,
+  `object_key`, `bytes`, `expires_in`) e **nunca** a URL em si — a
+  URL assinada e credencial temporaria. Router registrado em
+  `apps/api/api/main.py`. 4 unit tests em
+  `apps/api/tests/test_storage_presigned.py` (URL contem
+  `X-Amz-Signature`/`X-Amz-Expires=3600`, default 1h, rejeita key
+  vazia, rejeita TTL invalido) + 12 integracao gated por
+  `TEST_DATABASE_URL` + moto em
+  `apps/api/tests/test_files_routes_integration.py` (isolamento por
+  tenant, filtros kind/company/periodo, paginacao, viewer consegue
+  ler, URL tem `expires_in=3600`, cross-tenant -> 404, audit grava
+  sem vazar URL, 404 para id inexistente, viewer consegue gerar URL).
+  `pytest apps/api`: 153 passed + 79 skipped (todos os testes novos
+  de unit passam). Sem migration nova. DoD manual "URL funciona no
+  navegador" valida apos setup do bucket B2 real pelo owner (rastreio
+  em #8) — moto nao serve HTTP, apenas assina URL estruturalmente
+  (PR a abrir — Closes #35).
+
+- **API-07** — `POST /executions` + `GET /executions/{id}` em
+  `apps/api/api/executions/` (router + schemas). Cria 1 linha em
+  `executions` por company e enfileira `worker_core.jobs.run_execution`
+  (via string — worker resolve o import no pick) numa fila RQ
+  configurada por `API_REDIS_URL` + `API_QUEUE_NAME`. Novo
+  `apps/api/api/queue.py` expoe `get_redis_client()`, `get_queue()`,
+  `ping_redis()`, `enqueue_run_execution(execution_id, *, tenant_id,
+  dry_run)` (dry_run vai apenas no `meta` do job — nao persiste no
+  schema) e `QueueError` agnostico. `POST`: RBAC
+  `owner|admin|operator`; valida companies (RLS) em `companies` +
+  credencial ativa com `cert_not_after > now()` em
+  `company_credentials` — companies faltantes ou sem credencial
+  rejeitam em bloco com 422; pre-pinga Redis antes do INSERT (502
+  sem tocar DB quando offline); se o enqueue estourar apos o INSERT,
+  marca a linha como `failed` com `error_summary='enqueue_failed'`
+  e `finished_at=now()`, devolve `job_id=null`/`enqueue_error` no
+  item correspondente da resposta. `GET`: RBAC irrestrito (viewer
+  inclusive), 404 cross-tenant via RLS, devolve contadores,
+  periodo, NSU, `triggered_by_user_id`. Trigger default `manual`
+  (dominio alinhado com CHECK `ck_executions_trigger` do 0004).
+  Novas deps run `redis>=5.0` + `rq>=1.16` em
+  `apps/api/pyproject.toml`; dev `fakeredis>=2.20`. Novo bloco
+  `# Fila Redis para execucoes (API-07)` em `config/.env.example`
+  com `API_REDIS_URL=redis://localhost:6379/0` + `API_QUEUE_NAME=
+  nfse-executions`. 12 testes unitarios em
+  `apps/api/tests/test_executions_schemas.py` (defaults, trigger
+  dominio, `period_end >= period_start`, deduplicacao de
+  `company_ids`, `min_length/max_length`, `extra='forbid'`, envelope
+  de resposta) + 7 em `apps/api/tests/test_queue_unit.py`
+  (fakeredis + RQ: ping, enqueue feliz, meta/args/func_name
+  corretos, dry_run default, acumulo na fila, QueueError em ping e
+  enqueue com Redis quebrado, QueueError sem URL) + 10 de
+  integracao em `apps/api/tests/test_executions_routes_integration.py`
+  gated por `TEST_DATABASE_URL` + fakeredis (caminho feliz com N=2
+  -> N executions + N jobs com args batendo, dry_run=True propaga
+  meta, GET cross-tenant -> 404, company alheia -> 422
+  `companies_not_found`, company sem credencial -> 422
+  `credential_missing_or_expired`, credencial vencida -> 422,
+  `period_end < period_start` -> 422 Pydantic, viewer -> 403 no
+  POST mas 200 no GET, operator pode disparar, Redis down antes do
+  INSERT -> 502 sem tocar DB, enqueue falha no meio -> 1 queued +
+  1 failed com audit correto). `ruff check apps/api/` verde,
+  `pytest apps/api` = 178 passed + 72 skipped (PR a abrir —
+  Closes #31).
+
+- **APP-10** — Pagina `/assinatura` (placeholder sem gateway, ADR-004):
+  rota `apps/web-app/app/dashboard/assinatura/page.tsx` (server
+  component) renderiza plano atribuido + status via `<StatusBadge>`,
+  tres `UsageCard` locais (CNPJs, Execucoes no mes, Usuarios) com
+  contador `used/limit`, percentual, `role="progressbar"` e tom
+  ok/warn/full (>=80% warn, 100% full — usuarios 5/5 no mock), callout
+  "Para alterar plano, entre em contato com o suporte" com botoes
+  WhatsApp + email (placeholders ate SITE-* destravar nome comercial)
+  e secao "Historico de faturas" vazia. **Sem** botao de upgrade —
+  cobranca manual reforcada (ADR-004). Dados de teste isolados em
+  `apps/web-app/lib/subscription/mock.ts` (`SubscriptionSnapshot` com
+  shape alinhado a `plans.limits` do seed DATA-07 e `plans.code`
+  tipado como `starter|pro|scale`) para que um endpoint futuro troque
+  a funcao `getSubscriptionSnapshot()` sem tocar no layout. Novo item
+  `Assinatura` (icone `CreditCard`) em
+  `apps/web-app/components/app-shell/nav-items.ts`. Spec vitest
+  `app/dashboard/assinatura/page.test.tsx` (6 casos): render do plano
+  + badge `Ativo`, tres cards com `used/limit` + progressbar, card de
+  usuarios marcado `data-tone="full"` com 5/5, mensagem de suporte +
+  links `wa.me`/`mailto`, ausencia defensiva de botoes/links
+  "upgrade|fazer upgrade|assinar|mudar plano" (prova do DoD) e
+  placeholder vazio de faturas. `tsc --noEmit`, `next lint` e
+  `vitest run` = 128 testes verdes (PR a abrir — Closes #58).
+
+- **APP-09** — `/usuarios` + convites: pagina
+  `apps/web-app/app/usuarios/` (layout com `RequireAuth` + `AppShell`)
+  lista membros (nome, email, papel, status, ultimo login) com menu de
+  acoes por linha (alterar papel, remover) e secao separada de
+  convites pendentes. Camada `apps/web-app/lib/users/` com
+  `types.ts` (`Member`, `Invitation`, `Role`), `schemas.ts` (zod de
+  invite/update/accept + helper `rolesAssignableBy`), `api-client.ts`
+  (`listMembers`/`listInvitations`/`inviteMember`/`revokeInvitation`/
+  `updateMemberRole`/`removeMember`/`acceptInvitation` via `apiFetch`
+  do APP-01 + novo Route Handler `app/api/auth/accept-invitation/`
+  que grava o cookie httpOnly de refresh) e `rbac.ts` com guardas
+  `canRemoveMember`/`canChangeRole`/`canInviteWithRole`/
+  `canRevokeInvitation` alinhados a `docs/architecture/rbac-matrix.md`
+  (admin so atribui operator/viewer; owner e protegido). Componentes
+  em `apps/web-app/components/users/` — `Modal` + `ConfirmDialog`
+  leves (sem Radix, padrao do AppShell), `RoleSelect` (reage ao papel
+  do ator), `RoleBadge`, `InviteDialog` (react-hook-form + zod),
+  `MembersTable` (menu de acoes desabilitado quando o ator nao pode
+  agir, incluindo "nao gerenciar a si mesmo") e `PendingInvitations`
+  (revogar com confirmacao; oculta accepted/revoked/expired).
+  `/aceitar-convite/[token]` deixa de ser stub: chama
+  `POST /api/auth/accept-invitation`, aplica sessao e redireciona
+  para `/dashboard`. Sidebar (`components/app-shell/nav-items.ts`)
+  ganha item "Usuarios" apontando para `/usuarios`. Testes vitest:
+  `lib/users/rbac.test.ts` (16 casos cobrindo toda a matriz,
+  incluindo DoD "admin nao rebaixa owner"), `lib/users/schemas.test.ts`
+  (11 casos), `components/users/invite-dialog.test.tsx` (5 casos —
+  submissao, validacao de email, restricao de papel para admin, erro
+  da API), `components/users/members-table.test.tsx` (6 casos —
+  vazio, listagem, admin+owner desabilitado, auto-gestao bloqueada,
+  remover e alterar papel) e `components/users/pending-invitations.test.tsx`
+  (4 casos — lista vazia, revogar, erro+retry, viewer desabilitado).
+  E2E Playwright `apps/web-app/e2e/usuarios.spec.ts` intercepta
+  `/tenant/*` + `/api/auth/accept-invitation` e cobre convite feliz +
+  aceite redirecionando pro dashboard + admin vendo owner bloqueado.
+  `pnpm -C apps/web-app typecheck/lint/test` verdes (164 specs no
+  total, +42 novos). Backend (`GET/POST /tenant/members`,
+  `/tenant/invitations`, `/tenant/invitations/{id}/revoke` e
+  `/tenant/invitations/accept`) sera entregue em **ticket API
+  futuro** — mesmo padrao do APP-01 (`/recuperar-senha`,
+  `/redefinir-senha`), onde a UI e o contrato ficam prontos antes do
+  handler (PR a abrir — Closes #57).
 - **DS-07** — Inputs especiais de formulario (FileDropzone,
   SecretField, CNPJInput, PeriodPicker) em
   `apps/web-app/components/ui/` (PR a abrir — Closes #46).
@@ -96,8 +324,70 @@
   `tenants-credentials/`) fica para o owner — sem isso, o PUT real
   contra B2 retorna 401; o smoke test esta documentado no runbook
   (PR a abrir — Closes #30).
+- **APP-04** — Aba "Credencial" em
+  `/dashboard/empresas/[id]/credencial` (apps/web-app): painel com
+  `<StatusBadge>` + fingerprint SHA-256 (formato OpenSSL `aa:bb:..`)
+  + validade em pt-BR, botao "Atualizar credencial" abrindo dialog
+  com `<FileDropzone>` (.pfx/.p12 ate 1 MiB) + `<SecretField>`
+  (senha PFX), "Revogar" via ConfirmDialog "digite REVOGAR" e
+  "Testar agora" desabilitado (aguardando endpoint dedicado de
+  handshake — issue a abrir). Erros 400/413/502/403 traduzidos
+  para feedback acionavel em portugues ("senha incorreta ou PFX
+  invalido", "arquivo excede limite de 1 MiB", "falha ao gravar
+  no storage", "voce nao tem permissao"); badge vira
+  `cert_expiring` nos ultimos 30 dias, `failed` apos a validade,
+  `blocked` em revogada, `cred_invalid` em invalida.
+  Incluidos no escopo: (a) GET minimo
+  `/companies/{id}/credential` na API (RBAC leitura = todos os
+  papeis; devolve a credencial `active` mais recente ou 404; nunca
+  expoe ciphertext/senha; `cn_matches_cnpj` volta como `None`
+  porque o CN nao e persistido); (b) novo `components/ui/dialog.tsx`
+  (modal acessivel sem Radix, focus trap, Esc, overlay click);
+  (c) `lib/companies/credentials.ts` com cliente tipado + mapeador
+  de erros + `formatFingerprint` + `decideCredentialBadge`.
+  37 testes novos no apps/web-app (credentials helpers, status
+  block, upload dialog, revoke dialog e panel orquestrando estado
+  de auth) + 4 testes de integracao no apps/api cobrindo GET feliz
+  pos-upload sem ciphertext, GET 404 pre-upload, GET 404 apos
+  revoke (so retorna active) e GET RBAC permitindo viewer.
+  `pytest apps/api` = 163 passed + 72 skipped; `pnpm --filter
+  web-app test` = 164 passed; `pnpm typecheck` e `pnpm lint`
+  verdes; `ruff check apps/api` limpo
+  (PR a abrir — Closes #52).
 
 ## Concluidos
+
+- **CORE-04** — Refactor: callback de progresso por item.
+  Novo modulo `packages/worker-core/worker_core/collector.py` expondo
+  `fetch_nfse(pfx_bytes, pfx_password, cnpj, nsu_source, on_progress,
+  on_log=None, *, max_documentos=None, rate_limit_delay=0)`:
+  abre `mtls_session` (CORE-02) internamente, pagina via
+  `buscar_todos_dfe_novos` + `NsuSource` (CORE-03), filtra
+  `TipoDocumento == "NFSE"` e emite `NfseItem` por nota em
+  `on_progress`. `NfseItem` (`@dataclass(frozen=True)`) carrega os 9
+  campos do ticket (`nsu`, `chave_nfse`, `cnpj_emitente`,
+  `data_emissao`, `valor`, `xml_bytes`, `status`, `error_code`,
+  `error_message`) com `status` em `{"ok","cancelada","parse_error"}`.
+  Retorno `FetchSummary` (contadores + `nsu_from`/`nsu_to` +
+  `callback_errors` + `fatal_rejected`). Garantias da DoD: (a) erro
+  dentro de `on_progress` e capturado, registrado em
+  `on_log("callback_error",...)` e a coleta continua; (b) XML ausente/
+  invalido vira `NfseItem(status="parse_error")` emitido normalmente;
+  (c) erros fatais (PFX/senha/cert vencido -> `ValueError` do
+  `mtls_session`) propagam apos `on_log("fatal_error",
+  {"stage":"mtls"})`. Re-exports em `worker_core/__init__.py`
+  (`fetch_nfse`, `NfseItem`, `FetchSummary`) substituem o alias
+  placeholder `fetch_nfse = buscar_todos_dfe_novos` do CORE-01;
+  `buscar_todos_dfe_novos` segue disponivel em `worker_core.fetcher`
+  para o coletor historico. 8 testes novos em
+  `tests/test_fetch_nfse.py` com PFX self-signed em memoria e stubs
+  de `mtls_session`/`buscar_lote_dfe` cobrindo a DoD completa.
+  `pytest tests/` = 116 passed (108 anteriores + 8 novos). `ruff
+  check` verde. README do pacote atualizado com secao
+  "fetch_nfse (CORE-04)". Sem alteracoes em `batch_processor`/
+  `main.py`/`src/` — comportamento legado preservado. Destrava
+  API-13 (worker consumer) junto com CORE-05 + API-06 + API-07
+  (PR a abrir — Closes #22).
 
 - **CORE-03** — Refactor: NSU via callback (sem arquivo). Introduz em
   `packages/worker-core/worker_core/nsu_tracker.py` o protocolo
@@ -551,12 +841,13 @@
   `proxy_pass` em `infra/nginx/sites-available/{app,api}.conf`.
 
 > INFRA-05 saiu de "Proximas Destravadas" para "Em Andamento" nesta
-> atualizacao. CORE-05, API-06, API-11 e INFRA-08 continuam parcialmente
+> atualizacao. CORE-05, API-06 e INFRA-08 continuam parcialmente
 > bloqueados pelas dependencias de codigo (CORE-01 / API-05 / DATA-05 /
 > INFRA-05); a parte automatizada de INFRA-06 (template de lifecycle,
 > variaveis `S3_*`, smoke test) ja esta disponivel para esses tickets
 > consumirem, e o setup manual do bucket B2 segue em aberto no issue #8
-> sem bloquear o desenvolvimento das integracoes.
+> sem bloquear o desenvolvimento das integracoes. API-11 sai desta lista
+> e entra em "Em Andamento" nesta atualizacao.
 
 ## Bloqueadas
 
@@ -575,6 +866,54 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 
 ## Ultima atualizacao
 
+- Data: 2026-04-16
+- PR: (a abrir) — APP-04: aba "Credencial" em
+  `/dashboard/empresas/[id]/credencial` com `<StatusBadge>` +
+  fingerprint + validade, dialog de upload (`<FileDropzone>` + 
+  `<SecretField>`, erros 400/413/502/403 traduzidos), ConfirmDialog
+  de revogacao "digite REVOGAR" e placeholder desabilitado de
+  "Testar agora" (aguarda endpoint futuro de handshake). Inclui no
+  escopo o `GET /companies/{id}/credential` (RBAC leitura = todos;
+  devolve credencial `active` mais recente ou 404; `cn_matches_cnpj`
+  vira `None` porque o CN nao e persistido em
+  `company_credentials`). Novo `components/ui/dialog.tsx` (modal
+  acessivel sem Radix, focus trap + Esc + overlay click). Cliente
+  tipado + mapeador de erros + `formatFingerprint` +
+  `decideCredentialBadge` em
+  `apps/web-app/lib/companies/credentials.ts`. 37 testes novos no
+  web-app (helpers/status/upload/revoke/panel) + 4 testes de
+  integracao no api cobrindo GET feliz sem ciphertext, GET 404 sem
+  upload, GET 404 apos revoke e GET viewer autorizado. `pytest
+  apps/api` = 163 passed + 72 skipped; `pnpm --filter web-app
+  test` = 164 passed; `pnpm typecheck` / `pnpm lint` / `ruff
+  check apps/api` limpos. Move APP-04 de "Bloqueadas" para "Em
+  Andamento". Closes #52.
+- PR: (a abrir) — APP-03: paginas `/empresas` (lista com `<DataTable>`
+  filtrando `status` + `uf`, botao "Nova empresa" gated por papel) e
+  `/empresas/[id]` com 6 abas lazy (`React.lazy` + `Suspense` em
+  `company-tabs.tsx`; `data-tab-panel` so se preenche apos visita).
+  Aba "Visao geral" entrega CRUD completo (Editar para
+  `owner|admin|operator`, Excluir para `owner|admin`, com confirm
+  modal e invalidacao dos caches react-query); abas Execucoes/
+  Credencial/Agendamentos/Arquivos/Ocorrencias entram como stubs
+  informativos apontando os tickets que vao entrega-las (APP-04..08,
+  API-07/09/10). Novo cliente HTTP `lib/api/companies.ts`
+  reaproveitando `apiFetch` da APP-01. Novo `components/ui/modal.tsx`
+  (sem Radix — focus trap, Esc, click no backdrop, scroll lock no body)
+  consumido pelo `NovaEmpresaDialog` (form react-hook-form + zod
+  validando CNPJ via `isValidCnpj`/DS-07, UF e codigo IBGE) e pelos
+  dialogs Editar/Excluir do overview. Item "Empresas" adicionado em
+  `components/app-shell/nav-items.ts` (substitui placeholder
+  "Tenants"). Filtro "ultimo sucesso" do ticket fica como **coluna
+  apenas** porque API-05 nao expoe `?last_success_after=`; nota inline
+  no codigo + na descricao do PR sugerindo extender o endpoint num
+  ticket futuro. 20 novos testes vitest (`lib/api/companies.test.ts`,
+  `app/empresas/empresas-view.test.tsx`,
+  `app/empresas/[id]/company-tabs.test.tsx`) cobrindo querystring +
+  header Authorization, gating por papel, e prova de lazy mount nas
+  abas. Typecheck verde, `next lint` zero warnings, `vitest run` 142
+  passed (+20 vs main). Move APP-03 de "Bloqueadas" para "Em Andamento".
+  Closes #51.
 - Data: 2026-04-15
 - PR: (a abrir) — API-09: inbox de ocorrencias operacionais em
   `apps/api/api/occurrences/` com `GET /occurrences` (paginado +
@@ -597,6 +936,116 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
   `TEST_DATABASE_URL` cobrindo DoD (transicoes de status + audit log
   por acao). Move API-09 de "Bloqueadas" para "Em Andamento" — DATA-04
   ja concluida. Closes #33.
+- PR: (a abrir) — API-12: CRUD de `/schedules` em
+  `apps/api/api/schedules/` (pacote novo com `cron.py` + `presets.py` +
+  `schemas.py` + `routes.py`). Endpoints `GET /schedules` (paginado,
+  filtros `enabled`/`company_id`), `GET /schedules/{id}`,
+  `GET /schedules/presets`, `POST`, `PATCH`, `DELETE`. Cron 5-campos
+  via `croniter` (rejeita 6/7 campos explicitamente), TZ via
+  `zoneinfo.ZoneInfo`, `next_run_at` calculado na TZ local e persistido
+  em UTC. `PATCH` recomputa `next_run_at` quando `cron_expr`/`timezone`
+  mudam ou quando `enabled` vira true; limpa quando vira false.
+  RBAC: leitura = todos; POST/PATCH = owner|admin|operator; DELETE =
+  owner|admin (matriz atualizada em `docs/architecture/rbac-matrix.md`).
+  Nova dep `croniter>=2.0` em `apps/api/pyproject.toml`. 41 unit tests
+  (cron + schemas) + 18 integracao (gated `TEST_DATABASE_URL`) cobrindo
+  DoD ("cron invalido -> 400 claro" e "`next_run_at` coerente com cron
+  + TZ"). `pytest apps/api` = 204 passed + 86 skipped, 0 falhas. Move
+  API-12 de "Bloqueadas" (dependencia DATA-05 ja em "Concluidos") para
+  "Em Andamento". Closes #36.
+- PR: (a abrir) — API-11: `/files` com listagem paginada e URL
+  pre-assinada (1h). Novo pacote `apps/api/api/files/`
+  (`schemas.py` + `routes.py`) expondo `GET /files` com filtros
+  `kind`/`company`/`from`/`to` + paginacao e
+  `GET /files/{id}/url` gerando presigned GET de 3600s e auditando
+  `file.download_url` sem gravar a URL em si. Filtro por `company`
+  usa JOIN em `executions` via `files.source_execution_id`. Novo
+  helper `generate_presigned_get_url` em `apps/api/api/storage.py`
+  (TTL clampado em 0 < s <= 7d). RBAC: leitura liberada para todos
+  os papeis (viewer incluido) alinhado com a matriz. Cross-tenant
+  -> 404 via RLS de `files`. Router registrado em
+  `apps/api/api/main.py`. 4 unit tests + 12 integracao gated por
+  `TEST_DATABASE_URL` + moto. `pytest apps/api`: 153 passed + 79
+  skipped. Sem migration nova. Move API-11 de "Proximas
+  Destravadas" para "Em Andamento". DoD manual (URL no navegador)
+  fica para owner apos setup real do B2. Closes #35.
+- PR: (a abrir) — API-07: `POST /executions` + `GET /executions/{id}`
+  em `apps/api/api/executions/`. Router cria 1 linha em `executions`
+  por `company_id` validado (RLS + credencial ativa com
+  `cert_not_after > now()`), pre-pinga Redis (502 sem tocar DB em
+  indisponibilidade) e enfileira `worker_core.jobs.run_execution`
+  (via string, worker resolve import no pick) em fila RQ configurada
+  por `API_REDIS_URL` + `API_QUEUE_NAME`. Novo
+  `apps/api/api/queue.py` com `QueueError` agnostico, singletons
+  lazy do Redis/Queue e helpers de teste. `dry_run` vai apenas no
+  `meta` do job (nao persiste no schema). Falha no enqueue pos-INSERT
+  marca a linha como `failed` com `error_summary='enqueue_failed'`.
+  RBAC: POST = `owner|admin|operator`, GET = todos. Novas deps run
+  `redis>=5.0`, `rq>=1.16`; dev `fakeredis>=2.20`. Novo bloco
+  `# Fila Redis para execucoes (API-07)` em `config/.env.example`.
+  12 unit de schemas + 7 unit da queue (fakeredis+RQ) + 10 de
+  integracao gated por `TEST_DATABASE_URL` (fakeredis). `ruff check
+  apps/api/` verde, `pytest apps/api` = 178 passed + 72 skipped.
+  Move API-07 de "Bloqueadas" (desbloqueado por API-05 + INFRA-05
+  ambos concluidos) para "Em Andamento". Closes #31.
+- PR: (a abrir) — APP-10: pagina `/assinatura` placeholder sem
+  gateway. Nova rota `apps/web-app/app/dashboard/assinatura/page.tsx`
+  (server component) mostra plano atribuido + status (`<StatusBadge>`),
+  tres cards de uso (CNPJs, Execucoes no mes, Usuarios) com
+  `used/limit` + `role="progressbar"` + tom ok/warn/full, mensagem
+  "Para alterar plano, entre em contato com o suporte" com links
+  WhatsApp + email (placeholders ate SITE-*) e placeholder vazio de
+  historico de faturas. **Sem** botao de upgrade (ADR-004). Dados
+  de teste em `apps/web-app/lib/subscription/mock.ts` com shape
+  alinhado a `plans.limits` (DATA-07) para plug-in do endpoint
+  futuro. Novo item `Assinatura` (icone `CreditCard`) em
+  `components/app-shell/nav-items.ts`. Spec
+  `app/dashboard/assinatura/page.test.tsx` (6 casos: plano+badge,
+  3 cards com progressbar, tone=full em 5/5, links wa.me/mailto,
+  ausencia defensiva de CTAs de upgrade, placeholder vazio de
+  faturas). `tsc --noEmit`, `next lint` e `vitest run` verdes
+  (128 testes). APP-10 estava `ready` apos DS-03 (ja concluido) —
+  move para "Em Andamento". Closes #58.
+- PR: (a abrir) — CORE-04: callback de progresso por item.
+  Novo modulo `packages/worker-core/worker_core/collector.py` com
+  `fetch_nfse(pfx_bytes, pfx_password, cnpj, nsu_source, on_progress,
+  on_log=None, *, max_documentos=None, rate_limit_delay=0)` que abre
+  `mtls_session` (CORE-02) internamente, pagina via
+  `buscar_todos_dfe_novos` + `NsuSource` (CORE-03) e emite `NfseItem`
+  por nota em `on_progress`. `NfseItem` (`@dataclass(frozen=True)`)
+  carrega os 9 campos do ticket; `status` em
+  `{"ok","cancelada","parse_error"}`. Retorno `FetchSummary` com
+  contadores + `nsu_from`/`nsu_to` + `callback_errors` +
+  `fatal_rejected`. Erro dentro do callback e XML corrompido nao
+  abortam o lote (DoD CORE-04); erros fatais do `mtls_session` (PFX,
+  senha, cert vencido) propagam apos `on_log("fatal_error",...)`.
+  Substitui o alias placeholder `fetch_nfse = buscar_todos_dfe_novos`
+  do CORE-01; `buscar_todos_dfe_novos` segue exportado em
+  `worker_core.fetcher` para o coletor historico. 8 testes novos em
+  `tests/test_fetch_nfse.py`. `pytest tests/` = 116 passed. `ruff
+  check` verde. README do pacote atualizado. Move CORE-04 de
+  "Bloqueadas" (dependia de CORE-02 + CORE-03, ambos concluidos) para
+  "Concluidos". Closes #22.
+- Data: 2026-04-16
+- PR: (a abrir) — APP-09: `/usuarios` + convites. Pagina
+  `apps/web-app/app/usuarios/` (RequireAuth + AppShell) com lista
+  de membros, menu de acoes por linha (alterar papel, remover) e
+  secao de convites pendentes (revogar). Camada
+  `apps/web-app/lib/users/` (`types`/`schemas`/`api-client`/`rbac`)
+  e componentes em `apps/web-app/components/users/` (`Modal`,
+  `ConfirmDialog`, `RoleSelect`, `RoleBadge`, `InviteDialog`,
+  `MembersTable`, `PendingInvitations`). RBAC do cliente espelha
+  `docs/architecture/rbac-matrix.md` (admin nao atribui
+  owner/admin; owner e protegido). Rota `/aceitar-convite/[token]`
+  deixa de ser stub e chama `POST /api/auth/accept-invitation`
+  (novo Route Handler proxy que grava o cookie httpOnly do refresh
+  e devolve a sessao). Sidebar ganha entrada "Usuarios". 42 novos
+  specs vitest (164 total passando) + E2E Playwright
+  `e2e/usuarios.spec.ts` cobrindo convite feliz, aceite +
+  redirecionamento pro dashboard e admin bloqueado sobre owner.
+  Backend (`/tenant/members`, `/tenant/invitations*`) sera entregue
+  em ticket API futuro — mesmo padrao APP-01. Move APP-09 de
+  "Bloqueadas" para "Em Andamento". Closes #57.
 - PR: (a abrir) — CORE-03: refactor do `nsu_tracker` para callbacks.
   Novo protocolo `NsuSource` (`get`/`set`) em
   `packages/worker-core/worker_core/nsu_tracker.py` com duas

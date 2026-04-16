@@ -126,6 +126,16 @@ Catalogo de codigos (`code`) emitidos pelo worker e canonizados na UI
 esta em `docs/architecture/occurrence-codes.md`. Cada acao mutadora
 grava `audit_logs` com `action='occurrence.<verb>'`. A nota do
 `resolve` e obrigatoria e fica em `audit_logs.metadata.note`.
+### Schedules (agendamentos) — implementacao em API-12
+
+| Endpoint                          | owner | admin | operator | viewer |
+|-----------------------------------|:-----:|:-----:|:--------:|:------:|
+| `GET /schedules`                  |   R   |   R   |    R     |   R    |
+| `GET /schedules/{id}`             |   R   |   R   |    R     |   R    |
+| `GET /schedules/presets`          |   R   |   R   |    R     |   R    |
+| `POST /schedules`                 |   W   |   W   |    W     |   —    |
+| `PATCH /schedules/{id}`           |   W   |   W   |    W     |   —    |
+| `DELETE /schedules/{id}`          |   D   |   D   |    —     |   —    |
 
 ### Auditoria e observabilidade
 
