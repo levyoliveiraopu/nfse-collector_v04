@@ -29,6 +29,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import timezone
+from typing import Optional
 from uuid import UUID
 
 from cryptography import x509
@@ -56,6 +57,7 @@ logger = logging.getLogger("api.credentials")
 
 router = APIRouter(prefix="/companies/{company_id}/credential", tags=["credentials"])
 
+_ReadAccess = require_role(min_role="viewer")
 _WriteAccess = require_role("owner", "admin")
 _DeleteAccess = require_role("owner", "admin")
 
@@ -170,7 +172,7 @@ def _to_json(value: dict) -> str:
     return json.dumps(value, default=str, separators=(",", ":"))
 
 
-def _row_to_out(row, *, cn_matches_cnpj: bool) -> CredentialOut:
+def _row_to_out(row, *, cn_matches_cnpj: Optional[bool]) -> CredentialOut:
     return CredentialOut(
         id=row.id,
         tenant_id=row.tenant_id,
@@ -185,6 +187,55 @@ def _row_to_out(row, *, cn_matches_cnpj: bool) -> CredentialOut:
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
+
+
+@router.get(
+    "",
+    response_model=CredentialOut,
+    status_code=status.HTTP_200_OK,
+    summary="Le a credencial ativa de uma company (metadados publicos)",
+)
+def get_credential(
+    company_id: UUID,
+    db: Session = Depends(get_tenant_db),
+    claims: AccessClaims = Depends(_ReadAccess),  # noqa: ARG001
+) -> CredentialOut:
+    """Retorna a credencial `active` mais recente da company.
+
+    Nunca expoe ciphertext, senha ou bytes do PFX — apenas metadados
+    publicos do certificado (fingerprint, validade, status, CN match).
+    404 quando nao ha credencial ativa (company cross-tenant tambem cai
+    aqui por RLS).
+    """
+    tenant_id, company_cnpj = _fetch_company(db, company_id)
+
+    row = db.execute(
+        text(
+            """
+            SELECT id, tenant_id, company_id, type,
+                   pfx_object_key, cert_fingerprint, cert_not_before,
+                   cert_not_after, status, created_at, updated_at
+              FROM company_credentials
+             WHERE company_id = :cid AND status = 'active'
+             ORDER BY created_at DESC
+             LIMIT 1
+            """
+        ),
+        {"cid": str(company_id)},
+    ).one_or_none()
+
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="credencial nao configurada",
+        )
+
+    # `cn_matches_cnpj=None` reflete que o valor nao e persistido em
+    # `company_credentials` (so o upload conhece o CN). O painel web
+    # so renderiza warning quando o POST retorna `False` explicito.
+    _ = tenant_id  # ja presente no row; mantido para doc de fluxo
+    _ = company_cnpj
+    return _row_to_out(row, cn_matches_cnpj=None)
 
 
 @router.post(
