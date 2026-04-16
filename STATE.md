@@ -15,6 +15,60 @@
 
 ## Em Andamento
 
+- **APP-03** — `/empresas` lista + detalhe (abas). Lista em
+  `apps/web-app/app/empresas/page.tsx` + `EmpresasView`/`EmpresasTable`
+  consumindo `<DataTable>` (DS-06) com filtros server-side `status`
+  (select 3-valores) e `uf` (text 2 letras), colunas
+  `cnpj/razao_social/uf/status (StatusBadge)/last_success_at/created_at`,
+  link no CNPJ -> `/empresas/[id]`, export CSV, `enableSorting=false`
+  porque API-05 ainda nao suporta `?sort=`. Filtro "ultimo sucesso" do
+  ticket fica como **coluna informativa apenas** (API-05 nao filtra por
+  `last_success_at`; comentario inline + nota no PR sugerindo extender o
+  endpoint num ticket futuro). Botao "Nova empresa" visivel para
+  `owner|admin|operator` abre `NovaEmpresaDialog` (modal sem Radix em
+  novo `components/ui/modal.tsx`, com focus trap, Esc/clique no backdrop
+  e bloqueio de scroll do body) com form react-hook-form + zod usando
+  `CNPJInput` (DS-07), select de UF (27 siglas) e codigo IBGE; tras
+  `409 -> mensagem clara` (CNPJ duplicado ou limite do plano), `403 ->
+  "sem permissao"` e em sucesso invalida o cache react-query
+  `[empresas:list]`. Detalhe `apps/web-app/app/empresas/[id]/page.tsx`
+  -> `CompanyDetailView` (header com CNPJ formatado + razao social +
+  StatusBadge) + `CompanyTabs` controlado por `?tab=...`, `role=tablist`/
+  `role=tab` com `aria-selected`/`aria-controls`/`tabIndex` corretos e
+  navegacao por teclado (Setas/Home/End). Cada painel e
+  `React.lazy(import(...))` com `Suspense` fallback — **prova de DoD
+  "abas carregam sob demanda"**: `data-tab-panel` de aba nao visitada
+  permanece vazio (validado em `company-tabs.test.tsx`). 6 paineis em
+  `app/empresas/[id]/tabs/`: `overview-tab.tsx` (dados cadastrais,
+  cards "ultima coleta com sucesso"/"proxima execucao agendada", botoes
+  Editar/Excluir gated por papel — Editar para `owner|admin|operator`,
+  Excluir para `owner|admin` — abrindo dialogs proprios que invalidam
+  os caches `[empresas:list]` e `[empresas:detail, id]` em sucesso e
+  redirecionam para `/empresas` apos delete) + 5 stubs informativos
+  (`executions-tab` -> APP-05/API-07, `credential-tab` -> APP-04
+  citando que o backend API-06 ja existe, `schedules-tab` -> APP-08/
+  API-09, `files-tab` -> APP-07/API-10 com nota da retencao 90d
+  ADR-003, `occurrences-tab` -> APP-06 com link DOCS-03/04). Cliente
+  HTTP novo em `apps/web-app/lib/api/companies.ts`
+  (`buildListQuery`/`listCompanies`/`getCompany`/`createCompany`/
+  `updateCompany`/`deleteCompany` reaproveitando `apiFetch` da APP-01
+  com `accessToken` + `onTokenRefreshed`; mapeia pageIndex 0-based ->
+  page 1-based, normaliza UF para uppercase, `extra=forbid` do PATCH
+  honrado pelo tipo `CompanyUpdatePayload`; helpers `formatCnpj` e
+  `COMPANY_STATUS_LABEL`). Item "Empresas" adicionado em
+  `components/app-shell/nav-items.ts` (substitui o placeholder
+  "Tenants" — rota `/empresas` real, fica destacado em todo
+  `/empresas/*` pelo `pathname.startsWith` ja existente no Sidebar).
+  20 testes vitest novos: `lib/api/companies.test.ts` (14 — query
+  string, header Authorization, propagacao de ApiError 403/404, PATCH
+  com campos parciais, DELETE 204 sem lancar, `formatCnpj`),
+  `app/empresas/empresas-view.test.tsx` (2 — viewer nao ve botao,
+  owner/admin/operator veem) e `app/empresas/[id]/company-tabs.test.tsx`
+  (4 — 6 abas com role=tab, so "overview" monta no default,
+  `data-tab-panel="credential"` continua vazio antes do clique, setas
+  navegam). Typecheck verde, `next lint` zero warnings, `vitest run`
+  142 passed (122 existentes + 20 novos)
+  (PR a abrir — Closes #51).
 - **DS-07** — Inputs especiais de formulario (FileDropzone,
   SecretField, CNPJInput, PeriodPicker) em
   `apps/web-app/components/ui/` (PR a abrir — Closes #46).
@@ -534,7 +588,33 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 
 ## Ultima atualizacao
 
-- Data: 2026-04-15
+- Data: 2026-04-16
+- PR: (a abrir) — APP-03: paginas `/empresas` (lista com `<DataTable>`
+  filtrando `status` + `uf`, botao "Nova empresa" gated por papel) e
+  `/empresas/[id]` com 6 abas lazy (`React.lazy` + `Suspense` em
+  `company-tabs.tsx`; `data-tab-panel` so se preenche apos visita).
+  Aba "Visao geral" entrega CRUD completo (Editar para
+  `owner|admin|operator`, Excluir para `owner|admin`, com confirm
+  modal e invalidacao dos caches react-query); abas Execucoes/
+  Credencial/Agendamentos/Arquivos/Ocorrencias entram como stubs
+  informativos apontando os tickets que vao entrega-las (APP-04..08,
+  API-07/09/10). Novo cliente HTTP `lib/api/companies.ts`
+  reaproveitando `apiFetch` da APP-01. Novo `components/ui/modal.tsx`
+  (sem Radix — focus trap, Esc, click no backdrop, scroll lock no body)
+  consumido pelo `NovaEmpresaDialog` (form react-hook-form + zod
+  validando CNPJ via `isValidCnpj`/DS-07, UF e codigo IBGE) e pelos
+  dialogs Editar/Excluir do overview. Item "Empresas" adicionado em
+  `components/app-shell/nav-items.ts` (substitui placeholder
+  "Tenants"). Filtro "ultimo sucesso" do ticket fica como **coluna
+  apenas** porque API-05 nao expoe `?last_success_after=`; nota inline
+  no codigo + na descricao do PR sugerindo extender o endpoint num
+  ticket futuro. 20 novos testes vitest (`lib/api/companies.test.ts`,
+  `app/empresas/empresas-view.test.tsx`,
+  `app/empresas/[id]/company-tabs.test.tsx`) cobrindo querystring +
+  header Authorization, gating por papel, e prova de lazy mount nas
+  abas. Typecheck verde, `next lint` zero warnings, `vitest run` 142
+  passed (+20 vs main). Move APP-03 de "Bloqueadas" para "Em Andamento".
+  Closes #51.
 - PR: (a abrir) — CORE-03: refactor do `nsu_tracker` para callbacks.
   Novo protocolo `NsuSource` (`get`/`set`) em
   `packages/worker-core/worker_core/nsu_tracker.py` com duas
