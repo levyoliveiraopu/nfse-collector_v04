@@ -60,6 +60,77 @@
   todas as entradas relacionadas). AST verde em todos os arquivos
   editados; pytest/ruff a cargo do CI
   (PR a abrir — Closes #32).
+- **CORE-06** — Smoke test E2E `mtls_session` -> `fetch_nfse` ->
+  `S3StorageClient`: novo CLI
+  `packages/worker-core/scripts/smoke.py` (executavel via
+  `python -m scripts.smoke` a partir do diretorio do pacote) recebe
+  PFX A1 por `--pfx`, CNPJ por `--cnpj`, senha **apenas** via env
+  `NFSE_PFX_PASSWORD` (jamais via flag — apareceria em `ps`/history e
+  ja vinha sendo evitado em CORE-02). Flags adicionais: `--dias`
+  (default 7) faz filtro client-side por `data_emissao` no
+  `on_progress` (ADN nao aceita filtro por data — pagina por NSU);
+  `--max-documentos` impoe teto na paginacao do fetcher;
+  `--rate-limit` repassa ao `fetch_nfse`; `--ambiente`
+  `PRODUCAO|HOMOLOGACAO` seta `NFSE_AMBIENTE`; `--nsu-inicial`
+  permite retomar de um NSU especifico via `InMemoryNsuSource.set`
+  (default 0); `--tenant-id`/`--execution-id` aceitam UUID explicito
+  ou geram aleatorio para compor `object_key`; `--dry-run` curto-
+  circuita o `S3StorageClient` (so conta o que subiria) e e o caminho
+  default em ambiente sem `S3_*`; `--verbose` liga `logging.INFO` no
+  `worker_core`. Exit codes: `0` ok, `1` uso/config (incluindo
+  `NFSE_PFX_PASSWORD` ausente e `S3_BUCKET` ausente sem `--dry-run`),
+  `2` falha fatal (`ValueError` do `mtls_session` — PFX/senha/cert),
+  `3` rede ou upload (qualquer `Exception` propagada do
+  `fetch_nfse`, ou `uploads_failed > 0`). `_make_progress_callback`
+  encapsula a logica do callback: `parse_error` -> conta em
+  `parse_errors_skipped` e nao sobe; `data_emissao` fora da janela
+  (`< today - dias`) -> conta em `filtered_by_date` e nao sobe; data
+  ausente/invalida -> mantem (decisao conservadora — prefere subir
+  XML legitimo a descartar silenciosamente); item ok dentro da
+  janela -> chama `S3StorageClient.upload_xml(tenant_id,
+  execution_id, item.nsu, item.xml_bytes)` e acumula
+  `object_key`/`sha256`/`size` em `_UploadCounters` (lista de
+  `object_keys` e amostrada nos 3 primeiros no resumo final).
+  `_emit_log` imprime cada evento (`smoke.start`, `fetch_start`,
+  `fetch_complete`, `smoke.upload_ok`, `smoke.upload_failed`,
+  `smoke.dry_run.would_upload`, `smoke.skip_parse_error`,
+  `smoke.skip_no_xml`, `item_parse_error`, `callback_error`,
+  `fatal_error`) como JSON em uma linha (`json.dumps(...,
+  ensure_ascii=False, default=str)`) e **filtra explicitamente**
+  qualquer chave `pfx_password`/`pfx_bytes` que tente passar pelo
+  payload — defesa em profundidade alem do que o
+  `worker_core.collector.fetch_nfse` ja sanitiza. Resumo final
+  (legivel) imprime `cnpj`/`cutoff`/`nsu_from`/`nsu_to`/contadores do
+  `FetchSummary` + contadores do smoke + amostra de `object_keys`.
+  No `finally` do `main`, `pfx_bytes` e `password` sao reescritos
+  para vazio (best-effort — Python nao expoe zeragem de paginas, mas
+  evita reuso acidental no escopo). README do pacote ganha secao
+  "Smoke test E2E (CORE-06)" com bloco de envs (dry-run e real),
+  recomendacao de `--max-documentos 50` na primeira rodada e
+  alerta explicito "NUNCA commite `.pfx`, senha ou chaves S3". Testes
+  novos em `tests/test_smoke.py` (13 casos): `_within_window` (3 —
+  data dentro/fora da janela e fallback conservador para data
+  invalida/ausente/ISO); `_parse_args`/`_validate_args` (5 —
+  defaults minimos, CNPJ nao-14-digitos, PFX inexistente, `--dias 0`,
+  `--tenant-id` UUID invalido); `main` sem `NFSE_PFX_PASSWORD` ->
+  `EXIT_USAGE` + mensagem em stderr; `_emit_log` filtra
+  `pfx_password`/`pfx_bytes` mesmo se passados; `_make_progress_callback`
+  filtra por data sem chamar storage, dry-run conta sem tocar storage
+  e `parse_error` e pulado. Modulo carregado via `importlib.util`
+  registrando em `sys.modules` (necessario para `dataclasses` resolver
+  o tipo do `_UploadCounters`). `pytest tests/
+  --ignore=tests/test_main.py` = 151 passed (138 anteriores + 13
+  novos). Sem dependencias novas — script usa apenas stdlib +
+  `worker_core` (`InMemoryNsuSource`, `fetch_nfse`, `S3StorageClient`,
+  `S3Settings`, `StorageError`, `NfseItem`, `FetchSummary`). DoD do
+  ticket itens 1 e 2 ("smoke rodado com 1 CNPJ real" + "XML aparece
+  no bucket com object key correto") permanece a cargo do owner apos
+  setup manual do bucket B2 (issue #8) e disponibilidade de PFX A1
+  real — o caminho feliz local foi exercitado pela suite de testes
+  via mocks (CORE-04 fetcher + CORE-05 moto.mock_aws), e o `--dry-run`
+  permite validar o fluxo offline. Move CORE-06 para "Em Andamento"
+  (todas as dependencias CORE-02..05 ja em "Concluidos")
+  (PR a abrir — Closes #24).
 
 - **INFRA-08** — Backup diario do Postgres para S3: script
   `infra/scripts/backup-postgres.sh` executa `pg_dump -Fc -Z 9` dentro
@@ -1041,6 +1112,37 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
   esperados e receita de paginacao em 10k items. Move API-08 para
   "Em Andamento" (dependencias API-07 + DATA-03 ambas concluidas).
   Closes #32.
+- PR: (a abrir) — CORE-06: smoke test E2E
+  `mtls_session` -> `fetch_nfse` -> `S3StorageClient` em
+  `packages/worker-core/scripts/smoke.py` (executavel via
+  `python -m scripts.smoke`). Recebe PFX por `--pfx`, CNPJ por
+  `--cnpj`, senha **apenas** via env `NFSE_PFX_PASSWORD` (jamais
+  flag); flags `--dias` (filtro client-side por `data_emissao`),
+  `--max-documentos`, `--rate-limit`, `--ambiente`, `--nsu-inicial`,
+  `--tenant-id`/`--execution-id` (UUID explicito ou aleatorio),
+  `--dry-run` (curto-circuita o S3 e e default em ambiente sem
+  `S3_*`) e `--verbose`. Exit codes discretos: 0 ok, 1 uso/config,
+  2 fatal mTLS, 3 rede/upload. `_emit_log` imprime eventos JSON em
+  uma linha **filtrando explicitamente** `pfx_password`/`pfx_bytes`
+  alem do que o `worker_core.collector` ja sanitiza; resumo final
+  legivel cobre `nsu_from`/`nsu_to` + contadores do `FetchSummary` +
+  `uploads_ok`/`uploads_failed`/`filtered_by_date`/`bytes_total` +
+  amostra dos 3 primeiros `object_key`. README do worker-core ganha
+  secao "Smoke test E2E (CORE-06)" com bloco de envs (dry-run + real),
+  recomendacao de `--max-documentos 50` na primeira rodada e alerta
+  "NUNCA commite `.pfx`, senha ou chaves S3". Testes novos em
+  `tests/test_smoke.py` (13 casos cobrindo `_within_window`,
+  `_parse_args`/`_validate_args`, ausencia de `NFSE_PFX_PASSWORD`,
+  filtro de `pfx_password` em `_emit_log` e callback do
+  `_make_progress_callback` em 3 cenarios). `pytest tests/
+  --ignore=tests/test_main.py` = 151 passed (138 anteriores + 13
+  novos). Sem dependencias novas. DoD itens "smoke rodado com 1 CNPJ
+  real" e "XML aparece no bucket com object key correto" permanecem
+  a cargo do owner apos setup manual do bucket B2 (issue #8) e
+  disponibilidade de PFX A1 real — caminho feliz local validado pelos
+  testes de CORE-04 (fetcher mock) + CORE-05 (`moto.mock_aws`) e
+  exercitavel via `--dry-run`. Move CORE-06 para "Em Andamento" (todas
+  as dependencias CORE-02..05 ja em "Concluidos"). Closes #24.
 - PR: (a abrir) — INFRA-08: backup diario do Postgres para S3.
   Scripts `infra/scripts/backup-postgres.sh` (pg_dump -Fc via
   `docker compose exec`, daily/monthly por prefix, cifra opcional com
