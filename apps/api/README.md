@@ -378,6 +378,70 @@ WHERE tenant_id = ':t1'
 ORDER BY started_at DESC
 LIMIT 50;
 -- Espera: Index Scan using ix_executions_tenant_company_started
+```
+
+## Listagem de executions/execution_items — API-08
+
+Endpoints novos:
+
+- `GET /executions` — paginado (`page`/`page_size`), filtros `company_id`,
+  `status`, `from`/`to` (sobre `started_at`, ISO 8601 UTC).
+- `GET /executions/{id}` — detalhe (ja existente em API-07; contadores
+  agregados via `items_total`/`items_ok`/`items_fail`).
+- `GET /executions/{id}/items` — paginado, filtros `status`, `nsu`.
+- `GET /companies/{id}/executions` — atalho da listagem com
+  `company_id` fixo.
+
+A migration `0017_executions_listing_index.py` cria dois indices
+auxiliares em `executions` para satisfazer o DoD "EXPLAIN usa indice":
+
+```sql
+EXPLAIN
+SELECT id, status, started_at FROM executions
+WHERE tenant_id = ':t1'
+ORDER BY started_at DESC NULLS LAST, id
+LIMIT 20;
+-- Espera: Index Scan using ix_executions_tenant_started
+
+EXPLAIN
+SELECT id, status, started_at FROM executions
+WHERE tenant_id = ':t1' AND status = 'failed'
+ORDER BY started_at DESC NULLS LAST
+LIMIT 20;
+-- Espera: Index Scan using ix_executions_tenant_status_started
+
+EXPLAIN
+SELECT id, status, started_at FROM executions
+WHERE tenant_id = ':t1' AND company_id = ':c1'
+ORDER BY started_at DESC, id
+LIMIT 20;
+-- Espera: Index Scan using ix_executions_tenant_company_started
+```
+
+Para `execution_items`, o filtro inicial por `execution_id` ja reduz
+para uma execucao via `ix_execution_items_execution_id` (criado em
+`0005_execution_items.py`); filtros adicionais por `status`/`nsu`
+caem em scan filtrado dentro do conjunto pequeno resultante.
+
+**Validacao manual da paginacao em 10k items.** Para conferir o DoD
+"paginacao server-side funciona em 10k items":
+
+```sql
+-- Popular 10k items numa execution de teste:
+INSERT INTO execution_items (tenant_id, execution_id, nsu, status)
+SELECT
+  :t1::uuid, :exec_id::uuid, gs, 'ok'
+FROM generate_series(1, 10000) AS gs;
+```
+
+Em seguida, com `app.current_tenant` setado para `:t1`:
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8000/executions/$EXEC_ID/items?page=200&page_size=50"
+# Espera: 50 items (nsu 9951..10000), latencia < 100ms.
+```
+
 ## Middleware de tenant — API-03
 
 Toda request protegida passa por tres dependencies encadeadas

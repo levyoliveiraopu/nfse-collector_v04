@@ -15,6 +15,52 @@
 
 ## Em Andamento
 
+- **API-08** — Listagem/detalhe de executions + execution_items em
+  `apps/api/api/executions/routes.py`: novos endpoints `GET /executions`
+  (paginado, filtros `company_id`/`status`/`from`/`to` sobre
+  `started_at`, ISO 8601 UTC; ORDER `started_at DESC NULLS LAST, id`),
+  `GET /executions/{id}/items` (paginado, filtros `status`/`nsu`;
+  ORDER `nsu ASC NULLS LAST, id`; 404 antes de listar quando o id
+  parent nao existe — RLS isola cross-tenant) e atalho
+  `GET /companies/{id}/executions` em
+  `apps/api/api/companies/routes.py` (valida 404 da company antes de
+  delegar para `query_executions`, helper exportado de
+  `executions/routes.py`). `GET /executions/{id}` (entregue por
+  API-07) ja cobre "detalhe + contadores agregados" via
+  `items_total`/`items_ok`/`items_fail` — sem duplicacao. RBAC: leitura
+  liberada para `owner|admin|operator|viewer` (matriz). Schemas novos
+  em `apps/api/api/executions/schemas.py`: `ExecutionListOut`,
+  `ExecutionItemOut`, `ExecutionItemListOut`, `ExecutionItemStatus`
+  (Literal alinhado ao CHECK `ck_execution_items_status` da 0005).
+  Migration nova `0017_executions_listing_index.py` cria 2 indices
+  para satisfazer o DoD "EXPLAIN usa indice":
+  `ix_executions_tenant_started (tenant_id, started_at DESC NULLS
+  LAST, id)` (cobre `GET /executions` sem `company_id`) e
+  `ix_executions_tenant_status_started (tenant_id, status, started_at
+  DESC NULLS LAST)` (cobre `?status=`). O composto ja existente
+  `ix_executions_tenant_company_started` (0004) entra quando
+  `company_id` esta presente; `ix_execution_items_execution_id` (0005)
+  ja serve a listagem de items. 5 testes unitarios novos em
+  `tests/test_executions_schemas.py` (envelope lista, item com
+  opcionais None, status invalido, Decimal em valor, envelope items
+  vazio) + 14 testes de integracao novos em
+  `tests/test_executions_routes_integration.py` gated por
+  `TEST_DATABASE_URL` (lista feliz com ordenacao por `started_at DESC
+  NULLS LAST`, filtro por company/status/periodo, paginacao 5 linhas
+  em 3 paginas, isolamento cross-tenant via RLS, viewer pode ler,
+  atalho `/companies/{id}/executions` feliz, atalho com company
+  inexistente -> 404, atalho cross-tenant -> 404, items feliz com
+  ordenacao por nsu, items filtra por status/nsu, items cross-tenant
+  -> 404, items viewer pode ler) + 3 testes estaticos da migration em
+  `tests/test_migration_0017.py` (importavel, dois indices criados,
+  downgrade simetrico). Nova secao "Listagem de executions/
+  execution_items — API-08" em `apps/api/README.md` com 3 EXPLAINs
+  esperados + receita de validacao manual de paginacao em 10k items.
+  Sem mudanca em RBAC matrix (leitura ja era liberada para viewer em
+  todas as entradas relacionadas). AST verde em todos os arquivos
+  editados; pytest/ruff a cargo do CI
+  (PR a abrir — Closes #32).
+
 - **INFRA-08** — Backup diario do Postgres para S3: script
   `infra/scripts/backup-postgres.sh` executa `pg_dump -Fc -Z 9` dentro
   do container do Postgres (INFRA-05) via `docker compose exec -T`
@@ -967,6 +1013,34 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-16
+- PR: (a abrir) — API-08: listar/detalhar executions + execution_items.
+  Novos endpoints `GET /executions` (paginado, filtros
+  `company_id`/`status`/`from`/`to` sobre `started_at`),
+  `GET /executions/{id}/items` (paginado, filtros `status`/`nsu`,
+  ORDER `nsu ASC NULLS LAST`) e atalho
+  `GET /companies/{id}/executions` em
+  `apps/api/api/executions/routes.py` + `apps/api/api/companies/routes.py`
+  (atalho valida 404 da company antes de delegar ao helper compartilhado
+  `query_executions`). RBAC leitura liberada para todos os papeis
+  (matriz). Schemas novos `ExecutionListOut`/`ExecutionItemOut`/
+  `ExecutionItemListOut`/`ExecutionItemStatus` em
+  `apps/api/api/executions/schemas.py`. Migration
+  `0017_executions_listing_index.py` cria 2 indices auxiliares em
+  `executions` (`ix_executions_tenant_started`,
+  `ix_executions_tenant_status_started`) para satisfazer o DoD "EXPLAIN
+  usa indice"; composto existente
+  `ix_executions_tenant_company_started` (0004) entra quando
+  `company_id` esta presente; `ix_execution_items_execution_id` (0005)
+  ja serve a listagem de items. Detalhe `GET /executions/{id}` (entregue
+  por API-07) ja cobre "contadores agregados" via `items_total/ok/fail`.
+  5 testes unitarios em `test_executions_schemas.py` + 14 de integracao
+  gated por `TEST_DATABASE_URL` em
+  `test_executions_routes_integration.py` + 3 estaticos em
+  `test_migration_0017.py`. Secao "Listagem de executions/
+  execution_items — API-08" em `apps/api/README.md` com 3 EXPLAINs
+  esperados e receita de paginacao em 10k items. Move API-08 para
+  "Em Andamento" (dependencias API-07 + DATA-03 ambas concluidas).
+  Closes #32.
 - PR: (a abrir) — INFRA-08: backup diario do Postgres para S3.
   Scripts `infra/scripts/backup-postgres.sh` (pg_dump -Fc via
   `docker compose exec`, daily/monthly por prefix, cifra opcional com
