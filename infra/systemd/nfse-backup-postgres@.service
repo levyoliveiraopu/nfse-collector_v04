@@ -1,0 +1,50 @@
+[Unit]
+# INFRA-08 — Backup diario do Postgres para S3.
+# Template unit: instancie com `%i` = ambiente (prod | staging).
+#   sudo systemctl enable --now nfse-backup-postgres@prod.timer
+# Runbook: infra/backup.md.
+Description=Backup diario do Postgres para S3 (%i)
+Documentation=https://github.com/levyoliveiraopu/nfse-collector_v04/blob/main/infra/backup.md
+Wants=docker.service
+After=docker.service network-online.target
+Requires=network-online.target
+
+[Service]
+Type=oneshot
+User=deploy
+Group=deploy
+
+# Variaveis padrao; `EnvironmentFile=` abaixo carrega o `.env` do stack
+# com os segredos (S3_*, POSTGRES_*, BACKUP_AGE_RECIPIENT, etc).
+Environment=DEPLOY_ENV=%i
+Environment=COMPOSE_DIR=/srv/nfse/%i
+Environment=BACKUP_LOCAL_DIR=/srv/nfse/%i/backups/postgres
+Environment=BACKUP_LOG_FILE=/srv/nfse/%i/logs/backup-postgres.log
+
+EnvironmentFile=/srv/nfse/%i/config/.env
+
+WorkingDirectory=/srv/nfse/%i
+ExecStart=/srv/nfse/%i/scripts/backup-postgres.sh
+
+# Hardening minimo (nao exagera porque precisa de docker.sock e FS em /srv).
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+
+# Timeout generoso — dumps podem crescer com a base.
+TimeoutStartSec=30min
+
+# Falhas nao reiniciam automaticamente (timer cuida da cadencia diaria).
+Restart=no
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nfse-backup-pg
+
+[Install]
+WantedBy=multi-user.target

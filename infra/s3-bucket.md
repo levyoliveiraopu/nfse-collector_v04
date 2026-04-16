@@ -72,6 +72,8 @@ Nenhuma credencial e commitada. Nenhum bucket real e criado pelo agente.
 > - `tenants/{tid}/executions/{eid}/{nsu}.xml`    -> 90d  (lifecycle 1)
 > - `tenants-exports/{tid}/{file_id}.{ext}`       -> 30d  (lifecycle 2)
 > - `tenants-credentials/{tid}/{cid}.pfx.enc`     -> **sem TTL** (API-06)
+> - `backups/postgres/daily/YYYY-MM-DD.dump[.age]` -> 30d  (lifecycle 3, INFRA-08)
+> - `backups/postgres/monthly/YYYY-MM.dump[.age]`  -> 365d (lifecycle 4, INFRA-08)
 >
 > Quando os tickets de worker/API implementarem upload (CORE-05,
 > API-06, API-11), eles devem usar as variaveis `S3_EXECUTIONS_PREFIX`,
@@ -111,13 +113,21 @@ b2 bucket update \
    - File Name Prefix: `tenants-exports/`
    - Hide files older than: **30** days
    - Delete hidden files after: **1** day
-4. **Update Bucket**.
+4. Add rule 3 (INFRA-08, dailies):
+   - File Name Prefix: `backups/postgres/daily/`
+   - Hide files older than: **30** days
+   - Delete hidden files after: **1** day
+5. Add rule 4 (INFRA-08, monthlies):
+   - File Name Prefix: `backups/postgres/monthly/`
+   - Hide files older than: **365** days
+   - Delete hidden files after: **1** day
+6. **Update Bucket**.
 
 Confirme no console: **Buckets -> nfse-saas-prod -> Lifecycle Settings**
-deve mostrar exatamente **duas** regras com os prefixos e janelas acima.
-Especificamente: **nao crie** uma terceira regra cobrindo
-`tenants-credentials/` — esse prefix recebe os PFX cifrados (API-06) e
-**precisa ficar sem TTL**.
+deve mostrar exatamente **quatro** regras com os prefixos e janelas acima
+(duas de dados operacionais + duas de backup). Especificamente: **nao crie**
+uma quinta regra cobrindo `tenants-credentials/` — esse prefix recebe os
+PFX cifrados (API-06) e **precisa ficar sem TTL**.
 
 ### 2.4 Criar Application Key (least privilege)
 
@@ -242,7 +252,9 @@ Application Key foi restrita ao prefix `tenants/` (least privilege).
 - [x] Smoke test disponivel (`infra/scripts/s3-smoke-test.sh`).
 - [ ] **(owner)** Conta Backblaze criada com 2FA.
 - [ ] **(owner)** Bucket `nfse-saas-prod` criado, private, versioning on.
-- [ ] **(owner)** Lifecycle rules aplicadas via B2 CLI (2 regras).
+- [ ] **(owner)** Lifecycle rules aplicadas via B2 CLI (4 regras — 2 de
+      dados operacionais + 2 de backup Postgres; ver tambem
+      `infra/backup.md`).
 - [ ] **(owner)** Application Key restrita ao bucket + prefix `tenants/`.
 - [ ] **(owner)** Credenciais gravadas no cofre (1Password/Bitwarden).
 - [ ] **(owner)** `aws s3 ls s3://nfse-saas-prod/tenants/` retorna
