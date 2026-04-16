@@ -15,6 +15,51 @@
 
 ## Em Andamento
 
+- **API-07** — `POST /executions` + `GET /executions/{id}` em
+  `apps/api/api/executions/` (router + schemas). Cria 1 linha em
+  `executions` por company e enfileira `worker_core.jobs.run_execution`
+  (via string — worker resolve o import no pick) numa fila RQ
+  configurada por `API_REDIS_URL` + `API_QUEUE_NAME`. Novo
+  `apps/api/api/queue.py` expoe `get_redis_client()`, `get_queue()`,
+  `ping_redis()`, `enqueue_run_execution(execution_id, *, tenant_id,
+  dry_run)` (dry_run vai apenas no `meta` do job — nao persiste no
+  schema) e `QueueError` agnostico. `POST`: RBAC
+  `owner|admin|operator`; valida companies (RLS) em `companies` +
+  credencial ativa com `cert_not_after > now()` em
+  `company_credentials` — companies faltantes ou sem credencial
+  rejeitam em bloco com 422; pre-pinga Redis antes do INSERT (502
+  sem tocar DB quando offline); se o enqueue estourar apos o INSERT,
+  marca a linha como `failed` com `error_summary='enqueue_failed'`
+  e `finished_at=now()`, devolve `job_id=null`/`enqueue_error` no
+  item correspondente da resposta. `GET`: RBAC irrestrito (viewer
+  inclusive), 404 cross-tenant via RLS, devolve contadores,
+  periodo, NSU, `triggered_by_user_id`. Trigger default `manual`
+  (dominio alinhado com CHECK `ck_executions_trigger` do 0004).
+  Novas deps run `redis>=5.0` + `rq>=1.16` em
+  `apps/api/pyproject.toml`; dev `fakeredis>=2.20`. Novo bloco
+  `# Fila Redis para execucoes (API-07)` em `config/.env.example`
+  com `API_REDIS_URL=redis://localhost:6379/0` + `API_QUEUE_NAME=
+  nfse-executions`. 12 testes unitarios em
+  `apps/api/tests/test_executions_schemas.py` (defaults, trigger
+  dominio, `period_end >= period_start`, deduplicacao de
+  `company_ids`, `min_length/max_length`, `extra='forbid'`, envelope
+  de resposta) + 7 em `apps/api/tests/test_queue_unit.py`
+  (fakeredis + RQ: ping, enqueue feliz, meta/args/func_name
+  corretos, dry_run default, acumulo na fila, QueueError em ping e
+  enqueue com Redis quebrado, QueueError sem URL) + 10 de
+  integracao em `apps/api/tests/test_executions_routes_integration.py`
+  gated por `TEST_DATABASE_URL` + fakeredis (caminho feliz com N=2
+  -> N executions + N jobs com args batendo, dry_run=True propaga
+  meta, GET cross-tenant -> 404, company alheia -> 422
+  `companies_not_found`, company sem credencial -> 422
+  `credential_missing_or_expired`, credencial vencida -> 422,
+  `period_end < period_start` -> 422 Pydantic, viewer -> 403 no
+  POST mas 200 no GET, operator pode disparar, Redis down antes do
+  INSERT -> 502 sem tocar DB, enqueue falha no meio -> 1 queued +
+  1 failed com audit correto). `ruff check apps/api/` verde,
+  `pytest apps/api` = 178 passed + 72 skipped (PR a abrir —
+  Closes #31).
+
 - **APP-10** — Pagina `/assinatura` (placeholder sem gateway, ADR-004):
   rota `apps/web-app/app/dashboard/assinatura/page.tsx` (server
   component) renderiza plano atribuido + status via `<StatusBadge>`,
@@ -633,6 +678,25 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-15
+- PR: (a abrir) — API-07: `POST /executions` + `GET /executions/{id}`
+  em `apps/api/api/executions/`. Router cria 1 linha em `executions`
+  por `company_id` validado (RLS + credencial ativa com
+  `cert_not_after > now()`), pre-pinga Redis (502 sem tocar DB em
+  indisponibilidade) e enfileira `worker_core.jobs.run_execution`
+  (via string, worker resolve import no pick) em fila RQ configurada
+  por `API_REDIS_URL` + `API_QUEUE_NAME`. Novo
+  `apps/api/api/queue.py` com `QueueError` agnostico, singletons
+  lazy do Redis/Queue e helpers de teste. `dry_run` vai apenas no
+  `meta` do job (nao persiste no schema). Falha no enqueue pos-INSERT
+  marca a linha como `failed` com `error_summary='enqueue_failed'`.
+  RBAC: POST = `owner|admin|operator`, GET = todos. Novas deps run
+  `redis>=5.0`, `rq>=1.16`; dev `fakeredis>=2.20`. Novo bloco
+  `# Fila Redis para execucoes (API-07)` em `config/.env.example`.
+  12 unit de schemas + 7 unit da queue (fakeredis+RQ) + 10 de
+  integracao gated por `TEST_DATABASE_URL` (fakeredis). `ruff check
+  apps/api/` verde, `pytest apps/api` = 178 passed + 72 skipped.
+  Move API-07 de "Bloqueadas" (desbloqueado por API-05 + INFRA-05
+  ambos concluidos) para "Em Andamento". Closes #31.
 - PR: (a abrir) — APP-10: pagina `/assinatura` placeholder sem
   gateway. Nova rota `apps/web-app/app/dashboard/assinatura/page.tsx`
   (server component) mostra plano atribuido + status (`<StatusBadge>`),
