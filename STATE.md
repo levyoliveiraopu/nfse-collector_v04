@@ -15,6 +15,52 @@
 
 ## Em Andamento
 
+- **INFRA-08** — Backup diario do Postgres para S3: script
+  `infra/scripts/backup-postgres.sh` executa `pg_dump -Fc -Z 9` dentro
+  do container do Postgres (INFRA-05) via `docker compose exec -T`
+  (evita instalar `postgresql-client` no host), classifica o dump em
+  `daily/YYYY-MM-DD.dump` nos dias 2-31 e `monthly/YYYY-MM.dump` no dia
+  1, cifra opcionalmente com `age` (default ON em staging/prod, chave
+  publica em `BACKUP_AGE_RECIPIENT` e privada apenas no cofre do
+  owner), faz upload para `s3://$S3_BUCKET/backups/postgres/<kind>/`
+  via `aws s3 cp`, limpa dumps locais com
+  `find -mtime +$BACKUP_RETENTION_LOCAL_DAYS -delete` (default 3d) e
+  registra 1 linha JSON por execucao em
+  `/srv/nfse/<env>/logs/backup-postgres.log` (status/size/duration/sha256).
+  Script `infra/scripts/restore-postgres.sh` aceita `--latest` ou
+  `--key <s3-key>` + `--target-db <nome>` para drill isolado, decifra
+  age se necessario (`BACKUP_AGE_IDENTITY` aponta para a privada
+  temporaria), cria DB alvo se nao existir, faz
+  `pg_restore --clean --if-exists --no-owner --no-privileges` e imprime
+  checksum de sanidade (`count(*)` em `tenants`/`users`/`tenant_users`/
+  `companies`/`audit_logs`). Systemd template
+  `infra/systemd/nfse-backup-postgres@.{service,timer}` (instancia com
+  `@prod`/`@staging`) dispara `OnCalendar=*-*-* 03:00:00` no TZ do host
+  (`America/Sao_Paulo` por INFRA-01), `Persistent=true`,
+  `RandomizedDelaySec=5min`, `EnvironmentFile=/srv/nfse/%i/config/.env`,
+  `User=deploy`, hardening basico (`NoNewPrivileges`,
+  `ProtectSystem=full`). Lifecycle do bucket B2 ganha 2 regras em
+  `infra/s3-lifecycle.json`: `backups/postgres/daily/` -> 30d e
+  `backups/postgres/monthly/` -> 365d (separacao por prefix porque B2
+  nao suporta lifecycle por tag — mesmo workaround que
+  `tenants-exports/` em INFRA-06); total passa de 2 para 4 rules no
+  bucket. Novo bloco `# Backup Postgres (INFRA-08)` em
+  `config/.env.example` com `BACKUP_LOCAL_DIR`, `BACKUP_S3_PREFIX`,
+  `BACKUP_RETENTION_LOCAL_DAYS`, `BACKUP_LOG_FILE`, `BACKUP_ENCRYPT`,
+  `BACKUP_AGE_RECIPIENT` e `BACKUP_AGE_IDENTITY`. Runbook completo em
+  `infra/backup.md` cobrindo instalacao (pre-requisitos + geracao do
+  par age + symlinks + `systemctl enable --now`), uso manual, aplicacao
+  das 2 novas rules via B2 CLI/console, drill de restore em staging
+  passo-a-passo (copia da chave privada para `/tmp`, `--target-db
+  nfse_restore_drill`, validacao com `md5(string_agg(...))`, cleanup
+  com `shred -u`), matriz de troubleshooting e checklist do DoD. Sem
+  execucao real possivel neste PR — DoD manual do owner (backup roda
+  por 2 dias seguidos + drill de restore em staging) valida apos
+  provisionamento na VPS e aplicacao das lifecycle rules (rastreio
+  segue em #10 ate validacao, mesmo padrao de INFRA-04/07/09).
+  `bash -n` e `systemd-analyze verify` verdes localmente
+  (PR a abrir — Closes #10).
+
 - **DS-07** — Inputs especiais de formulario (FileDropzone,
   SecretField, CNPJInput, PeriodPicker) em
   `apps/web-app/components/ui/` (PR a abrir — Closes #46).
@@ -516,6 +562,11 @@
 > variaveis `S3_*`, smoke test) ja esta disponivel para esses tickets
 > consumirem, e o setup manual do bucket B2 segue em aberto no issue #8
 > sem bloquear o desenvolvimento das integracoes.
+>
+> Update 2026-04-16: INFRA-08 saiu dessa nota e foi para "Em Andamento"
+> (INFRA-05 ja esta em "Concluidos" via compose base; parte automatizada
+> de INFRA-06 consumida no backup script para upload via `aws s3 cp` e
+> nas 2 novas lifecycle rules em `infra/s3-lifecycle.json`).
 
 ## Bloqueadas
 
@@ -534,7 +585,29 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 
 ## Ultima atualizacao
 
-- Data: 2026-04-15
+- Data: 2026-04-16
+- PR: (a abrir) — INFRA-08: backup diario do Postgres para S3.
+  Scripts `infra/scripts/backup-postgres.sh` (pg_dump -Fc via
+  `docker compose exec`, daily/monthly por prefix, cifra opcional com
+  age, upload via `aws s3 cp`, retencao local configuravel, log JSON
+  estruturado) e `infra/scripts/restore-postgres.sh` (--latest /
+  --key + --target-db para drill, decifra age se necessario,
+  `pg_restore --clean --if-exists --no-owner`, checksum de sanidade).
+  Systemd template `infra/systemd/nfse-backup-postgres@.{service,timer}`
+  com `OnCalendar=*-*-* 03:00:00` no TZ do host (`America/Sao_Paulo`
+  via INFRA-01), `Persistent=true`, `RandomizedDelaySec=5min`,
+  `EnvironmentFile=/srv/nfse/%i/config/.env`, hardening basico.
+  Duas rules novas em `infra/s3-lifecycle.json` (`backups/postgres/daily/`
+  30d, `backups/postgres/monthly/` 365d — separacao por prefix porque
+  B2 nao suporta lifecycle por tag). Novo bloco
+  `# Backup Postgres (INFRA-08)` em `config/.env.example` com 7
+  variaveis. Runbook completo em `infra/backup.md` (pre-requisitos,
+  geracao de par age, symlinks, install + enable do timer, uso manual,
+  drill de restore em staging, troubleshooting, checklist DoD). Atualiza
+  `infra/s3-bucket.md` para mencionar os 2 novos prefixos de backup no
+  layout de chaves e o total de 4 rules no bucket. Move INFRA-08 de
+  "Bloqueadas" para "Em Andamento" (dependencias INFRA-05 e parte
+  automatizada de INFRA-06 ja concluidas). Closes #10.
 - PR: (a abrir) — CORE-03: refactor do `nsu_tracker` para callbacks.
   Novo protocolo `NsuSource` (`get`/`set`) em
   `packages/worker-core/worker_core/nsu_tracker.py` com duas
