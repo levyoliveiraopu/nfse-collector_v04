@@ -18,6 +18,7 @@ from .companies.credentials import router as credentials_router
 from .companies.routes import router as companies_router
 from .config import Settings, get_settings
 from .files.routes import router as files_router
+from .executions.routes import router as executions_router
 from .logging import configure_logging
 
 
@@ -69,6 +70,7 @@ def create_app() -> FastAPI:
     app.include_router(companies_router)
     app.include_router(credentials_router)
     app.include_router(files_router)
+    app.include_router(executions_router)
 
     return app
 

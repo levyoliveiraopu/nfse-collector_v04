@@ -3,6 +3,8 @@ import {
   FileText,
   ShieldCheck,
   Building2,
+  CreditCard,
+  Users,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -20,5 +22,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Notas", href: "/dashboard/notas", icon: FileText },
   { label: "Certificados", href: "/dashboard/certificados", icon: ShieldCheck },
   { label: "Tenants", href: "/dashboard/tenants", icon: Building2 },
+  { label: "Assinatura", href: "/dashboard/assinatura", icon: CreditCard },
+  { label: "Usuarios", href: "/usuarios", icon: Users },
   { label: "Configuracoes", href: "/dashboard/configuracoes", icon: Settings },
 ];
