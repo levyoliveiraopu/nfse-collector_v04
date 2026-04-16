@@ -15,6 +15,48 @@
 
 ## Em Andamento
 
+- **APP-09** — `/usuarios` + convites: pagina
+  `apps/web-app/app/usuarios/` (layout com `RequireAuth` + `AppShell`)
+  lista membros (nome, email, papel, status, ultimo login) com menu de
+  acoes por linha (alterar papel, remover) e secao separada de
+  convites pendentes. Camada `apps/web-app/lib/users/` com
+  `types.ts` (`Member`, `Invitation`, `Role`), `schemas.ts` (zod de
+  invite/update/accept + helper `rolesAssignableBy`), `api-client.ts`
+  (`listMembers`/`listInvitations`/`inviteMember`/`revokeInvitation`/
+  `updateMemberRole`/`removeMember`/`acceptInvitation` via `apiFetch`
+  do APP-01 + novo Route Handler `app/api/auth/accept-invitation/`
+  que grava o cookie httpOnly de refresh) e `rbac.ts` com guardas
+  `canRemoveMember`/`canChangeRole`/`canInviteWithRole`/
+  `canRevokeInvitation` alinhados a `docs/architecture/rbac-matrix.md`
+  (admin so atribui operator/viewer; owner e protegido). Componentes
+  em `apps/web-app/components/users/` — `Modal` + `ConfirmDialog`
+  leves (sem Radix, padrao do AppShell), `RoleSelect` (reage ao papel
+  do ator), `RoleBadge`, `InviteDialog` (react-hook-form + zod),
+  `MembersTable` (menu de acoes desabilitado quando o ator nao pode
+  agir, incluindo "nao gerenciar a si mesmo") e `PendingInvitations`
+  (revogar com confirmacao; oculta accepted/revoked/expired).
+  `/aceitar-convite/[token]` deixa de ser stub: chama
+  `POST /api/auth/accept-invitation`, aplica sessao e redireciona
+  para `/dashboard`. Sidebar (`components/app-shell/nav-items.ts`)
+  ganha item "Usuarios" apontando para `/usuarios`. Testes vitest:
+  `lib/users/rbac.test.ts` (16 casos cobrindo toda a matriz,
+  incluindo DoD "admin nao rebaixa owner"), `lib/users/schemas.test.ts`
+  (11 casos), `components/users/invite-dialog.test.tsx` (5 casos —
+  submissao, validacao de email, restricao de papel para admin, erro
+  da API), `components/users/members-table.test.tsx` (6 casos —
+  vazio, listagem, admin+owner desabilitado, auto-gestao bloqueada,
+  remover e alterar papel) e `components/users/pending-invitations.test.tsx`
+  (4 casos — lista vazia, revogar, erro+retry, viewer desabilitado).
+  E2E Playwright `apps/web-app/e2e/usuarios.spec.ts` intercepta
+  `/tenant/*` + `/api/auth/accept-invitation` e cobre convite feliz +
+  aceite redirecionando pro dashboard + admin vendo owner bloqueado.
+  `pnpm -C apps/web-app typecheck/lint/test` verdes (164 specs no
+  total, +42 novos). Backend (`GET/POST /tenant/members`,
+  `/tenant/invitations`, `/tenant/invitations/{id}/revoke` e
+  `/tenant/invitations/accept`) sera entregue em **ticket API
+  futuro** — mesmo padrao do APP-01 (`/recuperar-senha`,
+  `/redefinir-senha`), onde a UI e o contrato ficam prontos antes do
+  handler (PR a abrir — Closes #57).
 - **DS-07** — Inputs especiais de formulario (FileDropzone,
   SecretField, CNPJInput, PeriodPicker) em
   `apps/web-app/components/ui/` (PR a abrir — Closes #46).
@@ -534,7 +576,26 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 
 ## Ultima atualizacao
 
-- Data: 2026-04-15
+- Data: 2026-04-16
+- PR: (a abrir) — APP-09: `/usuarios` + convites. Pagina
+  `apps/web-app/app/usuarios/` (RequireAuth + AppShell) com lista
+  de membros, menu de acoes por linha (alterar papel, remover) e
+  secao de convites pendentes (revogar). Camada
+  `apps/web-app/lib/users/` (`types`/`schemas`/`api-client`/`rbac`)
+  e componentes em `apps/web-app/components/users/` (`Modal`,
+  `ConfirmDialog`, `RoleSelect`, `RoleBadge`, `InviteDialog`,
+  `MembersTable`, `PendingInvitations`). RBAC do cliente espelha
+  `docs/architecture/rbac-matrix.md` (admin nao atribui
+  owner/admin; owner e protegido). Rota `/aceitar-convite/[token]`
+  deixa de ser stub e chama `POST /api/auth/accept-invitation`
+  (novo Route Handler proxy que grava o cookie httpOnly do refresh
+  e devolve a sessao). Sidebar ganha entrada "Usuarios". 42 novos
+  specs vitest (164 total passando) + E2E Playwright
+  `e2e/usuarios.spec.ts` cobrindo convite feliz, aceite +
+  redirecionamento pro dashboard e admin bloqueado sobre owner.
+  Backend (`/tenant/members`, `/tenant/invitations*`) sera entregue
+  em ticket API futuro — mesmo padrao APP-01. Move APP-09 de
+  "Bloqueadas" para "Em Andamento". Closes #57.
 - PR: (a abrir) — CORE-03: refactor do `nsu_tracker` para callbacks.
   Novo protocolo `NsuSource` (`get`/`set`) em
   `packages/worker-core/worker_core/nsu_tracker.py` com duas
