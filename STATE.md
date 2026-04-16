@@ -60,6 +60,72 @@
   `pytest apps/api` = 178 passed + 72 skipped (PR a abrir —
   Closes #31).
 
+- **APP-10** — Pagina `/assinatura` (placeholder sem gateway, ADR-004):
+  rota `apps/web-app/app/dashboard/assinatura/page.tsx` (server
+  component) renderiza plano atribuido + status via `<StatusBadge>`,
+  tres `UsageCard` locais (CNPJs, Execucoes no mes, Usuarios) com
+  contador `used/limit`, percentual, `role="progressbar"` e tom
+  ok/warn/full (>=80% warn, 100% full — usuarios 5/5 no mock), callout
+  "Para alterar plano, entre em contato com o suporte" com botoes
+  WhatsApp + email (placeholders ate SITE-* destravar nome comercial)
+  e secao "Historico de faturas" vazia. **Sem** botao de upgrade —
+  cobranca manual reforcada (ADR-004). Dados de teste isolados em
+  `apps/web-app/lib/subscription/mock.ts` (`SubscriptionSnapshot` com
+  shape alinhado a `plans.limits` do seed DATA-07 e `plans.code`
+  tipado como `starter|pro|scale`) para que um endpoint futuro troque
+  a funcao `getSubscriptionSnapshot()` sem tocar no layout. Novo item
+  `Assinatura` (icone `CreditCard`) em
+  `apps/web-app/components/app-shell/nav-items.ts`. Spec vitest
+  `app/dashboard/assinatura/page.test.tsx` (6 casos): render do plano
+  + badge `Ativo`, tres cards com `used/limit` + progressbar, card de
+  usuarios marcado `data-tone="full"` com 5/5, mensagem de suporte +
+  links `wa.me`/`mailto`, ausencia defensiva de botoes/links
+  "upgrade|fazer upgrade|assinar|mudar plano" (prova do DoD) e
+  placeholder vazio de faturas. `tsc --noEmit`, `next lint` e
+  `vitest run` = 128 testes verdes (PR a abrir — Closes #58).
+
+- **APP-09** — `/usuarios` + convites: pagina
+  `apps/web-app/app/usuarios/` (layout com `RequireAuth` + `AppShell`)
+  lista membros (nome, email, papel, status, ultimo login) com menu de
+  acoes por linha (alterar papel, remover) e secao separada de
+  convites pendentes. Camada `apps/web-app/lib/users/` com
+  `types.ts` (`Member`, `Invitation`, `Role`), `schemas.ts` (zod de
+  invite/update/accept + helper `rolesAssignableBy`), `api-client.ts`
+  (`listMembers`/`listInvitations`/`inviteMember`/`revokeInvitation`/
+  `updateMemberRole`/`removeMember`/`acceptInvitation` via `apiFetch`
+  do APP-01 + novo Route Handler `app/api/auth/accept-invitation/`
+  que grava o cookie httpOnly de refresh) e `rbac.ts` com guardas
+  `canRemoveMember`/`canChangeRole`/`canInviteWithRole`/
+  `canRevokeInvitation` alinhados a `docs/architecture/rbac-matrix.md`
+  (admin so atribui operator/viewer; owner e protegido). Componentes
+  em `apps/web-app/components/users/` — `Modal` + `ConfirmDialog`
+  leves (sem Radix, padrao do AppShell), `RoleSelect` (reage ao papel
+  do ator), `RoleBadge`, `InviteDialog` (react-hook-form + zod),
+  `MembersTable` (menu de acoes desabilitado quando o ator nao pode
+  agir, incluindo "nao gerenciar a si mesmo") e `PendingInvitations`
+  (revogar com confirmacao; oculta accepted/revoked/expired).
+  `/aceitar-convite/[token]` deixa de ser stub: chama
+  `POST /api/auth/accept-invitation`, aplica sessao e redireciona
+  para `/dashboard`. Sidebar (`components/app-shell/nav-items.ts`)
+  ganha item "Usuarios" apontando para `/usuarios`. Testes vitest:
+  `lib/users/rbac.test.ts` (16 casos cobrindo toda a matriz,
+  incluindo DoD "admin nao rebaixa owner"), `lib/users/schemas.test.ts`
+  (11 casos), `components/users/invite-dialog.test.tsx` (5 casos —
+  submissao, validacao de email, restricao de papel para admin, erro
+  da API), `components/users/members-table.test.tsx` (6 casos —
+  vazio, listagem, admin+owner desabilitado, auto-gestao bloqueada,
+  remover e alterar papel) e `components/users/pending-invitations.test.tsx`
+  (4 casos — lista vazia, revogar, erro+retry, viewer desabilitado).
+  E2E Playwright `apps/web-app/e2e/usuarios.spec.ts` intercepta
+  `/tenant/*` + `/api/auth/accept-invitation` e cobre convite feliz +
+  aceite redirecionando pro dashboard + admin vendo owner bloqueado.
+  `pnpm -C apps/web-app typecheck/lint/test` verdes (164 specs no
+  total, +42 novos). Backend (`GET/POST /tenant/members`,
+  `/tenant/invitations`, `/tenant/invitations/{id}/revoke` e
+  `/tenant/invitations/accept`) sera entregue em **ticket API
+  futuro** — mesmo padrao do APP-01 (`/recuperar-senha`,
+  `/redefinir-senha`), onde a UI e o contrato ficam prontos antes do
+  handler (PR a abrir — Closes #57).
 - **DS-07** — Inputs especiais de formulario (FileDropzone,
   SecretField, CNPJInput, PeriodPicker) em
   `apps/web-app/components/ui/` (PR a abrir — Closes #46).
@@ -102,6 +168,38 @@
   (PR a abrir — Closes #30).
 
 ## Concluidos
+
+- **CORE-04** — Refactor: callback de progresso por item.
+  Novo modulo `packages/worker-core/worker_core/collector.py` expondo
+  `fetch_nfse(pfx_bytes, pfx_password, cnpj, nsu_source, on_progress,
+  on_log=None, *, max_documentos=None, rate_limit_delay=0)`:
+  abre `mtls_session` (CORE-02) internamente, pagina via
+  `buscar_todos_dfe_novos` + `NsuSource` (CORE-03), filtra
+  `TipoDocumento == "NFSE"` e emite `NfseItem` por nota em
+  `on_progress`. `NfseItem` (`@dataclass(frozen=True)`) carrega os 9
+  campos do ticket (`nsu`, `chave_nfse`, `cnpj_emitente`,
+  `data_emissao`, `valor`, `xml_bytes`, `status`, `error_code`,
+  `error_message`) com `status` em `{"ok","cancelada","parse_error"}`.
+  Retorno `FetchSummary` (contadores + `nsu_from`/`nsu_to` +
+  `callback_errors` + `fatal_rejected`). Garantias da DoD: (a) erro
+  dentro de `on_progress` e capturado, registrado em
+  `on_log("callback_error",...)` e a coleta continua; (b) XML ausente/
+  invalido vira `NfseItem(status="parse_error")` emitido normalmente;
+  (c) erros fatais (PFX/senha/cert vencido -> `ValueError` do
+  `mtls_session`) propagam apos `on_log("fatal_error",
+  {"stage":"mtls"})`. Re-exports em `worker_core/__init__.py`
+  (`fetch_nfse`, `NfseItem`, `FetchSummary`) substituem o alias
+  placeholder `fetch_nfse = buscar_todos_dfe_novos` do CORE-01;
+  `buscar_todos_dfe_novos` segue disponivel em `worker_core.fetcher`
+  para o coletor historico. 8 testes novos em
+  `tests/test_fetch_nfse.py` com PFX self-signed em memoria e stubs
+  de `mtls_session`/`buscar_lote_dfe` cobrindo a DoD completa.
+  `pytest tests/` = 116 passed (108 anteriores + 8 novos). `ruff
+  check` verde. README do pacote atualizado com secao
+  "fetch_nfse (CORE-04)". Sem alteracoes em `batch_processor`/
+  `main.py`/`src/` — comportamento legado preservado. Destrava
+  API-13 (worker consumer) junto com CORE-05 + API-06 + API-07
+  (PR a abrir — Closes #22).
 
 - **CORE-03** — Refactor: NSU via callback (sem arquivo). Introduz em
   `packages/worker-core/worker_core/nsu_tracker.py` o protocolo
@@ -599,6 +697,64 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
   apps/api/` verde, `pytest apps/api` = 178 passed + 72 skipped.
   Move API-07 de "Bloqueadas" (desbloqueado por API-05 + INFRA-05
   ambos concluidos) para "Em Andamento". Closes #31.
+- PR: (a abrir) — APP-10: pagina `/assinatura` placeholder sem
+  gateway. Nova rota `apps/web-app/app/dashboard/assinatura/page.tsx`
+  (server component) mostra plano atribuido + status (`<StatusBadge>`),
+  tres cards de uso (CNPJs, Execucoes no mes, Usuarios) com
+  `used/limit` + `role="progressbar"` + tom ok/warn/full, mensagem
+  "Para alterar plano, entre em contato com o suporte" com links
+  WhatsApp + email (placeholders ate SITE-*) e placeholder vazio de
+  historico de faturas. **Sem** botao de upgrade (ADR-004). Dados
+  de teste em `apps/web-app/lib/subscription/mock.ts` com shape
+  alinhado a `plans.limits` (DATA-07) para plug-in do endpoint
+  futuro. Novo item `Assinatura` (icone `CreditCard`) em
+  `components/app-shell/nav-items.ts`. Spec
+  `app/dashboard/assinatura/page.test.tsx` (6 casos: plano+badge,
+  3 cards com progressbar, tone=full em 5/5, links wa.me/mailto,
+  ausencia defensiva de CTAs de upgrade, placeholder vazio de
+  faturas). `tsc --noEmit`, `next lint` e `vitest run` verdes
+  (128 testes). APP-10 estava `ready` apos DS-03 (ja concluido) —
+  move para "Em Andamento". Closes #58.
+- PR: (a abrir) — CORE-04: callback de progresso por item.
+  Novo modulo `packages/worker-core/worker_core/collector.py` com
+  `fetch_nfse(pfx_bytes, pfx_password, cnpj, nsu_source, on_progress,
+  on_log=None, *, max_documentos=None, rate_limit_delay=0)` que abre
+  `mtls_session` (CORE-02) internamente, pagina via
+  `buscar_todos_dfe_novos` + `NsuSource` (CORE-03) e emite `NfseItem`
+  por nota em `on_progress`. `NfseItem` (`@dataclass(frozen=True)`)
+  carrega os 9 campos do ticket; `status` em
+  `{"ok","cancelada","parse_error"}`. Retorno `FetchSummary` com
+  contadores + `nsu_from`/`nsu_to` + `callback_errors` +
+  `fatal_rejected`. Erro dentro do callback e XML corrompido nao
+  abortam o lote (DoD CORE-04); erros fatais do `mtls_session` (PFX,
+  senha, cert vencido) propagam apos `on_log("fatal_error",...)`.
+  Substitui o alias placeholder `fetch_nfse = buscar_todos_dfe_novos`
+  do CORE-01; `buscar_todos_dfe_novos` segue exportado em
+  `worker_core.fetcher` para o coletor historico. 8 testes novos em
+  `tests/test_fetch_nfse.py`. `pytest tests/` = 116 passed. `ruff
+  check` verde. README do pacote atualizado. Move CORE-04 de
+  "Bloqueadas" (dependia de CORE-02 + CORE-03, ambos concluidos) para
+  "Concluidos". Closes #22.
+- Data: 2026-04-16
+- PR: (a abrir) — APP-09: `/usuarios` + convites. Pagina
+  `apps/web-app/app/usuarios/` (RequireAuth + AppShell) com lista
+  de membros, menu de acoes por linha (alterar papel, remover) e
+  secao de convites pendentes (revogar). Camada
+  `apps/web-app/lib/users/` (`types`/`schemas`/`api-client`/`rbac`)
+  e componentes em `apps/web-app/components/users/` (`Modal`,
+  `ConfirmDialog`, `RoleSelect`, `RoleBadge`, `InviteDialog`,
+  `MembersTable`, `PendingInvitations`). RBAC do cliente espelha
+  `docs/architecture/rbac-matrix.md` (admin nao atribui
+  owner/admin; owner e protegido). Rota `/aceitar-convite/[token]`
+  deixa de ser stub e chama `POST /api/auth/accept-invitation`
+  (novo Route Handler proxy que grava o cookie httpOnly do refresh
+  e devolve a sessao). Sidebar ganha entrada "Usuarios". 42 novos
+  specs vitest (164 total passando) + E2E Playwright
+  `e2e/usuarios.spec.ts` cobrindo convite feliz, aceite +
+  redirecionamento pro dashboard e admin bloqueado sobre owner.
+  Backend (`/tenant/members`, `/tenant/invitations*`) sera entregue
+  em ticket API futuro — mesmo padrao APP-01. Move APP-09 de
+  "Bloqueadas" para "Em Andamento". Closes #57.
 - PR: (a abrir) — CORE-03: refactor do `nsu_tracker` para callbacks.
   Novo protocolo `NsuSource` (`get`/`set`) em
   `packages/worker-core/worker_core/nsu_tracker.py` com duas
