@@ -283,6 +283,36 @@
   `tenants-credentials/`) fica para o owner — sem isso, o PUT real
   contra B2 retorna 401; o smoke test esta documentado no runbook
   (PR a abrir — Closes #30).
+- **APP-04** — Aba "Credencial" em
+  `/dashboard/empresas/[id]/credencial` (apps/web-app): painel com
+  `<StatusBadge>` + fingerprint SHA-256 (formato OpenSSL `aa:bb:..`)
+  + validade em pt-BR, botao "Atualizar credencial" abrindo dialog
+  com `<FileDropzone>` (.pfx/.p12 ate 1 MiB) + `<SecretField>`
+  (senha PFX), "Revogar" via ConfirmDialog "digite REVOGAR" e
+  "Testar agora" desabilitado (aguardando endpoint dedicado de
+  handshake — issue a abrir). Erros 400/413/502/403 traduzidos
+  para feedback acionavel em portugues ("senha incorreta ou PFX
+  invalido", "arquivo excede limite de 1 MiB", "falha ao gravar
+  no storage", "voce nao tem permissao"); badge vira
+  `cert_expiring` nos ultimos 30 dias, `failed` apos a validade,
+  `blocked` em revogada, `cred_invalid` em invalida.
+  Incluidos no escopo: (a) GET minimo
+  `/companies/{id}/credential` na API (RBAC leitura = todos os
+  papeis; devolve a credencial `active` mais recente ou 404; nunca
+  expoe ciphertext/senha; `cn_matches_cnpj` volta como `None`
+  porque o CN nao e persistido); (b) novo `components/ui/dialog.tsx`
+  (modal acessivel sem Radix, focus trap, Esc, overlay click);
+  (c) `lib/companies/credentials.ts` com cliente tipado + mapeador
+  de erros + `formatFingerprint` + `decideCredentialBadge`.
+  37 testes novos no apps/web-app (credentials helpers, status
+  block, upload dialog, revoke dialog e panel orquestrando estado
+  de auth) + 4 testes de integracao no apps/api cobrindo GET feliz
+  pos-upload sem ciphertext, GET 404 pre-upload, GET 404 apos
+  revoke (so retorna active) e GET RBAC permitindo viewer.
+  `pytest apps/api` = 163 passed + 72 skipped; `pnpm --filter
+  web-app test` = 164 passed; `pnpm typecheck` e `pnpm lint`
+  verdes; `ruff check apps/api` limpo
+  (PR a abrir — Closes #52).
 
 ## Concluidos
 
@@ -796,6 +826,27 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-16
+- PR: (a abrir) — APP-04: aba "Credencial" em
+  `/dashboard/empresas/[id]/credencial` com `<StatusBadge>` +
+  fingerprint + validade, dialog de upload (`<FileDropzone>` + 
+  `<SecretField>`, erros 400/413/502/403 traduzidos), ConfirmDialog
+  de revogacao "digite REVOGAR" e placeholder desabilitado de
+  "Testar agora" (aguarda endpoint futuro de handshake). Inclui no
+  escopo o `GET /companies/{id}/credential` (RBAC leitura = todos;
+  devolve credencial `active` mais recente ou 404; `cn_matches_cnpj`
+  vira `None` porque o CN nao e persistido em
+  `company_credentials`). Novo `components/ui/dialog.tsx` (modal
+  acessivel sem Radix, focus trap + Esc + overlay click). Cliente
+  tipado + mapeador de erros + `formatFingerprint` +
+  `decideCredentialBadge` em
+  `apps/web-app/lib/companies/credentials.ts`. 37 testes novos no
+  web-app (helpers/status/upload/revoke/panel) + 4 testes de
+  integracao no api cobrindo GET feliz sem ciphertext, GET 404 sem
+  upload, GET 404 apos revoke e GET viewer autorizado. `pytest
+  apps/api` = 163 passed + 72 skipped; `pnpm --filter web-app
+  test` = 164 passed; `pnpm typecheck` / `pnpm lint` / `ruff
+  check apps/api` limpos. Move APP-04 de "Bloqueadas" para "Em
+  Andamento". Closes #52.
 - PR: (a abrir) — APP-03: paginas `/empresas` (lista com `<DataTable>`
   filtrando `status` + `uf`, botao "Nova empresa" gated por papel) e
   `/empresas/[id]` com 6 abas lazy (`React.lazy` + `Suspense` em

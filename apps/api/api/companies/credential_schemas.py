@@ -29,6 +29,8 @@ class CredentialOut(BaseModel):
     cert_not_before: Optional[datetime] = None
     cert_not_after: Optional[datetime] = None
     status: CredentialStatus
-    cn_matches_cnpj: bool
+    # `None` quando o endpoint nao consegue reconferir o match (ex.: GET,
+    # que nao persiste o CN). `True`/`False` apenas na resposta do POST.
+    cn_matches_cnpj: Optional[bool] = None
     created_at: datetime
     updated_at: datetime
