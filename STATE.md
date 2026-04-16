@@ -403,6 +403,46 @@
 
 ## Concluidos
 
+- **CORE-05** — Cliente S3 do worker-core em
+  `packages/worker-core/worker_core/storage.py`: `S3StorageClient` com
+  `upload_xml(tenant_id, execution_id, nsu, xml_bytes) -> UploadResult`
+  e `upload_export(tenant_id, file_id, path_or_bytes, ext) ->
+  UploadResult` (aceita `bytes` ou `str/PathLike`). `UploadResult`
+  dataclass frozen carrega `object_key`, `sha256` (hex lowercase) e
+  `size`. Key builders puros `xml_object_key` -> `tenants/{tid}/
+  executions/{eid}/{nsu}.xml` e `export_object_key` ->
+  `tenants-exports/{tid}/{fid}.{ext}` (alinhado ao ADR-003 + INFRA-06
+  — B2 so aceita prefix literal em lifecycle, por isso exports ficam
+  em prefix irmao). `S3Settings.from_env()` le as vars `S3_*` sem
+  depender de `apps/api/config`. Cliente boto3 cacheado via
+  `functools.lru_cache(maxsize=1)` com
+  `signature_version=s3v4`/`addressing_style=path`/`retries` padrao
+  `standard/3`. Content-Type `application/xml` para XML e mapa por
+  extensao para exports (`xlsx`/`xls`/`csv`/`zip`/`pdf`/`json`) com
+  fallback `application/octet-stream`; metadata inclui `sha256` + `nsu`
+  ou `ext`. Retry com `tenacity`: `stop_after_attempt(4)` +
+  `wait_exponential(0.5s..8s)` filtrado por `_is_transient` — retenta
+  apenas `EndpointConnectionError` e `ClientError` em
+  `{SlowDown, ServiceUnavailable, InternalError, RequestTimeout,
+  ThrottlingException, 500, 503}`; erros definitivos (`AccessDenied`,
+  `NoSuchBucket`, ...) propagam como `StorageError` sem retry. Logs
+  em `logging.getLogger("worker_core.storage")` sem expor bytes.
+  Validacoes: `nsu` `int >= 0` (bool explicitamente rejeitado), UUID
+  aceita `UUID` ou `str`, `ext` normalizado (lowercase, sem ponto,
+  alfanumerico), `body` precisa ser `bytes`/`bytearray`. Nova dep run
+  `boto3>=1.34` e optional-dep `dev` com `moto[s3]>=5.0` +
+  `pytest>=7.0`. Re-exports em `worker_core/__init__.py`. 30 testes em
+  `tests/test_storage.py` (key builders, `S3Settings`, round-trip real
+  via `moto.mock_aws`, retry sucesso/esgotamento/erros definitivos,
+  `EndpointConnectionError` como transient). `pytest tests/
+  --ignore=tests/test_main.py` = 130 passed. DoD "upload real para
+  bucket de teste" permanece a cargo do owner apos o setup manual do
+  B2 (issue #8) — sem isso o PUT contra Backblaze retorna 401; o
+  smoke test local via `moto` ja cobre o caminho feliz. Integracao
+  com `batch_processor` e adapter para o `StorageBackend` legado
+  ficam para API-11 / CORE-04. Move CORE-05 de "Bloqueadas"
+  (dependencias CORE-01 + INFRA-06 ja satisfeitas) para "Concluidos"
+  (PR a abrir — Closes #23).
 - **CORE-04** — Refactor: callback de progresso por item.
   Novo modulo `packages/worker-core/worker_core/collector.py` expondo
   `fetch_nfse(pfx_bytes, pfx_password, cnpj, nsu_source, on_progress,
@@ -887,6 +927,14 @@
   `proxy_pass` em `infra/nginx/sites-available/{app,api}.conf`.
 
 > INFRA-05 saiu de "Proximas Destravadas" para "Em Andamento" nesta
+> atualizacao. API-06, API-11 e INFRA-08 continuam parcialmente
+> bloqueados pelas dependencias de codigo (API-05 / DATA-05 /
+> INFRA-05); a parte automatizada de INFRA-06 (template de lifecycle,
+> variaveis `S3_*`, smoke test) ja esta disponivel para esses tickets
+> consumirem, e o setup manual do bucket B2 segue em aberto no issue #8
+> sem bloquear o desenvolvimento das integracoes. CORE-05 saiu da lista
+> (entregue como cliente reusavel — a integracao com o batch_processor
+> e com o schema `files` vai junto de API-11 / CORE-04).
 > atualizacao. CORE-05, API-06 e INFRA-08 continuam parcialmente
 > bloqueados pelas dependencias de codigo (CORE-01 / API-05 / DATA-05 /
 > INFRA-05); a parte automatizada de INFRA-06 (template de lifecycle,
@@ -989,6 +1037,30 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
   passed (+20 vs main). Move APP-03 de "Bloqueadas" para "Em Andamento".
   Closes #51.
 - Data: 2026-04-15
+- PR: (a abrir) — CORE-05: cliente S3 em
+  `packages/worker-core/worker_core/storage.py` com `S3StorageClient`,
+  `upload_xml`, `upload_export`, key builders puros (`xml_object_key`,
+  `export_object_key`), `UploadResult(object_key, sha256, size)`,
+  `S3Settings.from_env()` lendo `S3_*` sem depender de `apps/api`, boto3
+  com `signature_version=s3v4` + retry `standard/3` no botocore + retry
+  explicito via `tenacity` (`stop_after_attempt(4)` +
+  `wait_exponential(0.5..8s)`, filtrado em `_is_transient` apenas para
+  `SlowDown`/`ServiceUnavailable`/`InternalError`/`RequestTimeout`/
+  `Throttling*`/`500`/`503` e `EndpointConnectionError` —
+  `AccessDenied`/`NoSuchBucket` propagam sem retry). Content-Type mapa
+  por ext para exports + fallback octet-stream; metadata `sha256` + `nsu`
+  ou `ext`; logs em `worker_core.storage` sem expor bytes. Nova dep run
+  `boto3>=1.34`, optional-dep `dev` com `moto[s3]>=5.0` + `pytest>=7.0`.
+  Re-exports em `worker_core/__init__.py`. 30 testes em
+  `tests/test_storage.py` (key builders, `S3Settings`, round-trip via
+  `moto.mock_aws`, retry sucesso/esgotamento/erros definitivos). `pytest
+  tests/ --ignore=tests/test_main.py` = 130 passed. Integracao com
+  `batch_processor` e schema `files` ficam para API-11 / CORE-04 —
+  este ticket entrega apenas o cliente reusavel. DoD "upload real em
+  bucket de teste" depende do setup manual do B2 (issue #8) — sem isso
+  o PUT em Backblaze retorna 401; o smoke test local via `moto` cobre o
+  caminho feliz. Move CORE-05 de "Bloqueadas" para "Concluidos".
+  Closes #23.
 - PR: (a abrir) — API-09: inbox de ocorrencias operacionais em
   `apps/api/api/occurrences/` com `GET /occurrences` (paginado +
   filtros `status`/`severity`/`company_id`), `GET /occurrences/{id}`,
