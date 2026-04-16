@@ -20,6 +20,7 @@ from .config import Settings, get_settings
 from .schedules.routes import router as schedules_router
 from .files.routes import router as files_router
 from .executions.routes import router as executions_router
+from .exports.routes import router as exports_router
 from .logging import configure_logging
 from .occurrences.routes import router as occurrences_router
 
@@ -75,6 +76,7 @@ def create_app() -> FastAPI:
     app.include_router(schedules_router)
     app.include_router(files_router)
     app.include_router(executions_router)
+    app.include_router(exports_router)
 
     return app
 

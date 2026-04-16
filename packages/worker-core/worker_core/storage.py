@@ -400,6 +400,75 @@ class S3StorageClient:
             extra_metadata={"nsu": str(nsu)},
         )
 
+    def download_bytes(self, object_key: str) -> bytes:
+        """Baixa um objeto inteiro em memoria como `bytes`.
+
+        Usado pelo `build_export` (API-15) para reler XMLs que o
+        coletor ja subiu. Para objetos muito grandes prefira
+        streaming; XMLs de NFS-e sao pequenos, entao bytes aqui e OK.
+
+        Erros definitivos (`NoSuchKey`, `AccessDenied`, ...) propagam
+        como `StorageError` no primeiro GET; erros transientes usam
+        os mesmos codigos e politica de retry do PUT.
+        """
+        if not object_key:
+            raise StorageError("object_key vazio")
+        bucket = self._settings.bucket
+
+        @retry(
+            reraise=True,
+            stop=stop_after_attempt(4),
+            wait=wait_exponential(multiplier=0.5, min=0.5, max=8.0),
+            retry=retry_if_exception(_is_transient),
+            before_sleep=lambda rs: logger.warning(
+                "storage.get.retry",
+                extra={"key": object_key, "attempt": rs.attempt_number},
+            ),
+        )
+        def _do_get() -> bytes:
+            client = self._client()
+            resp = client.get_object(Bucket=bucket, Key=object_key)
+            return resp["Body"].read()
+
+        try:
+            data = _do_get()
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "")
+            logger.error(
+                "storage.get.failed",
+                extra={
+                    "key": object_key,
+                    "error_code": code,
+                    "transient": _is_transient(exc),
+                },
+            )
+            raise StorageError(
+                f"falha ao ler objeto do storage (code={code!r})"
+            ) from exc
+        except EndpointConnectionError as exc:
+            logger.error(
+                "storage.get.failed",
+                extra={
+                    "key": object_key,
+                    "error_code": "EndpointConnectionError",
+                    "transient": True,
+                },
+            )
+            raise StorageError(
+                "falha ao ler objeto do storage apos retries"
+            ) from exc
+        except BotoCoreError as exc:
+            logger.error(
+                "storage.get.failed",
+                extra={"key": object_key, "error_code": type(exc).__name__},
+            )
+            raise StorageError("falha ao ler objeto do storage") from exc
+
+        logger.info(
+            "storage.get.ok", extra={"key": object_key, "size": len(data)}
+        )
+        return data
+
     def upload_export(
         self,
         tenant_id: Union[str, UUID],
