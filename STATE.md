@@ -15,6 +15,37 @@
 
 ## Em Andamento
 
+- **API-12** — CRUD `/schedules` (agendamentos cron + TZ): pacote
+  `apps/api/api/schedules/` com `cron.py` (valida cron 5-campos via
+  `croniter` rejeitando 6/7, valida TZ IANA via `zoneinfo.ZoneInfo`,
+  `compute_next_run` roda na TZ local e persiste em UTC), `presets.py`
+  (3 sugestoes: diario 03:00, semanal seg 06:00, mensal dia 1 05:00),
+  `schemas.py` (`ScheduleIn`/`ScheduleUpdate`/`ScheduleOut` com
+  `extra=forbid` protegendo `last_run_at`/`next_run_at`/etc como
+  read-only) e `routes.py` com `GET /schedules` paginado (filtros
+  `enabled`/`company_id`), `GET /{id}`, `GET /schedules/presets`,
+  `POST` (RBAC owner|admin|operator; valida cron+TZ com fallback
+  explicito para 400; valida company existente via RLS; calcula
+  `next_run_at` se `enabled=true`; grava `created_by_user_id`),
+  `PATCH` (recomputa `next_run_at` quando `cron_expr`/`timezone` mudam
+  ou `enabled` vira true; limpa quando vira false; `extra=forbid` ->
+  422 em tentativa de tocar read-only), `DELETE` hard (owner|admin).
+  Router registrado em `api/main.py`; matriz em
+  `docs/architecture/rbac-matrix.md` ganha secao Schedules. Nova dep
+  `croniter>=2.0` em `apps/api/pyproject.toml`. 31 unit tests de cron
+  (`test_schedules_cron.py` — 5-campos, rejeicao 6/7, sintaxe, TZ,
+  calculo em UTC para os 3 presets e cross-TZ) + 10 unit tests de
+  schemas (`test_schedules_schemas.py` — defaults, cron/TZ invalidos,
+  `extra=forbid`, PATCH parcial) + 18 integracao
+  (`test_schedules_routes_integration.py`, gated `TEST_DATABASE_URL`)
+  cobrindo CRUD feliz tenant-wide e company-scoped, `next_run_at`
+  coerente (hora UTC da primeira execucao), pause/resume limpa/recalcula,
+  cron/TZ invalidos -> 400/422 com mensagem clara, cross-tenant 404,
+  company de outro tenant 400, RBAC (viewer -> 403, operator -> 403
+  no DELETE), PATCH vazio 400, DELETE idempotente, presets com 3 itens,
+  filtros por `enabled`/`company_id`. `pytest apps/api`: 204 passed +
+  86 skipped, 0 falhas (PR a abrir — Closes #36).
+
 - **API-11** — `/files` (listar + URL pre-assinada 1h): novo pacote
   `apps/api/api/files/` com `routes.py` (`GET /files` paginado com
   filtros `kind`/`company`/`from`/`to`; `GET /files/{id}/url` gera
@@ -711,6 +742,23 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-15
+- PR: (a abrir) — API-12: CRUD de `/schedules` em
+  `apps/api/api/schedules/` (pacote novo com `cron.py` + `presets.py` +
+  `schemas.py` + `routes.py`). Endpoints `GET /schedules` (paginado,
+  filtros `enabled`/`company_id`), `GET /schedules/{id}`,
+  `GET /schedules/presets`, `POST`, `PATCH`, `DELETE`. Cron 5-campos
+  via `croniter` (rejeita 6/7 campos explicitamente), TZ via
+  `zoneinfo.ZoneInfo`, `next_run_at` calculado na TZ local e persistido
+  em UTC. `PATCH` recomputa `next_run_at` quando `cron_expr`/`timezone`
+  mudam ou quando `enabled` vira true; limpa quando vira false.
+  RBAC: leitura = todos; POST/PATCH = owner|admin|operator; DELETE =
+  owner|admin (matriz atualizada em `docs/architecture/rbac-matrix.md`).
+  Nova dep `croniter>=2.0` em `apps/api/pyproject.toml`. 41 unit tests
+  (cron + schemas) + 18 integracao (gated `TEST_DATABASE_URL`) cobrindo
+  DoD ("cron invalido -> 400 claro" e "`next_run_at` coerente com cron
+  + TZ"). `pytest apps/api` = 204 passed + 86 skipped, 0 falhas. Move
+  API-12 de "Bloqueadas" (dependencia DATA-05 ja em "Concluidos") para
+  "Em Andamento". Closes #36.
 - PR: (a abrir) — API-11: `/files` com listagem paginada e URL
   pre-assinada (1h). Novo pacote `apps/api/api/files/`
   (`schemas.py` + `routes.py`) expondo `GET /files` com filtros
