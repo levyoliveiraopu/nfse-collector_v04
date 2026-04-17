@@ -1,11 +1,16 @@
 import { ThemeToggle } from "@/components/theme-toggle";
 import { CNPJInputDemo } from "./cnpj-input-demo";
+import { ConfirmDialogDemo } from "./confirm-dialog-demo";
 import { DataTableDemo } from "./data-table-demo";
+import { EmptyStateDemo } from "./empty-state-demo";
+import { ErrorBoundaryDemo } from "./error-boundary-demo";
 import { FileDropzoneDemo } from "./file-dropzone-demo";
 import { KPIStatCardDemo } from "./kpi-stat-card-demo";
+import { LoadingSkeletonDemo } from "./loading-skeleton-demo";
 import { PeriodPickerDemo } from "./period-picker-demo";
 import { SecretFieldDemo } from "./secret-field-demo";
 import { StatusBadgeDemo } from "./status-badge-demo";
+import { TimelineDemo } from "./timeline-demo";
 
 const colorTokens: Array<{ name: string; varName: string }> = [
   { name: "background", varName: "--background" },
@@ -276,6 +281,41 @@ console.log(\`hello \${tenant}\`);`}
         description="DS-07 — 4 presets (mes atual, mes anterior, ultimos 7/30 dias) + range custom com dois input[type=date]. Datas em UTC para evitar off-by-one por timezone."
       >
         <PeriodPickerDemo />
+      </Section>
+
+      <Section
+        title="EmptyState"
+        description="DS-08 — card neutro para listas sem dados, com icone Lucide opcional, titulo, descricao e CTA (botao ou link)."
+      >
+        <EmptyStateDemo />
+      </Section>
+
+      <Section
+        title="LoadingSkeleton"
+        description="DS-08 — placeholders enquanto dados carregam. Variante lines (barras empilhadas) e rows (grade tabular)."
+      >
+        <LoadingSkeletonDemo />
+      </Section>
+
+      <Section
+        title="ErrorBoundary"
+        description="DS-08 — captura erros de render na subarvore e mostra fallback com botao Tentar novamente. Aceita fallback custom por funcao (error, reset)."
+      >
+        <ErrorBoundaryDemo />
+      </Section>
+
+      <Section
+        title="ConfirmDialog"
+        description="DS-08 — confirmacao generica + modo destrutivo com 'digite X para confirmar'. Botao Confirmar fica disabled ate o input casar exatamente com confirmPhrase."
+      >
+        <ConfirmDialogDemo />
+      </Section>
+
+      <Section
+        title="Timeline"
+        description="DS-08 — lista vertical de eventos com bullet colorido por tone (success/warning/destructive/info/default). Usada em detalhes de execucoes e ocorrencias."
+      >
+        <TimelineDemo />
       </Section>
     </main>
   );
