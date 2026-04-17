@@ -15,6 +15,67 @@
 
 ## Em Andamento
 
+- **APP-06** — Inbox `/ocorrencias` consumindo API-09. Nova rota
+  `apps/web-app/app/ocorrencias/` com `layout.tsx` (RequireAuth +
+  AppShell, igual `/empresas`), `page.tsx` + `OcorrenciasView` +
+  `OcorrenciasTable` usando `<DataTable>` (DS-06) com filtros
+  server-side: `status` (select 5-valores: open/ack/snoozed/resolved/
+  ignored), `severity` (select 4-valores: info/warning/error/critical) e
+  `company_id` (text UUID — seletor rico fica para ticket futuro quando
+  houver `GET /companies` global + `GET /users`). Colunas: `code`+label
+  (link para `/ocorrencias/[id]`), severity/status via `StatusBadge`
+  (DS-04) mapeados em `severityVariant`/`statusVariant`, `title` (tooltip
+  com `detail`), `last_seen_at`, `first_seen_at`. Cliente HTTP novo
+  `apps/web-app/lib/api/occurrences.ts` (tipos `Occurrence`/
+  `OccurrenceListResponse`/`OccurrenceSeverity`/`OccurrenceStatus`,
+  funcoes `listOccurrences`/`getOccurrence`/`acknowledgeOccurrence`/
+  `resolveOccurrence`/`assignOccurrence`, helper `isTerminal`, labels
+  pt-BR). Detalhe em `apps/web-app/app/ocorrencias/[id]/` —
+  `OccurrenceDetailView` client component com `useQuery`
+  (`["ocorrencias:detail", id]`) + 3 `useMutation` que chamam
+  `queryClient.setQueryData` no retorno (**DoD "acoes atualizam estado
+  sem reload"**) e invalidam `[OCORRENCIAS_QUERY_KEY]`. Acoes gated por
+  RBAC (owner/admin/operator): **Reconhecer** so em `open`; **Resolver**
+  so em nao-terminais, abre `ResolveDialog` (react-hook-form + zod,
+  note 1..2000 chars obrigatoria, erro explicito em 409/422/403);
+  **Atribuir** sempre (`AssignDialog` com validacao UUID regex, erro
+  404 "usuario nao e membro do tenant"); **Reprocessar** = `<Link>` para
+  `/execucoes/nova?reprocessar_de=<id>&company_id=<cid>` (APP-05 consome
+  quando chegar — nota no tooltip). Runbook inline em `RunbookPanel`:
+  faz GET `/api/runbooks/<slug>`, renderiza com `react-markdown` +
+  `remark-gfm` e componentes customizados (heading/p/ul/ol/code/pre/a/
+  blockquote estilizados via Tailwind — sem `@tailwindcss/typography`).
+  Route handler `apps/web-app/app/api/runbooks/[slug]/route.ts` (runtime
+  Node) le `docs/runbooks/<slug>.md` com `readFile` a partir de
+  `process.cwd()/../..`, allowlist por `isRunbookSlug` (evita path
+  traversal), `Content-Type: text/markdown; charset=utf-8`. Catalogo em
+  `apps/web-app/lib/occurrences/codes.ts` mapeia os 11 codigos
+  documentados em `docs/architecture/occurrence-codes.md` para
+  `{label, severity_default, runbookSlug}` — codigos nao catalogados
+  caem em "Outro" sem quebrar a listagem. 4 runbooks novos criados em
+  `docs/runbooks/` (**reprocessamento.md**, **parse-error.md**,
+  **storage-error.md**, **erro-desconhecido.md**) cobrindo os codigos
+  `REPROCESS_NEEDED`, `PARSE_ERROR`, `STORAGE_ERROR` e `UNKNOWN`
+  (sintomas, diagnostico, mitigacao, escalacao, prevencao). Tabela de
+  codigos em `docs/architecture/occurrence-codes.md` atualizada: zero
+  "(em redacao)", todos os 11 codigos linkam para runbook — **DoD "10
+  codigos com runbook"** cumprido com folga. Aba `occurrences-tab.tsx`
+  do detalhe de empresa (APP-03) substituida: stub vira call-to-action
+  com `<Link>` para `/ocorrencias?company_id=<id>` (filtro persistido
+  pelo DataTable via URL state). Item "Ocorrencias" (icon `AlertCircle`)
+  adicionado em `components/app-shell/nav-items.ts` entre "Empresas" e
+  "Notas". Novas deps em `apps/web-app/package.json`:
+  `react-markdown ^9.0.1` + `remark-gfm ^4.0.0` (~30kB gzip). 22 testes
+  vitest novos: `lib/api/occurrences.test.ts` (17 — buildListQuery,
+  list/get/ack/resolve/assign com Authorization, propagacao de ApiError
+  403/404/422, helper `isTerminal`) + `app/ocorrencias/[id]/
+  occurrence-detail-view.test.tsx` (5 — render de header, RBAC gating
+  viewer sem botoes, acknowledge invalida cache, reprocessar tem query
+  string correta, estado terminal oculta ack/resolve mas mantem
+  atribuir). `pnpm typecheck` verde, `next lint` zero warnings,
+  `vitest run` 261 passed (239 existentes + 22 novos). Dependencia
+  API-09 ja satisfeita (PR #127 merged)
+  (PR a abrir — Closes #54).
 - **API-13** — Worker consumer (Redis -> worker-core E2E):
   `apps/worker/` RQ consumer orquestrando execucao ponta-a-ponta +
   novos adapters em `packages/worker-core/worker_core/`. Handler
@@ -1254,7 +1315,24 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 
 ## Ultima atualizacao
 
-- Data: 2026-04-16
+- Data: 2026-04-17
+- PR: (a abrir) — APP-06: inbox `/ocorrencias` consumindo API-09, com
+  lista filtravel (status/severity/company_id), detalhe renderizando
+  runbook inline por codigo (via `react-markdown` + route handler que
+  le `docs/runbooks/<slug>.md` do disco), acoes acknowledge/resolve
+  (nota obrigatoria)/assign/reprocessar (link para APP-05 futuro) — 3
+  mutacoes invalidam cache react-query para atualizar estado sem
+  reload. 4 runbooks novos criados para cobrir `REPROCESS_NEEDED`,
+  `PARSE_ERROR`, `STORAGE_ERROR` e `UNKNOWN` — catalogo em
+  `docs/architecture/occurrence-codes.md` fica com 11 codigos x 6
+  runbooks (DoD "10 codigos" cumprido). Aba `occurrences-tab.tsx` do
+  detalhe de empresa (APP-03) vira CTA para o inbox pre-filtrado por
+  `company_id`. Novo item "Ocorrencias" no sidebar
+  (`components/app-shell/nav-items.ts`). Novas deps
+  `react-markdown`/`remark-gfm`. 22 testes vitest novos; `pnpm
+  typecheck`/`next lint`/`vitest run` = 261 passed + zero warnings.
+  Move APP-06 de "Bloqueadas" para "Em Andamento" — API-09 (PR #127)
+  ja mergeada. Closes #54.
 - PR: (a abrir) — API-13: worker consumer RQ orquestrando execucao
   ponta-a-ponta. Novo pacote `apps/worker/` (entry point `python -m
   worker.main` lendo `API_REDIS_URL`+`API_QUEUE_NAME`; `HealthzServer`

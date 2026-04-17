@@ -1,4 +1,5 @@
 import {
+  AlertCircle,
   LayoutDashboard,
   FileText,
   ShieldCheck,
@@ -16,11 +17,12 @@ export type NavItem = {
 };
 
 // Rotas existentes vao sendo ligadas a medida que os tickets APP-*
-// destravam: APP-03 entrega `/empresas`. As demais permanecem como
-// placeholders ate o ticket correspondente.
+// destravam: APP-03 entrega `/empresas`, APP-06 entrega `/ocorrencias`.
+// As demais permanecem como placeholders ate o ticket correspondente.
 export const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Empresas", href: "/empresas", icon: Building2 },
+  { label: "Ocorrencias", href: "/ocorrencias", icon: AlertCircle },
   { label: "Notas", href: "/dashboard/notas", icon: FileText },
   { label: "Certificados", href: "/dashboard/certificados", icon: ShieldCheck },
   { label: "Tenants", href: "/dashboard/tenants", icon: Building2 },
