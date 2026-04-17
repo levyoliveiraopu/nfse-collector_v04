@@ -15,6 +15,94 @@
 
 ## Em Andamento
 
+- **APP-05** — `/execucoes/nova` + acompanhamento real-time.
+  Novo cliente `apps/web-app/lib/api/executions.ts` com tipos
+  alinhados a API-07/API-08 (`Execution`, `ExecutionItem`, envelopes
+  paginados, `CreateExecutionsPayload`, `CreatedExecution`), funcoes
+  `listExecutions`/`getExecution`/`listExecutionItems`/
+  `createExecutions` via `apiFetch` (APP-01) e `ExecutionsApiError`
+  mapeando 401/403/404/422/502 em codigos canonicos
+  (`companies_not_found`, `credential_missing_or_expired`,
+  `queue_unavailable`, `validation_error`, `forbidden`, `not_found`,
+  `network`, `unknown`) — o 422 estruturado do backend preserva
+  `company_ids`/`missing` pra UI citar quais CNPJs travaram a
+  submissao. Helpers `decideExecutionBadge` (mapeia os 6 status pra
+  variantes `<StatusBadge>`: queued->pending, running->processing,
+  succeeded->success, failed->failed, cancelled->blocked,
+  partial->warning), `computeProgress` (clampa em 100%, lida com
+  `total=0` em queued sem div/0) e `isTerminalStatus`. Nova rota
+  protegida `apps/web-app/app/execucoes/` com 3 paginas: (a)
+  `/execucoes` — lista paginada server-side filtrando por `status`,
+  CTA "Nova execucao" apontando pra `/execucoes/nova`, paginacao
+  Anterior/Proxima e empty-state com link pra criar; (b)
+  `/execucoes/nova` — formulario client (`NovaExecucaoForm`) com
+  multi-select de companies ativas (usa `listCompanies` com
+  `filters: {status: 'active'}` e page_size 100, exibe CNPJ formatado
+  + razao + UF), `<PeriodPicker>` (DS-07, default `last_30d`),
+  toggle dry-run, toggle "Incremental desde ultimo NSU" (UX
+  informativa apontando que o worker ja respeita `last_nsu`
+  internamente — periodo define a janela, nao o piso de NSU), CTA
+  "Iniciar" chamando `createExecutions` e redirecionando pra
+  `/execucoes/{id}` em N=1 ou `/execucoes` em N>1. Viewer ve alerta
+  "sem permissao" (DoD RBAC), operator/admin/owner veem o form. Em
+  422 `credential_missing_or_expired` traduz a mensagem listando os
+  CNPJs afetados com orientacao pra regularizar na aba Credencial
+  (APP-04) — evita N+1 no front pre-filtrando e alinha com a linha
+  "nao validar o que o backend ja valida"; (c) `/execucoes/[id]` —
+  `ExecucaoDetailView` com header (StatusBadge, CNPJ curto, periodo,
+  indicador "Atualizando a cada 2s" quando nao terminal), barra
+  `role="progressbar"` com `aria-valuenow={ok+fail}` e
+  `aria-valuemax={total}`, KPIs (total/ok/fail/iniciada), tabela de
+  items com filtro por status (tabs Todos/OK/Falhou/Ignorados/
+  Pendentes), paginacao, checkbox por linha + "Selecionar todos
+  visiveis", botao "Reprocessar selecionados (N)" com
+  `aria-disabled=true` + `title` explicando "liberado com APP-06 /
+  API-10" (stub consciente sem bloquear o DoD quando o endpoint
+  chegar). **Polling 2s** via `refetchInterval` do react-query
+  (`query.state.data` em `isTerminalStatus` -> desliga o polling;
+  ainda em andamento -> 2000ms), aplicado tanto ao detail quanto aos
+  items — quando `status` vira `succeeded`/`failed`/`cancelled`/
+  `partial` o polling cessa automaticamente. Sidebar
+  `components/app-shell/nav-items.ts` ganha item "Execucoes" (icone
+  `PlayCircle`) entre "Empresas" e "Notas". Stub `executions-tab.tsx`
+  da aba de empresa (APP-03) deixa de ser informativo e mostra as 5
+  execucoes mais recentes daquela company com atalho "Nova execucao"
+  pra `/execucoes/nova?company_id={id}` (pre-selecao para fluxo
+  futuro). Testes vitest: (a) `lib/api/executions.test.ts` com 16
+  casos (buildListQuery/buildItemsQuery com defaults e filtros,
+  listExecutions Authorization, getExecution 404, listExecutionItems
+  endpoint correto, createExecutions POST JSON feliz + traducao de
+  422 `credential_missing_or_expired` preservando `companyIds`, 422
+  `companies_not_found`, 502 `queue_unavailable`, `decideExecutionBadge`
+  pros 6 status, `isTerminalStatus` e `computeProgress` incluindo
+  clamp 100% e divisao por zero); (b)
+  `app/execucoes/nova/nova-execucao-form.test.tsx` com 7 casos
+  (viewer ve alerta sem permissao, operator ve form, submissao de 1
+  empresa redireciona pra `/execucoes/{id}`, submissao de N empresas
+  redireciona pra `/execucoes`, dry_run propaga no payload, 422
+  credential traduz com CNPJs formatados no alert, 502 queue mostra
+  mensagem de fila indisponivel); (c)
+  `app/execucoes/[id]/execucao-detail-view.test.tsx` com 7 casos
+  (progressbar com `aria-valuenow/max` corretos, indicador polling
+  visivel em running, ausente em succeeded, refaz query detail apos
+  2s enquanto nao-terminal (real timers, timeout 10s), 404 exibe
+  mensagem clara, filtro por status refaz query com `status=failed`,
+  botao Reprocessar `aria-disabled=true` + title citando
+  APP-06/API-10). E2E Playwright `e2e/execucoes.spec.ts` intercepta
+  `/companies`/`/executions`/`/executions/{id}`/`/executions/{id}/items`
+  via `page.route` cobrindo DoD literal: cria (selecionar empresa +
+  Iniciar), acompanha (progressbar visivel), ve itens aparecendo
+  (data-item-id=i1 e i2 apos 2a chamada do polling). `pnpm
+  typecheck`, `pnpm lint` (`next lint`) e `pnpm test` (`vitest run`)
+  verdes — 29 arquivos / 269 specs (135 anteriores + 30 novos de
+  APP-05 + diff dos outros tickets mergeados). Backend intocado
+  (API-07/API-08 ja em main). `POST /executions` precisa de Redis
+  pra pre-ping (502 sem tocar DB se fila offline) — o caminho feliz
+  local e coberto estruturalmente pelos mocks do vitest + page.route
+  do Playwright. Move APP-05 de "Bloqueadas" (deps API-07/API-08 ja
+  mergeadas em main) para "Em Andamento"
+  (PR a abrir — Closes #53).
+
 - **API-13** — Worker consumer (Redis -> worker-core E2E):
   `apps/worker/` RQ consumer orquestrando execucao ponta-a-ponta +
   novos adapters em `packages/worker-core/worker_core/`. Handler
@@ -1254,6 +1342,44 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 
 ## Ultima atualizacao
 
+- Data: 2026-04-17
+- PR: (a abrir) — APP-05: `/execucoes/nova` + acompanhamento
+  real-time. Novo cliente `apps/web-app/lib/api/executions.ts`
+  (tipos, `listExecutions`/`getExecution`/`listExecutionItems`/
+  `createExecutions`, `ExecutionsApiError` mapeando 401/403/404/422/
+  502 em codigos canonicos incluindo `credential_missing_or_expired`
+  e `queue_unavailable` com `extra.companyIds`, helpers
+  `decideExecutionBadge`/`computeProgress`/`isTerminalStatus`). Tres
+  paginas em `apps/web-app/app/execucoes/`: (a) `/execucoes` —
+  lista paginada com filtro por status, CTA "Nova execucao";
+  (b) `/execucoes/nova` — `NovaExecucaoForm` client com multi-select
+  de companies ativas + `<PeriodPicker>` (DS-07, default `last_30d`)
+  + toggle dry-run + toggle "incremental desde ultimo NSU"
+  (informativo — o worker ja respeita `last_nsu` internamente).
+  Viewer ve alerta sem permissao; operator+ submete e e
+  redirecionado pra `/execucoes/{id}` (N=1) ou `/execucoes` (N>1).
+  Em 422 `credential_missing_or_expired`, traduz a mensagem
+  listando CNPJs afetados com orientacao pra regularizar credencial
+  (APP-04); (c) `/execucoes/[id]` — `ExecucaoDetailView` com
+  `<StatusBadge>`, barra `role="progressbar"` (aria-valuenow/max),
+  KPIs total/ok/fail, tabela de items com tabs-filter
+  Todos/OK/Falhou/Ignorados/Pendentes + checkbox por linha e botao
+  "Reprocessar selecionados (N)" desabilitado via `aria-disabled` +
+  `title` citando APP-06/API-10. **Polling 2s** via `refetchInterval`
+  do react-query (`isTerminalStatus(data.status)` desliga o polling
+  quando status terminal — succeeded/failed/cancelled/partial),
+  aplicado a detail e items. Sidebar ganha "Execucoes" (PlayCircle).
+  Stub `executions-tab.tsx` (aba empresa) deixa de ser informativo
+  e mostra as 5 execucoes mais recentes da company + link "Nova
+  execucao?company_id=X". Testes: `lib/api/executions.test.ts` (16),
+  `app/execucoes/nova/nova-execucao-form.test.tsx` (7, gating por
+  papel + redirecionamentos N=1/N>1 + dry_run + traducao 422/502),
+  `app/execucoes/[id]/execucao-detail-view.test.tsx` (7, progressbar
+  aria, polling 2s real timers, 404, filtro por status, reprocess
+  desabilitado). E2E `e2e/execucoes.spec.ts` cobrindo DoD literal
+  (cria -> acompanha -> ve itens aparecendo via page.route). `pnpm
+  typecheck`, `pnpm lint` e `pnpm test` verdes (29 arquivos / 269
+  specs). Closes #53.
 - Data: 2026-04-16
 - PR: (a abrir) — API-13: worker consumer RQ orquestrando execucao
   ponta-a-ponta. Novo pacote `apps/worker/` (entry point `python -m
