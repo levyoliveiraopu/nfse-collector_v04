@@ -421,7 +421,9 @@ def test_build_scheduler_cron_1min() -> None:
         # `fields` com o minuto marcado como `*`.
         minute_field = next(f for f in trigger.fields if f.name == "minute")
         assert str(minute_field) == "*"
-        assert trigger.timezone.key == "UTC"
+        # UTC — aceita tanto ZoneInfo quanto datetime.timezone.utc.
+        now = datetime.now(tz=timezone.utc)
+        assert trigger.timezone.utcoffset(now) == now.utcoffset()
         # coalesce e max_instances configurados.
         assert job.coalesce is True
         assert job.max_instances == 1
