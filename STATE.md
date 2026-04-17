@@ -85,6 +85,66 @@
   por `python -c "import worker_core"` apos o fix. Move API-14 de
   "Bloqueadas" (deps API-12 + API-13 mergeadas em main) para "Em
   Andamento" (PR a abrir — Closes #38).
+- **API-10** — Reprocess jobs: novo pacote
+  `apps/api/api/reprocess/` (`routes.py` + `schemas.py` +
+  `__init__.py`) expondo `POST /reprocess` (RBAC
+  `owner|admin|operator`) e `GET /reprocess/{id}` (todos os papeis)
+  sobre a tabela `reprocess_jobs` (DATA-04 / migration 0007). O POST
+  aceita **exatamente 1** de 3 escopos (`ReprocessIn` com
+  `extra='forbid'` + `model_validator`): (1) `execution_item_ids[]` —
+  agrupa items pela execution-pai via JOIN e cria 1 execution filha
+  por tupla `(company_id, period_start, period_end)` distinta
+  (items nao encontrados -> 422 `execution_items_not_found`); (2)
+  `company_id + nsus[]` — infere periodo via
+  `MIN/MAX(data_emissao)` dos items com NSU ∈ lista (fallback
+  defensivo `[today, today]` quando nenhum item bate — o worker
+  refara a coleta no dia); (3) `company_id + period{start,end}` com
+  `statuses[]` opcional (auditado em `reprocess_jobs.scope` para
+  rastreio, mas o worker atual refaz a janela inteira). Reusa
+  `_validate_companies`/`_validate_credentials` de
+  `executions/routes` (422 em company alheia ou sem credencial
+  ativa). Pre-pinga Redis (502 sem tocar DB). Persiste linha em
+  `reprocess_jobs` (status `queued`, `scope` jsonb canonizado com
+  `kind`+payload, `created_by_user_id`) + N `executions` com
+  `trigger='reprocess'` e enfileira `worker_core.jobs.run_execution`
+  via `enqueue_run_execution` — mesmo pipeline de API-07. Falha de
+  enqueue por execution marca a linha `failed` +
+  `error_summary='enqueue_failed'`; se **todas** falharem, o
+  `reprocess_job` vira `failed` com `error_summary='enqueue_failed_all'`
+  e `finished_at=now()`. `result_execution_ids` atualizado apos os
+  INSERTs. Audit log `reprocess.create` grava `scope_kind` +
+  `executions_count` + `dry_run` (sem vazar company/period). GET
+  deriva `progress` via JOIN com `executions.id = ANY(result_execution_ids)`
+  — contadores por status + `effective_status` agregado (`running`
+  se alguma in-flight, `succeeded`/`partial`/`failed`/`cancelled` apos
+  todas terminarem; `partial` em mistura ok+failed). Coluna `status`
+  do job-pai permanece `queued` porque o worker atual nao reconcilia
+  — ticket futuro pode estender `run_execution` para atualizar.
+  **Granularidade**: o worker sempre refaz a janela
+  `(company, period_start, period_end)` da execution filha (portal
+  Nacional pagina por NSU global e nao aceita lista de NSUs); a
+  idempotencia do unique parcial `uq_execution_items_tenant_chave`
+  (0005) garante que items ja `ok` nao duplicam, e items `failed`
+  voltam a ser tentados — cobrindo a DoD "forca falha em 3 items,
+  reprocessa 1, v2 atualiza status". Router registrado em
+  `apps/api/api/main.py`. Matriz `docs/architecture/rbac-matrix.md`
+  ganha secao "Reprocess (API-10)" e o placeholder invalido
+  `POST /executions/{id}/reprocess` da secao Executions e substituido
+  por nota apontando para `/reprocess`. 20 unit tests em
+  `apps/api/tests/test_reprocess_schemas.py` (dedup de items/nsus/
+  statuses, 3 combinacoes escopo-unico proibidas, `extra='forbid'`,
+  period invalido, status nao-canonico) + 19 integration tests em
+  `test_reprocess_routes_integration.py` gated por
+  `TEST_DATABASE_URL` + fakeredis (3 escopos felizes, cross-tenant
+  422 nos items, id inexistente, fallback de today, company
+  inexistente/sem credencial 422, viewer 403/200, operator autorizado,
+  Redis offline 502 + DB intocado, enqueue falha em todas -> job-pai
+  failed, GET cross-tenant 404, effective_status running/succeeded/
+  partial, GET 404 inexistente, audit log sem vazar scope, DoD E2E
+  simbolico reprocessando 1 de 3 items). Sem migration nova —
+  `reprocess_jobs` ja existia desde DATA-04. Move API-10 de
+  "Bloqueadas" (API-08 mergeada) para "Em Andamento" (PR a abrir —
+  Closes #34).
 - **API-13** — Worker consumer (Redis -> worker-core E2E):
   `apps/worker/` RQ consumer orquestrando execucao ponta-a-ponta +
   novos adapters em `packages/worker-core/worker_core/`. Handler
@@ -759,6 +819,48 @@
   ficam para tickets futuros conforme o escopo conservador deste
   entregavel (PR a abrir — Closes #39).
 
+- **DS-08** — Estados e utilitarios de UX em `apps/web-app/components/ui/`:
+  `empty-state.tsx` (card com icone Lucide opcional + CTA via `action`
+  — suporta `onClick` ou `href` -> renderiza `<a>` para navegacao
+  server-friendly; `role="status"` + `aria-live="polite"`),
+  `loading-skeleton.tsx` (duas variantes: `lines` — N barras
+  empilhadas com ultima em `w-2/3` para quebrar o ritmo — e `rows` —
+  grade `rows x columns` com CSS grid inline; `rows` prevalece quando
+  ambos setados; `aria-busy="true"` + `aria-label` customizavel),
+  `error-boundary.tsx` (class component — limitacao da API do React
+  para capturar erros de render; `getDerivedStateFromError` +
+  `componentDidCatch` com `onError` opcional para telemetria; props
+  `fallback` aceita node ou funcao `({error, reset}) => node`; UI
+  default com `AlertTriangle` + mensagem + botao "Tentar novamente"
+  que chama `onRetry`), `confirm-dialog.tsx` (reutiliza `Dialog` do
+  DS-03 — sem Radix; props `confirmPhrase` + `tone: default |
+  destructive`; quando `confirmPhrase` esta setado, input renderiza
+  dentro de `DialogBody` e o botao "Confirmar" fica `disabled` ate
+  `typed.trim() === confirmPhrase` — **prova do DoD**; `busy` trava
+  tudo enquanto a acao esta em voo; reseta input quando dialog
+  fecha), `timeline.tsx` (lista vertical `<ol>` com bullet colorido
+  por tone — `default/success/warning/destructive/info` — e linha
+  conectora absoluta; `<time dateTime={iso}>` para leitores; icone
+  Lucide opcional dentro do bullet). 5 novas secoes em
+  `app/styleguide/page.tsx` com demos dedicadas em
+  `app/styleguide/<componente>-demo.tsx`. Testes novos (25 casos):
+  `empty-state.test.tsx` (4 — titulo/desc, icone, onClick do CTA,
+  variante `href` como link), `loading-skeleton.test.tsx` (4 —
+  aria-busy, contagem de barras em `lines`, `rows x columns`,
+  prioridade de `rows`), `error-boundary.test.tsx` (5 — filhos ok,
+  fallback default, reset via `onRetry` com re-render, fallback custom
+  funcao, `onError` recebe Error), `confirm-dialog.test.tsx` (7 —
+  fechado nao monta, sem phrase habilita de cara, bloqueia ate match
+  exato case-sensitive, aceita trim, tone destrutivo via `data-tone`,
+  Cancelar dispara onClose, `busy` desabilita mesmo com match) e
+  `timeline.test.tsx` (5 — ordem, aria-label, `dateTime` ISO no
+  `<time>`, `data-tone` por item, lista vazia). `pnpm --filter
+  web-app typecheck` limpo, `next lint` zero warnings, `vitest run`:
+  264 passed (239 previos + 25 novos). Move DS-08 de "Bloqueadas"
+  (dependencia DS-02 ja com artefatos — `tokens.css` + `/styleguide`
+  + `theme-toggle` — em origin/main) para "Em Andamento"
+  (PR a abrir — Closes #47).
+
 ## Concluidos
 
 - **CORE-05** — Cliente S3 do worker-core em
@@ -1351,6 +1453,41 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
   passando + suite do worker-core destravada (32 passed). Move API-14
   de "Bloqueadas" (deps API-12 + API-13 mergeadas em main) para "Em
   Andamento". Closes #38.
+- PR: (a abrir) — API-10: `POST /reprocess` + `GET /reprocess/{id}`
+  em `apps/api/api/reprocess/` (3 escopos: `execution_item_ids[]`,
+  `company_id + nsus[]`, `company_id + period[ + statuses]` — exatamente
+  1 via `model_validator`). POST resolve o escopo em tuplas
+  `(company_id, period_start, period_end)` distintas, valida companies +
+  credenciais (reusa helpers de `executions/routes`), pre-pinga Redis,
+  cria `reprocess_jobs` (status `queued`, scope jsonb canonizado com
+  `kind`) + N `executions` com `trigger='reprocess'`, atualiza
+  `result_execution_ids` e enfileira jobs RQ (`worker_core.jobs.run_execution`,
+  mesmo pipeline de API-07). Enqueue falha -> execution filha marcada
+  `failed`; todas falharem -> `reprocess_job` vira `failed` com
+  `error_summary='enqueue_failed_all'`. Audit `reprocess.create` sem
+  vazar company/period. GET agrega contadores via JOIN com `executions`
+  por `result_execution_ids` e devolve `effective_status` (`running`/
+  `succeeded`/`partial`/`failed`/`cancelled`). Granularidade honesta:
+  o worker sempre refaz a janela completa — idempotencia do unique
+  parcial em `execution_items` (0005) garante DoD "reprocessa 1 de 3
+  items falhos, v2 atualiza status". Router registrado em `main.py`.
+  Matriz RBAC ganha secao Reprocess; placeholder invalido
+  `POST /executions/{id}/reprocess` da secao Executions substituido
+  por nota. Sem migration nova — `reprocess_jobs` vem de DATA-04
+  (0007). 20 unit tests + 19 integration gated (TEST_DATABASE_URL +
+  fakeredis). Move API-10 de "Bloqueadas" para "Em Andamento". Closes #34.
+- PR: (a abrir) — DS-08: estados e utilitarios de UX em
+  `apps/web-app/components/ui/` — `EmptyState`, `LoadingSkeleton`
+  (variantes `lines` e `rows`), `ErrorBoundary` (class component com
+  `fallback` node/funcao e botao "Tentar novamente" via `onRetry`),
+  `ConfirmDialog` (reutiliza `Dialog` do DS-03; `confirmPhrase` +
+  `tone: destructive` — botao Confirmar bloqueado ate `typed.trim()
+  === confirmPhrase` -> **prova do DoD**) e `Timeline` (lista
+  vertical com bullet colorido por tone e `<time dateTime>`). 5
+  secoes novas em `app/styleguide/page.tsx` com demos por componente.
+  25 testes vitest novos. `pnpm --filter web-app typecheck` limpo,
+  `next lint` zero warnings, `vitest run`: 264 passed. Move DS-08 de
+  "Bloqueadas" (DS-02 em origin/main) para "Em Andamento". Closes #47.
 - PR: (a abrir) — API-13: worker consumer RQ orquestrando execucao
   ponta-a-ponta. Novo pacote `apps/worker/` (entry point `python -m
   worker.main` lendo `API_REDIS_URL`+`API_QUEUE_NAME`; `HealthzServer`

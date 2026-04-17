@@ -1,4 +1,4 @@
-"""Jobs RQ executados pelo worker (API-15).
+"""Jobs RQ executados pelo worker (API-13 e API-15).
 
 Modulo dedicado a funcoes que a API enfileira no Redis via string —
 o worker resolve o import no momento do pick. Vive em `worker_core`
@@ -10,6 +10,15 @@ Entregas atuais:
   periodo, zipa em `tmpfs`, faz upload do ZIP no bucket e atualiza
   `exports` + `files` + `notifications`. Limite de 2 GB (ticket
   API-15) para proteger tmpfs/RAM.
+- `run_execution(execution_id)`: orquestra a coleta ponta-a-ponta,
+  com decrypt de credencial, coleta NFSe, upload XML e escrita de
+  `execution_items`/`occurrences`.
+
+Fluxo resumido do `run_execution`:
+1. carrega contexto de `executions`/`companies`/`company_credentials`;
+2. decifra PFX + senha com envelope AES-256-GCM;
+3. coleta NFSe e persiste `execution_items` com `ON CONFLICT DO NOTHING`;
+4. atualiza status final (`succeeded`/`partial`/`failed`) e ocorrencias.
 
 O pacote nao depende de `apps/api` — fala com Postgres via `psycopg`
 e com S3 via `worker_core.storage.S3StorageClient`. URL do banco vem
@@ -35,7 +44,6 @@ from typing import Callable, Optional
 from uuid import UUID
 
 from sqlalchemy import text
-from sqlalchemy.orm import Session
 
 from worker_core.collector import FetchSummary, NfseItem, fetch_nfse
 from worker_core.crypto import CryptoError, decrypt
