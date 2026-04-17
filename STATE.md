@@ -861,6 +861,47 @@
   + `theme-toggle` — em origin/main) para "Em Andamento"
   (PR a abrir — Closes #47).
 
+- **DOCS-05** — Runbooks de infra (disco cheio, fila travada, SSL
+  expirando, backup falhou): 4 arquivos novos em `docs/runbooks/`
+  seguindo o mesmo template dos runbooks de dominio
+  (`credencial-invalida.md`, `portal-indisponivel.md`): escopo,
+  sintomas, **como detectar** (fontes de alerta — Uptime Kuma / Loki /
+  Grafana — e checagem manual com comandos verificaveis), **diagnostico**
+  (quem cresceu / por que travou / por que a renovacao nao aconteceu /
+  exit code -> causa), **mitigacao** em ordem de menor blast radius
+  primeiro, e **prevencao** com checklist durável. `disco-cheio.md` cobre
+  `df`/`docker system prune`/rotacao de logs via `/etc/docker/daemon.json`/
+  VACUUM/WAL travado em replication slot inativo/retencao Loki temporaria
+  e ultimo recurso de upgrade de disco. `fila-travada.md` cobre RQ stuck
+  com queries diretas em `rq:queue:nfse-executions`/`rq:started_registry`/
+  `rq:failed:nfse-executions`, restart graceful (stop_grace_period 60s),
+  scale-out temporario para drenar, limpeza de failed registry,
+  re-enfileiramento via snippet Python, job fantasma via
+  `StartedJobRegistry.cleanup()`, e encerramento manual de execution
+  abandonada com occurrence `UNKNOWN`. `ssl-expirando.md` cobre
+  `certbot renew --dry-run`, Cloudflare com proxy ligado (DNS-only
+  necessario por INFRA-03), webroot ACME, reemissao cobrindo os 5
+  hostnames SAN (apex/www/app/api/ops), e mitigacao de HSTS ativo com
+  cert vencido. `backup-falhou.md` mapeia a matriz exit code -> causa
+  do `infra/scripts/backup-postgres.sh` (2 config, 3 pg_dump, 4 age,
+  5 upload S3, 6 cleanup), com testes idempotentes de cada camada,
+  backup emergencial sem cifra como escape hatch de 24h, e caminho de
+  drill de restore quando o upload vai bem mas o `.dump.age` nao abre.
+  **DoD "Linkados no alerta correspondente em Grafana":** (a)
+  `infra/compose/grafana/dashboards/api-worker-logs.json` ganha 4 links
+  de dashboard (campo root `"links"`) apontando para os runbooks em
+  `main` no GitHub — visiveis no topo do dashboard; (b) `infra/
+  observability.md` ganha nova secao 9 "Runbooks de infra (DOCS-05)"
+  com tabela cenario->runbook->alerta, instrucoes para preencher o campo
+  Description de cada monitor Uptime Kuma com a URL do runbook (o
+  Uptime Kuma ja inclui Description no payload do Telegram — operador
+  chega direto no runbook), ativacao de "Certificate Expiry Notification"
+  nos 4 monitores HTTPs, e template de `annotations.runbook_url` para
+  alert rules Grafana futuras. Sem codigo executavel — so Markdown +
+  JSON do dashboard; JSON validado por `python3 -c json.load`. Move
+  DOCS-05 de "Proximas destravadas" para "Em Andamento"
+  (PR a abrir — Closes #75).
+
 ## Concluidos
 
 - **CORE-05** — Cliente S3 do worker-core em
@@ -1427,6 +1468,35 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-17
+- PR: (a abrir) — DOCS-05: runbooks de infra (disco cheio, fila
+  travada, SSL expirando, backup falhou). 4 novos arquivos em
+  `docs/runbooks/` seguindo o template dos runbooks de dominio
+  (`credencial-invalida.md`, `portal-indisponivel.md`) com secoes
+  escopo / sintomas / como detectar / diagnostico / mitigacao /
+  prevencao; cada runbook cruza referencia com `infra/*.md` e com os
+  demais runbooks. `disco-cheio.md` cobre Docker prune, rotacao de
+  logs via `daemon.json`, VACUUM/WAL travado, Loki retencao
+  temporaria e ultimo recurso (upgrade de disco). `fila-travada.md`
+  cobre healthz do worker, inspecao de `rq:queue:*`/`rq:started_registry`/
+  `rq:failed:*` via redis-cli, restart graceful (stop_grace_period
+  60s do API-13), scale-out temporario e limpeza de failed registry.
+  `ssl-expirando.md` cobre `certbot renew --dry-run`, Cloudflare
+  DNS-only (INFRA-03), reemissao cobrindo os 5 hostnames SAN e HSTS
+  desligado por padrao. `backup-falhou.md` mapeia os exit codes do
+  `infra/scripts/backup-postgres.sh` (INFRA-08), com backup
+  emergencial sem cifra como escape hatch de 24h e drill de restore
+  para sanidade do dump. **DoD "Linkados no alerta correspondente em
+  Grafana":** (a) `infra/compose/grafana/dashboards/api-worker-logs.json`
+  ganha 4 links de dashboard (campo `"links"` root) apontando para
+  `main` no GitHub — visiveis no topo do dashboard; (b)
+  `infra/observability.md` ganha secao 9 "Runbooks de infra (DOCS-05)"
+  com tabela cenario->runbook->alerta, instrucao de preencher o
+  Description de cada monitor Uptime Kuma com a URL do runbook
+  (Telegram inclui Description no payload -> operador vai direto ao
+  runbook) e template de `annotations.runbook_url` para alert rules
+  Grafana futuras. Sem codigo executavel; JSON do dashboard validado
+  com `python3 -c json.load`. Move DOCS-05 para "Em Andamento".
+  Closes #75.
 - PR: (a abrir) — API-14: scheduler de execucoes agendadas em
   `apps/worker/worker/scheduler.py` + `cron_utils.py`. Processo
   separado (`python -m worker.scheduler` / `nfse-scheduler`) com

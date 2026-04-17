@@ -222,3 +222,56 @@ Quando os tres estiverem verdes, marcar o DoD do ticket.
 - **Exportar dashboard** (antes de editar muito na UI): `Share > Export
   > Save to file` e salvar sobre
   `infra/compose/grafana/dashboards/api-worker-logs.json` no repo.
+
+## 9. Runbooks de infra (DOCS-05)
+
+Os 4 runbooks operacionais de infra ficam em `docs/runbooks/`:
+
+| Cenario | Runbook | Alerta correspondente |
+|---------|---------|-----------------------|
+| Disco cheio na VPS | `docs/runbooks/disco-cheio.md` | Uptime Kuma caindo em cascata + log `no space left` via Loki |
+| Fila RQ travada / worker off | `docs/runbooks/fila-travada.md` | Monitor `worker` em `/healthz` (Uptime Kuma) |
+| Cert TLS expirando | `docs/runbooks/ssl-expirando.md` | "Certificate Expiry Notification" dos monitores Uptime Kuma |
+| Backup do Postgres falhou | `docs/runbooks/backup-falhou.md` | `systemctl --failed` + linha JSON `status!="ok"` em `backup-postgres.log` |
+
+### 9.1 Links no dashboard Grafana
+
+O dashboard `NFS-e — Logs API & Worker` ja lista os 4 runbooks no topo
+(menu de links do dashboard). Os links sao provisionados pelo arquivo
+`infra/compose/grafana/dashboards/api-worker-logs.json` (`"links"` no
+root do JSON) e apontam para a versao em `main` no GitHub. Ao editar
+pela UI, reexportar e salvar sobre o arquivo para nao perder o link.
+
+### 9.2 Runbook URL nos monitores Uptime Kuma
+
+Para cada monitor (`site` / `app` / `api` / `worker`), preencher o campo
+**Description** com a URL do runbook correspondente. O Uptime Kuma
+inclui a descricao no payload do Telegram — o operador que recebe o
+alerta chega direto no runbook.
+
+Exemplo (monitor `worker`):
+
+```
+Runbook: https://github.com/levyoliveiraopu/nfse-collector_v04/blob/main/docs/runbooks/fila-travada.md
+```
+
+Ativar tambem a opcao **Certificate Expiry Notification** em cada um
+dos monitores HTTPs — dispara Telegram a 14/7/3 dias do vencimento com
+link para `ssl-expirando.md` (via campo Description).
+
+### 9.3 Alert rules Grafana (futuro)
+
+Quando o projeto passar a definir alert rules em cima do Loki (taxa de
+erro, disco cheio via scrape de stdout, etc.), cada rule **deve** ter
+`runbook_url` em `annotations`:
+
+```yaml
+# Exemplo de alert rule Grafana (formato JSON/YAML provisionado):
+annotations:
+  summary: "Taxa de erros alta no worker"
+  description: "count_over_time({container_id=\"nfse-worker\"} |~ \"(?i)error\" [5m]) > 20"
+  runbook_url: "https://github.com/levyoliveiraopu/nfse-collector_v04/blob/main/docs/runbooks/fila-travada.md"
+```
+
+A UI do Grafana renderiza `runbook_url` como botao "Run book" na
+pagina do alerta.
