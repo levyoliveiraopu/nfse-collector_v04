@@ -1,52 +1,58 @@
-"""Testes estaticos da migration 0017_exports (API-15).
+"""Testes estaticos das migrations 0017 (API-08 e API-15).
 
-Nao conecta ao Postgres: valida estrutura do arquivo (tabela, colunas,
-checks, RLS, politica, GUC, grants, downgrade). Cobertura funcional
-via `alembic upgrade head` fica por conta do CI job `test-rls`.
-"""Testes estaticos da migration 0017_executions_listing_index (API-08).
-
-Nao se conectam ao Postgres: validam que a migration existe, pode ser
-importada e contem os 2 indices auxiliares para `executions` exigidos
-pelo DoD do ticket ("query valida com EXPLAIN (usa indice)").
+Nao conectam ao Postgres: validam que os arquivos existem, podem ser
+importados e contem as estruturas esperadas (indices e tabela `exports`).
+A cobertura funcional de `alembic upgrade head` fica por conta do CI.
 """
 
 from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from types import ModuleType
 
-MIGRATION_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "alembic"
-    / "versions"
-    / "0017_exports.py"
-    / "0017_executions_listing_index.py"
+VERSIONS_DIR = Path(__file__).resolve().parents[1] / "alembic" / "versions"
+MIGRATION_EXPORTS_PATH = VERSIONS_DIR / "0017_exports.py"
+MIGRATION_EXECUTIONS_INDEX_PATH = (
+    VERSIONS_DIR / "0017_executions_listing_index.py"
 )
 
 
-def _load_migration_source() -> str:
-    assert MIGRATION_PATH.exists(), f"Migration ausente: {MIGRATION_PATH}"
-    return MIGRATION_PATH.read_text(encoding="utf-8")
+def _load_migration_source(path: Path) -> str:
+    assert path.exists(), f"Migration ausente: {path}"
+    return path.read_text(encoding="utf-8")
 
 
-def test_migration_module_is_importable() -> None:
-    spec = importlib.util.spec_from_file_location(
-        "migration_0017_exports", MIGRATION_PATH
-        "migration_0017_executions_listing_index", MIGRATION_PATH
-    )
+def _import_module(path: Path, module_name: str) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(module_name, path)
     assert spec is not None
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(module)
+    return module
+
+
+def test_exports_migration_module_is_importable() -> None:
+    module = _import_module(MIGRATION_EXPORTS_PATH, "migration_0017_exports")
     assert module.revision == "0017_exports"
+    assert module.down_revision == "0016_merge_0015_heads"
+    assert callable(module.upgrade)
+    assert callable(module.downgrade)
+
+
+def test_executions_index_migration_module_is_importable() -> None:
+    module = _import_module(
+        MIGRATION_EXECUTIONS_INDEX_PATH,
+        "migration_0017_executions_listing_index",
+    )
     assert module.revision == "0017_executions_listing_index"
     assert module.down_revision == "0016_merge_0015_heads"
     assert callable(module.upgrade)
     assert callable(module.downgrade)
 
 
-def test_migration_mentions_core_fields() -> None:
-    src = _load_migration_source()
+def test_exports_migration_mentions_core_fields() -> None:
+    src = _load_migration_source(MIGRATION_EXPORTS_PATH)
     assert '"exports"' in src
     for col in (
         "tenant_id",
@@ -67,36 +73,30 @@ def test_migration_mentions_core_fields() -> None:
         "updated_at",
     ):
         assert f'"{col}"' in src, col
-    # CHECKs criticos.
+
     assert "ck_exports_kind" in src
     assert "ck_exports_status" in src
     assert "ck_exports_period_order" in src
     assert "ck_exports_counters_nonneg" in src
-    # Enum kind hoje so `zip_xml` (excel_consolidated adiado — ver schemas.py).
     assert "'zip_xml'" in src
-    # RLS + policy + GUC.
     assert "ENABLE ROW LEVEL SECURITY" in src
     assert "FORCE ROW LEVEL SECURITY" in src
     assert "exports_isolation" in src
     assert "app.current_tenant" in src
-    # Grants DML para app_user.
-    assert (
-        "GRANT SELECT, INSERT, UPDATE, DELETE ON exports TO app_user"
-        in src
-    )
+    assert "GRANT SELECT, INSERT, UPDATE, DELETE ON exports TO app_user" in src
+
+
 def test_migration_creates_two_indices_on_executions() -> None:
-    src = _load_migration_source()
-    # Indices exigidos.
+    src = _load_migration_source(MIGRATION_EXECUTIONS_INDEX_PATH)
     assert "ix_executions_tenant_started" in src
     assert "ix_executions_tenant_status_started" in src
-    # Cobertura: tenant + started_at DESC (NULLS LAST) + tiebreaker id.
     assert "started_at DESC NULLS LAST" in src
     assert '"executions"' in src or "'executions'" in src
     assert "create_index" in src
 
 
-def test_migration_has_matching_downgrade() -> None:
-    src = _load_migration_source()
+def test_exports_migration_has_matching_downgrade() -> None:
+    src = _load_migration_source(MIGRATION_EXPORTS_PATH)
     assert "DROP POLICY IF EXISTS exports_isolation" in src
     assert 'drop_table("exports")' in src
     assert 'drop_index("ix_exports_tenant_created"' in src
@@ -104,14 +104,14 @@ def test_migration_has_matching_downgrade() -> None:
     assert 'drop_index("ix_exports_inflight"' in src
 
 
-def test_indices_incluem_parcial_de_inflight() -> None:
-    src = _load_migration_source()
-    # Parcial para o worker/admin acharem exports em voo.
+def test_exports_indices_include_partial_inflight() -> None:
+    src = _load_migration_source(MIGRATION_EXPORTS_PATH)
     assert "ix_exports_inflight" in src
     assert "status IN ('queued','running')" in src
     assert "drop_index" in src
-    for idx in (
-        "ix_executions_tenant_status_started",
-        "ix_executions_tenant_started",
-    ):
-        assert idx in src, idx
+
+
+def test_executions_index_migration_has_matching_downgrade() -> None:
+    src = _load_migration_source(MIGRATION_EXECUTIONS_INDEX_PATH)
+    assert '"ix_executions_tenant_status_started", table_name="executions"' in src
+    assert 'drop_index("ix_executions_tenant_started", table_name="executions")' in src

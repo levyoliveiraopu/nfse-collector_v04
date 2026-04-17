@@ -23,6 +23,7 @@ from .executions.routes import router as executions_router
 from .exports.routes import router as exports_router
 from .logging import configure_logging
 from .occurrences.routes import router as occurrences_router
+from .reprocess.routes import router as reprocess_router
 
 
 def _rate_limit_handler(request, exc: RateLimitExceeded):  # noqa: ARG001
@@ -77,6 +78,7 @@ def create_app() -> FastAPI:
     app.include_router(files_router)
     app.include_router(executions_router)
     app.include_router(exports_router)
+    app.include_router(reprocess_router)
 
     return app
 
