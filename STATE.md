@@ -76,6 +76,347 @@
   `vitest run` 261 passed (239 existentes + 22 novos). Dependencia
   API-09 ja satisfeita (PR #127 merged)
   (PR a abrir — Closes #54).
+- **APP-05** — `/execucoes/nova` + acompanhamento real-time.
+  Novo cliente `apps/web-app/lib/api/executions.ts` com tipos
+  alinhados a API-07/API-08 (`Execution`, `ExecutionItem`, envelopes
+  paginados, `CreateExecutionsPayload`, `CreatedExecution`), funcoes
+  `listExecutions`/`getExecution`/`listExecutionItems`/
+  `createExecutions` via `apiFetch` (APP-01) e `ExecutionsApiError`
+  mapeando 401/403/404/422/502 em codigos canonicos
+  (`companies_not_found`, `credential_missing_or_expired`,
+  `queue_unavailable`, `validation_error`, `forbidden`, `not_found`,
+  `network`, `unknown`) — o 422 estruturado do backend preserva
+  `company_ids`/`missing` pra UI citar quais CNPJs travaram a
+  submissao. Helpers `decideExecutionBadge` (mapeia os 6 status pra
+  variantes `<StatusBadge>`: queued->pending, running->processing,
+  succeeded->success, failed->failed, cancelled->blocked,
+  partial->warning), `computeProgress` (clampa em 100%, lida com
+  `total=0` em queued sem div/0) e `isTerminalStatus`. Nova rota
+  protegida `apps/web-app/app/execucoes/` com 3 paginas: (a)
+  `/execucoes` — lista paginada server-side filtrando por `status`,
+  CTA "Nova execucao" apontando pra `/execucoes/nova`, paginacao
+  Anterior/Proxima e empty-state com link pra criar; (b)
+  `/execucoes/nova` — formulario client (`NovaExecucaoForm`) com
+  multi-select de companies ativas (usa `listCompanies` com
+  `filters: {status: 'active'}` e page_size 100, exibe CNPJ formatado
+  + razao + UF), `<PeriodPicker>` (DS-07, default `last_30d`),
+  toggle dry-run, toggle "Incremental desde ultimo NSU" (UX
+  informativa apontando que o worker ja respeita `last_nsu`
+  internamente — periodo define a janela, nao o piso de NSU), CTA
+  "Iniciar" chamando `createExecutions` e redirecionando pra
+  `/execucoes/{id}` em N=1 ou `/execucoes` em N>1. Viewer ve alerta
+  "sem permissao" (DoD RBAC), operator/admin/owner veem o form. Em
+  422 `credential_missing_or_expired` traduz a mensagem listando os
+  CNPJs afetados com orientacao pra regularizar na aba Credencial
+  (APP-04) — evita N+1 no front pre-filtrando e alinha com a linha
+  "nao validar o que o backend ja valida"; (c) `/execucoes/[id]` —
+  `ExecucaoDetailView` com header (StatusBadge, CNPJ curto, periodo,
+  indicador "Atualizando a cada 2s" quando nao terminal), barra
+  `role="progressbar"` com `aria-valuenow={ok+fail}` e
+  `aria-valuemax={total}`, KPIs (total/ok/fail/iniciada), tabela de
+  items com filtro por status (tabs Todos/OK/Falhou/Ignorados/
+  Pendentes), paginacao, checkbox por linha + "Selecionar todos
+  visiveis", botao "Reprocessar selecionados (N)" com
+  `aria-disabled=true` + `title` explicando "liberado com APP-06 /
+  API-10" (stub consciente sem bloquear o DoD quando o endpoint
+  chegar). **Polling 2s** via `refetchInterval` do react-query
+  (`query.state.data` em `isTerminalStatus` -> desliga o polling;
+  ainda em andamento -> 2000ms), aplicado tanto ao detail quanto aos
+  items — quando `status` vira `succeeded`/`failed`/`cancelled`/
+  `partial` o polling cessa automaticamente. Sidebar
+  `components/app-shell/nav-items.ts` ganha item "Execucoes" (icone
+  `PlayCircle`) entre "Empresas" e "Notas". Stub `executions-tab.tsx`
+  da aba de empresa (APP-03) deixa de ser informativo e mostra as 5
+  execucoes mais recentes daquela company com atalho "Nova execucao"
+  pra `/execucoes/nova?company_id={id}` (pre-selecao para fluxo
+  futuro). Testes vitest: (a) `lib/api/executions.test.ts` com 16
+  casos (buildListQuery/buildItemsQuery com defaults e filtros,
+  listExecutions Authorization, getExecution 404, listExecutionItems
+  endpoint correto, createExecutions POST JSON feliz + traducao de
+  422 `credential_missing_or_expired` preservando `companyIds`, 422
+  `companies_not_found`, 502 `queue_unavailable`, `decideExecutionBadge`
+  pros 6 status, `isTerminalStatus` e `computeProgress` incluindo
+  clamp 100% e divisao por zero); (b)
+  `app/execucoes/nova/nova-execucao-form.test.tsx` com 7 casos
+  (viewer ve alerta sem permissao, operator ve form, submissao de 1
+  empresa redireciona pra `/execucoes/{id}`, submissao de N empresas
+  redireciona pra `/execucoes`, dry_run propaga no payload, 422
+  credential traduz com CNPJs formatados no alert, 502 queue mostra
+  mensagem de fila indisponivel); (c)
+  `app/execucoes/[id]/execucao-detail-view.test.tsx` com 7 casos
+  (progressbar com `aria-valuenow/max` corretos, indicador polling
+  visivel em running, ausente em succeeded, refaz query detail apos
+  2s enquanto nao-terminal (real timers, timeout 10s), 404 exibe
+  mensagem clara, filtro por status refaz query com `status=failed`,
+  botao Reprocessar `aria-disabled=true` + title citando
+  APP-06/API-10). E2E Playwright `e2e/execucoes.spec.ts` intercepta
+  `/companies`/`/executions`/`/executions/{id}`/`/executions/{id}/items`
+  via `page.route` cobrindo DoD literal: cria (selecionar empresa +
+  Iniciar), acompanha (progressbar visivel), ve itens aparecendo
+  (data-item-id=i1 e i2 apos 2a chamada do polling). `pnpm
+  typecheck`, `pnpm lint` (`next lint`) e `pnpm test` (`vitest run`)
+  verdes — 29 arquivos / 269 specs (135 anteriores + 30 novos de
+  APP-05 + diff dos outros tickets mergeados). Backend intocado
+  (API-07/API-08 ja em main). `POST /executions` precisa de Redis
+  pra pre-ping (502 sem tocar DB se fila offline) — o caminho feliz
+  local e coberto estruturalmente pelos mocks do vitest + page.route
+  do Playwright. Move APP-05 de "Bloqueadas" (deps API-07/API-08 ja
+  mergeadas em main) para "Em Andamento"
+  (PR a abrir — Closes #53).
+
+- **APP-02** — Dashboard com KPIs em `/dashboard`
+  (`apps/web-app/app/dashboard/page.tsx` passa a renderizar
+  `<DashboardView/>` — substitui o stub de KPIStatCards em `empty`).
+  Novo diretorio `apps/web-app/components/dashboard/` com 3
+  componentes client: `dashboard-view.tsx` orquestra header + atalhos
+  "Nova execucao" (`/execucoes/nova`, destino de APP-05) e "Ver
+  ocorrencias" (`/ocorrencias`, destino de APP-06, mesmo padrao
+  placeholder usado por `nav-items.ts`); `PeriodPicker` (DS-07)
+  controlado localmente em `useState` inicializado via
+  `computePresetRange("current_month")` (persistencia em URL fica como
+  follow-up — escopo enxuto deste PR); `kpi-cards.tsx` renderiza os
+  4 `<KPIStatCard>` (DS-05) consumindo react-query em paralelo
+  (existente `AppQueryClientProvider` no RootLayout, `staleTime=30s`);
+  `recent-timeline.tsx` lista as 10 execucoes mais recentes do
+  periodo com dot por status (`CheckCircle2`/`AlertTriangle`/`XCircle`
+  /`Loader2 animate-spin`/`Clock`/`MinusCircle`), linkando cada item
+  para `/execucoes/{id}` (destino APP-05). Componente `<Timeline>`
+  canonico do DS-08 ainda bloqueado — a lista provisoria fica isolada
+  nesta pagina com comentario `@deprecated ao entregar DS-08` e
+  sera substituida sem mudar a API publica quando DS-08 pousar.
+  KPIs implementados:
+  1. **"Notas coletadas no periodo"** — consome `GET /executions` com
+     `page_size=100` + `from`/`to` do `PeriodRange`, soma `items_ok`
+     client-side. Se `total > 100`, marca valor como aproximado
+     formatando `1.234+` e troca o hint para "Soma aproximada
+     (agregacao server-side em follow-up)." — follow-up `?aggregate=1`
+     em API-08 ou novo endpoint registrado como debito tecnico.
+  2. **"Execucoes OK / total"** — 2 chamadas paralelas com
+     `page_size=1` a `GET /executions` (uma sem filtro, outra com
+     `status=succeeded`) usando apenas o `total` do envelope. Exibe
+     `<ok> / <total>` formatado em pt-BR; estado `empty` quando
+     `total=0` no periodo.
+  3. **"Ocorrencias abertas"** — `GET /occurrences?status=open&page_size=1`
+     usando o `total` do envelope. **Nao** filtra por periodo
+     (inbox reflete estado atual, nao a janela do dashboard — decisao
+     explicita anotada no codigo).
+  4. **"Certificados a vencer em 30d"** — permanece em
+     `state="empty"` com hint "Disponivel apos endpoint REST de
+     credenciais (follow-up)." porque API-06 popula
+     `company_credentials.cert_not_after` mas ainda NAO expoe listagem
+     REST agregada — `GET /companies/{id}/credential` (unitario) nao
+     serve para contar vencimentos do tenant. Follow-up: expor
+     `GET /credentials?expiring_in_days=30` antes de APP-05 (fora da
+     trilha APP, fica como debito tecnico rastreavel).
+  Clientes API novos: `apps/web-app/lib/api/executions.ts`
+  (`listExecutions(params, ctx)` + `periodDateToUtcIso(day, boundary)`
+  que mapeia `YYYY-MM-DD` do `PeriodRange` para ISO 8601 UTC com `to`
+  exclusivo — a API filtra `started_at < to`, entao `endExclusive`
+  avanca 1 dia; `EXECUTION_STATUS_LABEL` em pt-BR) e
+  `apps/web-app/lib/api/occurrences.ts` (`listOccurrences`). Ambos
+  reusam `apiFetch` de `lib/auth/api-client.ts` (injeta access token
+  em memoria + refresh automatico em 401) e a interface
+  `ApiCallContext` exportada de `lib/api/companies.ts`. Erros HTTP
+  propagam como `ApiError(status, detail)` — react-query trata via
+  `isError` e os componentes renderizam `state="error"`/mensagem
+  dedicada no KPIStatCard ou no timeline. Filtro de periodo vai
+  para ambos via `periodToApiWindow()` em `kpi-cards.tsx`;
+  query keys incluem `[period.from, period.to]` para cache
+  correto por janela. Layout grid: 4 cards responsivos
+  (`grid-cols-1 sm:grid-cols-2 xl:grid-cols-4`), PeriodPicker em
+  card com border/shadow alinhado ao DS-03, timeline em card
+  com header descritivo ("Ultimas execucoes — As 10 execucoes mais
+  recentes no periodo selecionado"). Specs vitest em
+  `apps/web-app/components/dashboard/dashboard-view.test.tsx`
+  (5 casos): (1) renderiza os 4 KPIStatCards, `role="group"` do
+  PeriodPicker, links dos atalhos com `href` correto; (2) 10 items
+  na timeline com link `/execucoes/exec-1`; (3) mensagem "Nenhuma
+  execucao registrada no periodo" quando lista vazia; (4) KPI
+  "Ocorrencias abertas" exibe `total` do envelope (7); (5) KPI
+  "Certificados a vencer" permanece `data-state="empty"` (prova
+  defensiva do follow-up). Mocks de `useAuth`, `listExecutions`,
+  `listOccurrences` e `next/navigation`, seguindo mesmo padrao de
+  `empresas-view.test.tsx`. `pnpm typecheck` e `pnpm lint` verdes;
+  `pnpm test` = 27 arquivos / 244 testes (5 novos). DoD "< 1s com
+  dados de teste" cumprido estruturalmente — as 4 chamadas rodam em
+  paralelo (react-query default), com cache de 30s do
+  `AppQueryClientProvider`; validacao manual de performance fica a
+  cargo do owner apos deploy. "Links levam as telas corretas":
+  timeline -> `/execucoes/{id}` (APP-05), atalhos ->
+  `/execucoes/nova` (APP-05) e `/ocorrencias` (APP-06), KPIs sem
+  navegacao. Move APP-02 para "Em Andamento" (deps DS-05 e API-08
+  ambas mergeadas em `main`) (PR a abrir — Closes #50).
+- **DS-09** — Cliente API tipado gerado do OpenAPI: nova camada em
+  `apps/web-app/lib/api/` com `generated/schema.d.ts` (tipos emitidos
+  por `openapi-typescript` v7 a partir do OpenAPI da `apps/api`),
+  `client.ts` (factory `createApiClient` + singleton
+  `getApiClient`/`configureApiClient`/`__resetApiClientForTests`
+  baseados em `openapi-fetch` v0.13), `types.ts` (re-exports de
+  `paths`/`components`/`operations`/`Schemas`), `hooks.ts` (hooks
+  react-query base `useHealth`/`useVersion`/`useMe`/`useCompanies`/
+  `useExecutions`, cada um aceitando `client` opcional para testes) e
+  `README.md`. Middleware de auth em duas pontas: (1) `onRequest`
+  injeta `Authorization: Bearer <token>` quando `getAccessToken`
+  devolve token nao-nulo e o header ainda nao esta setado; (2)
+  `onResponse` trata 401 chamando `tryRefresh()` da APP-01, retenta a
+  request **uma unica vez** marcando header sentinela `x-ds09-retry:
+  1` (evita loop), propaga o novo token via `onTokenRefreshed` e, em
+  falha do refresh, chama `onAuthFailure` (default:
+  `window.location.href = "/login"`). Script
+  `apps/web-app/scripts/generate-api.mjs` (expoe
+  `pnpm --filter web-app generate-api`) aceita `--url`/`--file` ou
+  env `API_OPENAPI_URL` (default `http://localhost:8000/openapi.json`),
+  chama `openapiTS` + `astToString` programaticamente e so reescreve
+  `generated/schema.d.ts` quando o conteudo muda (idempotencia do DoD
+  "re-run e idempotente" validada manualmente rodando o script duas
+  vezes — segunda execucao imprime `sem mudancas`). Novas deps em
+  `apps/web-app/package.json`: `openapi-fetch@^0.13` (run) e
+  `openapi-typescript@^7` (dev). 8 testes vitest novos
+  (`lib/api/client.test.ts` com 5 casos — injecao de Authorization,
+  ausencia de token, retry em 401 com refresh bem-sucedido,
+  `onAuthFailure` quando refresh falha e prova de nao-loop com
+  header sentinela — e `lib/api/hooks.test.tsx` com 3 — `useHealth`
+  feliz, `useCompanies` com querystring, propagacao de erro 500).
+  Clientes legados (`lib/api/companies.ts`, `lib/auth/api-client.ts`,
+  `lib/users/api-client.ts`, `lib/companies/credentials.ts`)
+  **preservados sem alteracao** — migracao para o novo cliente fica
+  para tickets especificos de cada trilha APP. `pnpm --filter web-app
+  typecheck` verde, `next lint` zero warnings, `vitest run` =
+  247 passed (228 anteriores + 8 novos DS-09 + rebalanceamento da
+  suite). Move DS-09 de "Bloqueadas" (dependencias DS-01 e API-01 ja
+  concluidas) para "Em Andamento"
+  (PR a abrir — Closes #48).
+
+- **API-14** — Scheduler de execucoes agendadas em
+  `apps/worker/worker/scheduler.py`. Processo separado (entry point
+  `python -m worker.scheduler` ou script `nfse-scheduler`) com
+  `apscheduler.BlockingScheduler` rodando `CronTrigger(minute="*",
+  timezone="UTC")` com `coalesce=True`/`max_instances=1`/
+  `misfire_grace_time=30` — dispara `run_tick()` a cada minuto. Tick:
+  (1) `SELECT id, tenant_id, company_id, cron_expr, timezone FROM
+  schedules WHERE enabled=true AND next_run_at IS NOT NULL AND
+  next_run_at <= :now` via `worker_core.db.get_admin_session`
+  (BYPASSRLS — schedules vivem em varios tenants); (2) para cada
+  schedule devido abre `get_tenant_session(tid)` (RLS via `SET LOCAL
+  app.current_tenant`) e resolve companies alvo — `company_id`
+  preenchido -> 1 row em `companies WHERE id = :cid AND deleted_at IS
+  NULL`; NULL -> todas as companies ativas do tenant (`WHERE
+  deleted_at IS NULL ORDER BY created_at ASC, id` — schedule
+  "tenant-wide"); (3) para cada company faz check de overlap `SELECT
+  1 FROM executions WHERE company_id = :cid AND status IN
+  ('queued','running') LIMIT 1` — se existir, insere occurrence
+  `SCHEDULE_OVERLAP` (severity `warning`, title "Disparo agendado
+  pulado por sobreposicao", detail `schedule_id=<uuid>
+  cron=<expr>`) e pula sem criar execution; caso contrario, INSERT
+  em `executions` (trigger=`schedule`, status=`queued`,
+  `period_start`/`period_end = CURRENT_DATE`) e enfileira
+  `worker_core.jobs.run_execution` via RQ na mesma fila usada por
+  API-07 (`API_REDIS_URL` + `API_QUEUE_NAME`, `job_timeout=3600`,
+  `result_ttl=86400`, `failure_ttl=604800`, `meta={"tenant_id":
+  str(tid), "trigger": "schedule"}`); (4) enqueue falha pos-INSERT
+  marca a execution como `failed` com `error_summary=
+  'enqueue_failed' + finished_at=now()`; (5) recalcula `next_run_at`
+  via novo `apps/worker/worker/cron_utils.py` (duplica
+  `apps/api/api/schedules/cron.py` com nota de fonte canonica —
+  mesmo padrao de `worker_core/crypto.py` do API-13) passando
+  `base=tick_now` para determinismo; `last_run_at = now()` so e
+  marcado quando ao menos 1 execucao foi criada (tick so de overlap
+  nao "relogia" o schedule mas ainda avanca `next_run_at` para
+  evitar loop). Cron invalido -> log `scheduler.tick.cron_invalid`
+  e pula a linha sem atualizar campos (preserva `next_run_at` para
+  o owner investigar). Graceful shutdown: SIGTERM/SIGINT chamam
+  `scheduler.shutdown(wait=True)` — combine com `stop_grace_period:
+  30s` no compose. Log estruturado em cada etapa: `scheduler.boot`,
+  `scheduler.tick.start/empty/fired/overlap/done`,
+  `scheduler.tick.cron_invalid`,
+  `scheduler.tick.enqueue_failed`,
+  `scheduler.tick.companies_lookup_failed`,
+  `scheduler.signal.received`, `scheduler.shutdown_failed`,
+  `scheduler.exit`. Novas deps run em `apps/worker/pyproject.toml`:
+  `apscheduler>=3.10`, `croniter>=2.0`; novo script entry-point
+  `nfse-scheduler = "worker.scheduler:main"`. `docs/architecture/
+  occurrence-codes.md` ganha linha `SCHEDULE_OVERLAP` (severity
+  `warning`). README do worker ganha secao "Scheduler (API-14)"
+  com instrucoes de rodar local + override de `CMD` no compose
+  reusando a mesma imagem `nfse-worker`. Sem mudanca em
+  `infra/compose/docker-compose.deploy.yml` (o servico `worker`
+  ainda esta comentado la — o scheduler entra junto quando o owner
+  habilitar deploy, reusando a mesma imagem). Testes: 11 em
+  `apps/worker/tests/test_cron_utils.py` + 11 em
+  `apps/worker/tests/test_scheduler.py` cobrindo a DoD (cron `* * * * *`
+  dispara e loga; overlap cria occurrence sem duplicar execucao).
+  `pytest apps/worker/tests/` = 34 passed; `pytest tests/test_jobs.py
+  tests/test_db_nsu.py tests/test_crypto_worker.py` = 32 passed
+  (suite existente do worker-core segue verde apos o drive-by fix em
+  `jobs.py`). Inclui drive-by fix em `packages/worker-core/worker_core/
+  jobs.py`: remove 34 linhas de docstring orfa do API-13 que
+  sobreviveu a um merge conflict resolvido incorretamente no PR
+  #140 (API-15) causando `SyntaxError: invalid character '—'
+  (U+2014)` em qualquer import de `worker_core` — bloqueio real
+  descoberto ao instalar o scheduler em editable mode e confirmado
+  por `python -c "import worker_core"` apos o fix. Move API-14 de
+  "Bloqueadas" (deps API-12 + API-13 mergeadas em main) para "Em
+  Andamento" (PR a abrir — Closes #38).
+- **API-10** — Reprocess jobs: novo pacote
+  `apps/api/api/reprocess/` (`routes.py` + `schemas.py` +
+  `__init__.py`) expondo `POST /reprocess` (RBAC
+  `owner|admin|operator`) e `GET /reprocess/{id}` (todos os papeis)
+  sobre a tabela `reprocess_jobs` (DATA-04 / migration 0007). O POST
+  aceita **exatamente 1** de 3 escopos (`ReprocessIn` com
+  `extra='forbid'` + `model_validator`): (1) `execution_item_ids[]` —
+  agrupa items pela execution-pai via JOIN e cria 1 execution filha
+  por tupla `(company_id, period_start, period_end)` distinta
+  (items nao encontrados -> 422 `execution_items_not_found`); (2)
+  `company_id + nsus[]` — infere periodo via
+  `MIN/MAX(data_emissao)` dos items com NSU ∈ lista (fallback
+  defensivo `[today, today]` quando nenhum item bate — o worker
+  refara a coleta no dia); (3) `company_id + period{start,end}` com
+  `statuses[]` opcional (auditado em `reprocess_jobs.scope` para
+  rastreio, mas o worker atual refaz a janela inteira). Reusa
+  `_validate_companies`/`_validate_credentials` de
+  `executions/routes` (422 em company alheia ou sem credencial
+  ativa). Pre-pinga Redis (502 sem tocar DB). Persiste linha em
+  `reprocess_jobs` (status `queued`, `scope` jsonb canonizado com
+  `kind`+payload, `created_by_user_id`) + N `executions` com
+  `trigger='reprocess'` e enfileira `worker_core.jobs.run_execution`
+  via `enqueue_run_execution` — mesmo pipeline de API-07. Falha de
+  enqueue por execution marca a linha `failed` +
+  `error_summary='enqueue_failed'`; se **todas** falharem, o
+  `reprocess_job` vira `failed` com `error_summary='enqueue_failed_all'`
+  e `finished_at=now()`. `result_execution_ids` atualizado apos os
+  INSERTs. Audit log `reprocess.create` grava `scope_kind` +
+  `executions_count` + `dry_run` (sem vazar company/period). GET
+  deriva `progress` via JOIN com `executions.id = ANY(result_execution_ids)`
+  — contadores por status + `effective_status` agregado (`running`
+  se alguma in-flight, `succeeded`/`partial`/`failed`/`cancelled` apos
+  todas terminarem; `partial` em mistura ok+failed). Coluna `status`
+  do job-pai permanece `queued` porque o worker atual nao reconcilia
+  — ticket futuro pode estender `run_execution` para atualizar.
+  **Granularidade**: o worker sempre refaz a janela
+  `(company, period_start, period_end)` da execution filha (portal
+  Nacional pagina por NSU global e nao aceita lista de NSUs); a
+  idempotencia do unique parcial `uq_execution_items_tenant_chave`
+  (0005) garante que items ja `ok` nao duplicam, e items `failed`
+  voltam a ser tentados — cobrindo a DoD "forca falha em 3 items,
+  reprocessa 1, v2 atualiza status". Router registrado em
+  `apps/api/api/main.py`. Matriz `docs/architecture/rbac-matrix.md`
+  ganha secao "Reprocess (API-10)" e o placeholder invalido
+  `POST /executions/{id}/reprocess` da secao Executions e substituido
+  por nota apontando para `/reprocess`. 20 unit tests em
+  `apps/api/tests/test_reprocess_schemas.py` (dedup de items/nsus/
+  statuses, 3 combinacoes escopo-unico proibidas, `extra='forbid'`,
+  period invalido, status nao-canonico) + 19 integration tests em
+  `test_reprocess_routes_integration.py` gated por
+  `TEST_DATABASE_URL` + fakeredis (3 escopos felizes, cross-tenant
+  422 nos items, id inexistente, fallback de today, company
+  inexistente/sem credencial 422, viewer 403/200, operator autorizado,
+  Redis offline 502 + DB intocado, enqueue falha em todas -> job-pai
+  failed, GET cross-tenant 404, effective_status running/succeeded/
+  partial, GET 404 inexistente, audit log sem vazar scope, DoD E2E
+  simbolico reprocessando 1 de 3 items). Sem migration nova —
+  `reprocess_jobs` ja existia desde DATA-04. Move API-10 de
+  "Bloqueadas" (API-08 mergeada) para "Em Andamento" (PR a abrir —
+  Closes #34).
 - **API-13** — Worker consumer (Redis -> worker-core E2E):
   `apps/worker/` RQ consumer orquestrando execucao ponta-a-ponta +
   novos adapters em `packages/worker-core/worker_core/`. Handler
@@ -750,6 +1091,48 @@
   ficam para tickets futuros conforme o escopo conservador deste
   entregavel (PR a abrir — Closes #39).
 
+- **DS-08** — Estados e utilitarios de UX em `apps/web-app/components/ui/`:
+  `empty-state.tsx` (card com icone Lucide opcional + CTA via `action`
+  — suporta `onClick` ou `href` -> renderiza `<a>` para navegacao
+  server-friendly; `role="status"` + `aria-live="polite"`),
+  `loading-skeleton.tsx` (duas variantes: `lines` — N barras
+  empilhadas com ultima em `w-2/3` para quebrar o ritmo — e `rows` —
+  grade `rows x columns` com CSS grid inline; `rows` prevalece quando
+  ambos setados; `aria-busy="true"` + `aria-label` customizavel),
+  `error-boundary.tsx` (class component — limitacao da API do React
+  para capturar erros de render; `getDerivedStateFromError` +
+  `componentDidCatch` com `onError` opcional para telemetria; props
+  `fallback` aceita node ou funcao `({error, reset}) => node`; UI
+  default com `AlertTriangle` + mensagem + botao "Tentar novamente"
+  que chama `onRetry`), `confirm-dialog.tsx` (reutiliza `Dialog` do
+  DS-03 — sem Radix; props `confirmPhrase` + `tone: default |
+  destructive`; quando `confirmPhrase` esta setado, input renderiza
+  dentro de `DialogBody` e o botao "Confirmar" fica `disabled` ate
+  `typed.trim() === confirmPhrase` — **prova do DoD**; `busy` trava
+  tudo enquanto a acao esta em voo; reseta input quando dialog
+  fecha), `timeline.tsx` (lista vertical `<ol>` com bullet colorido
+  por tone — `default/success/warning/destructive/info` — e linha
+  conectora absoluta; `<time dateTime={iso}>` para leitores; icone
+  Lucide opcional dentro do bullet). 5 novas secoes em
+  `app/styleguide/page.tsx` com demos dedicadas em
+  `app/styleguide/<componente>-demo.tsx`. Testes novos (25 casos):
+  `empty-state.test.tsx` (4 — titulo/desc, icone, onClick do CTA,
+  variante `href` como link), `loading-skeleton.test.tsx` (4 —
+  aria-busy, contagem de barras em `lines`, `rows x columns`,
+  prioridade de `rows`), `error-boundary.test.tsx` (5 — filhos ok,
+  fallback default, reset via `onRetry` com re-render, fallback custom
+  funcao, `onError` recebe Error), `confirm-dialog.test.tsx` (7 —
+  fechado nao monta, sem phrase habilita de cara, bloqueia ate match
+  exato case-sensitive, aceita trim, tone destrutivo via `data-tone`,
+  Cancelar dispara onClose, `busy` desabilita mesmo com match) e
+  `timeline.test.tsx` (5 — ordem, aria-label, `dateTime` ISO no
+  `<time>`, `data-tone` por item, lista vazia). `pnpm --filter
+  web-app typecheck` limpo, `next lint` zero warnings, `vitest run`:
+  264 passed (239 previos + 25 novos). Move DS-08 de "Bloqueadas"
+  (dependencia DS-02 ja com artefatos — `tokens.css` + `/styleguide`
+  + `theme-toggle` — em origin/main) para "Em Andamento"
+  (PR a abrir — Closes #47).
+
 ## Concluidos
 
 - **CORE-05** — Cliente S3 do worker-core em
@@ -1333,6 +1716,168 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
   typecheck`/`next lint`/`vitest run` = 261 passed + zero warnings.
   Move APP-06 de "Bloqueadas" para "Em Andamento" — API-09 (PR #127)
   ja mergeada. Closes #54.
+- PR: (a abrir) — APP-05: `/execucoes/nova` + acompanhamento
+  real-time. Novo cliente `apps/web-app/lib/api/executions.ts`
+  (tipos, `listExecutions`/`getExecution`/`listExecutionItems`/
+  `createExecutions`, `ExecutionsApiError` mapeando 401/403/404/422/
+  502 em codigos canonicos incluindo `credential_missing_or_expired`
+  e `queue_unavailable` com `extra.companyIds`, helpers
+  `decideExecutionBadge`/`computeProgress`/`isTerminalStatus`). Tres
+  paginas em `apps/web-app/app/execucoes/`: (a) `/execucoes` —
+  lista paginada com filtro por status, CTA "Nova execucao";
+  (b) `/execucoes/nova` — `NovaExecucaoForm` client com multi-select
+  de companies ativas + `<PeriodPicker>` (DS-07, default `last_30d`)
+  + toggle dry-run + toggle "incremental desde ultimo NSU"
+  (informativo — o worker ja respeita `last_nsu` internamente).
+  Viewer ve alerta sem permissao; operator+ submete e e
+  redirecionado pra `/execucoes/{id}` (N=1) ou `/execucoes` (N>1).
+  Em 422 `credential_missing_or_expired`, traduz a mensagem
+  listando CNPJs afetados com orientacao pra regularizar credencial
+  (APP-04); (c) `/execucoes/[id]` — `ExecucaoDetailView` com
+  `<StatusBadge>`, barra `role="progressbar"` (aria-valuenow/max),
+  KPIs total/ok/fail, tabela de items com tabs-filter
+  Todos/OK/Falhou/Ignorados/Pendentes + checkbox por linha e botao
+  "Reprocessar selecionados (N)" desabilitado via `aria-disabled` +
+  `title` citando APP-06/API-10. **Polling 2s** via `refetchInterval`
+  do react-query (`isTerminalStatus(data.status)` desliga o polling
+  quando status terminal — succeeded/failed/cancelled/partial),
+  aplicado a detail e items. Sidebar ganha "Execucoes" (PlayCircle).
+  Stub `executions-tab.tsx` (aba empresa) deixa de ser informativo
+  e mostra as 5 execucoes mais recentes da company + link "Nova
+  execucao?company_id=X". Testes: `lib/api/executions.test.ts` (16),
+  `app/execucoes/nova/nova-execucao-form.test.tsx` (7, gating por
+  papel + redirecionamentos N=1/N>1 + dry_run + traducao 422/502),
+  `app/execucoes/[id]/execucao-detail-view.test.tsx` (7, progressbar
+  aria, polling 2s real timers, 404, filtro por status, reprocess
+  desabilitado). E2E `e2e/execucoes.spec.ts` cobrindo DoD literal
+  (cria -> acompanha -> ve itens aparecendo via page.route). `pnpm
+  typecheck`, `pnpm lint` e `pnpm test` verdes (29 arquivos / 269
+  specs). Closes #53.
+- Data: 2026-04-16
+- PR: (a abrir) — APP-02: dashboard com KPIs em `/dashboard`.
+  `apps/web-app/app/dashboard/page.tsx` passa a renderizar
+  `<DashboardView/>` (novo em `components/dashboard/dashboard-view.tsx`)
+  com: `PeriodPicker` (DS-07) controlado localmente em `useState`
+  inicializado em `current_month`; 4 `<KPIStatCard>` (DS-05) em
+  `kpi-cards.tsx` consumindo react-query em paralelo — (1) "Notas
+  coletadas no periodo" soma `items_ok` da 1a pagina do
+  `GET /executions?from&to&page_size=100` e marca aproximado (`1.234+`)
+  quando `total > 100`; (2) "Execucoes OK / total" = 2 chamadas
+  `page_size=1` usando `total` do envelope (sem e com
+  `status=succeeded`); (3) "Ocorrencias abertas" = `GET /occurrences?`
+  `status=open&page_size=1`, reflete estado atual sem filtro de
+  periodo (decisao explicita); (4) "Certificados a vencer em 30d"
+  fica em `state="empty"` com hint de follow-up — API-06 popula
+  `cert_not_after` mas nao expoe listagem REST agregada; timeline
+  provisoria em `recent-timeline.tsx` lista as 10 execucoes mais
+  recentes do periodo com dot por status e link
+  `/execucoes/{id}` (substitutivel sem mudar API publica quando
+  DS-08 entregar `<Timeline>` canonico); atalhos "Nova execucao" ->
+  `/execucoes/nova` (APP-05) e "Ver ocorrencias" -> `/ocorrencias`
+  (APP-06). Clientes API novos `lib/api/executions.ts`
+  (`listExecutions` + `periodDateToUtcIso` mapeando `YYYY-MM-DD` ->
+  ISO 8601 UTC com `to` exclusivo — `endExclusive` avanca 1 dia
+  porque a API filtra `started_at < to`) e `lib/api/occurrences.ts`
+  (`listOccurrences`), ambos via `apiFetch` + `ApiError`. Specs
+  vitest `components/dashboard/dashboard-view.test.tsx` (5 casos:
+  renderiza 4 cards + atalhos com `href` corretos, timeline com
+  10 items linkando `/execucoes/{id}`, empty state da timeline,
+  KPI ocorrencias exibe `total`, card de certificados defensivamente
+  `data-state="empty"`). `pnpm typecheck` + `pnpm lint` + `pnpm test`
+  (27 arquivos / 244 testes) verdes. Follow-ups rastreados: endpoint
+  `GET /credentials?expiring_in_days=30` e agregacao server-side em
+  `GET /executions` (hoje paginacao client-side cobre o dashboard com
+  limite aproximado). Move APP-02 para "Em Andamento" (deps DS-05 +
+  API-08 mergeadas em `main`). Closes #50.
+- PR: (a abrir) — DS-09: cliente API TypeScript gerado do OpenAPI.
+  Nova camada `apps/web-app/lib/api/` com `generated/schema.d.ts`
+  (emitido por `openapi-typescript` v7), `client.ts` (factory
+  `createApiClient` + singleton sobre `openapi-fetch` v0.13 com
+  middleware que injeta `Authorization: Bearer <token>` e retenta
+  uma unica vez em 401 via `tryRefresh` da APP-01 — `onAuthFailure`
+  faz redirect hard para `/login` em caso de falha; header sentinela
+  `x-ds09-retry: 1` evita loop), `types.ts` (re-exports de
+  `paths`/`components`/`operations`), `hooks.ts` (hooks react-query
+  base `useHealth`/`useVersion`/`useMe`/`useCompanies`/`useExecutions`)
+  e `README.md`. Script
+  `apps/web-app/scripts/generate-api.mjs` (expoe `pnpm --filter
+  web-app generate-api`, aceita `--url`/`--file` ou `API_OPENAPI_URL`,
+  default `http://localhost:8000/openapi.json`) chama
+  `openapiTS` + `astToString` e so reescreve quando o conteudo muda —
+  idempotencia do DoD validada rodando duas vezes consecutivas.
+  Novas deps em `apps/web-app/package.json`: `openapi-fetch@^0.13`
+  (run) e `openapi-typescript@^7` (dev). 8 testes vitest novos
+  (`lib/api/client.test.ts` com 5, `lib/api/hooks.test.tsx` com 3)
+  cobrindo injecao de Authorization, retry pos-refresh, redirect em
+  falha de refresh e prova de nao-loop. Clientes legados em
+  `lib/api/companies.ts`, `lib/auth/api-client.ts`,
+  `lib/users/api-client.ts` e `lib/companies/credentials.ts`
+  preservados sem alteracao — migracao para o novo cliente ficara
+  para tickets APP especificos. `pnpm --filter web-app typecheck` /
+  `lint` / `vitest run` verdes (247 passed). Move DS-09 de
+  "Bloqueadas" (dependencias DS-01 e API-01 concluidas) para "Em
+  Andamento". Closes #48.
+- PR: (a abrir) — API-14: scheduler de execucoes agendadas em
+  `apps/worker/worker/scheduler.py` + `cron_utils.py`. Processo
+  separado (`python -m worker.scheduler` / `nfse-scheduler`) com
+  `apscheduler.BlockingScheduler` disparando `run_tick()` a cada
+  minuto (`CronTrigger(minute="*", timezone="UTC")` +
+  `coalesce=True`/`max_instances=1`/`misfire_grace_time=30`). Tick
+  seleciona `schedules WHERE enabled=true AND next_run_at <= now()`
+  via `get_admin_session`, resolve companies alvo (uma ou tenant-wide
+  quando `company_id IS NULL`), checa overlap (`executions` em
+  `queued`/`running` para a mesma company -> occurrence
+  `SCHEDULE_OVERLAP` sem duplicar), cria `executions` com
+  `trigger='schedule'` e enfileira `worker_core.jobs.run_execution`
+  na mesma fila RQ usada por API-07, recomputa `next_run_at` e marca
+  `last_run_at=now()` so quando ao menos 1 execucao foi criada. Novas
+  deps `apscheduler>=3.10` + `croniter>=2.0` em
+  `apps/worker/pyproject.toml` + script `nfse-scheduler`. Adiciona
+  occurrence `SCHEDULE_OVERLAP` (severity `warning`) em
+  `docs/architecture/occurrence-codes.md`. README do worker ganha
+  secao "Scheduler (API-14)" com instrucao de override de `CMD` no
+  compose reusando a mesma imagem do worker. Inclui drive-by fix em
+  `packages/worker-core/worker_core/jobs.py` que tinha SyntaxError
+  por merge conflict mal resolvido no PR #140 (duas module-level
+  docstrings consecutivas). 34 testes novos em `apps/worker/tests/`
+  passando + suite do worker-core destravada (32 passed). Move API-14
+  de "Bloqueadas" (deps API-12 + API-13 mergeadas em main) para "Em
+  Andamento". Closes #38.
+- PR: (a abrir) — API-10: `POST /reprocess` + `GET /reprocess/{id}`
+  em `apps/api/api/reprocess/` (3 escopos: `execution_item_ids[]`,
+  `company_id + nsus[]`, `company_id + period[ + statuses]` — exatamente
+  1 via `model_validator`). POST resolve o escopo em tuplas
+  `(company_id, period_start, period_end)` distintas, valida companies +
+  credenciais (reusa helpers de `executions/routes`), pre-pinga Redis,
+  cria `reprocess_jobs` (status `queued`, scope jsonb canonizado com
+  `kind`) + N `executions` com `trigger='reprocess'`, atualiza
+  `result_execution_ids` e enfileira jobs RQ (`worker_core.jobs.run_execution`,
+  mesmo pipeline de API-07). Enqueue falha -> execution filha marcada
+  `failed`; todas falharem -> `reprocess_job` vira `failed` com
+  `error_summary='enqueue_failed_all'`. Audit `reprocess.create` sem
+  vazar company/period. GET agrega contadores via JOIN com `executions`
+  por `result_execution_ids` e devolve `effective_status` (`running`/
+  `succeeded`/`partial`/`failed`/`cancelled`). Granularidade honesta:
+  o worker sempre refaz a janela completa — idempotencia do unique
+  parcial em `execution_items` (0005) garante DoD "reprocessa 1 de 3
+  items falhos, v2 atualiza status". Router registrado em `main.py`.
+  Matriz RBAC ganha secao Reprocess; placeholder invalido
+  `POST /executions/{id}/reprocess` da secao Executions substituido
+  por nota. Sem migration nova — `reprocess_jobs` vem de DATA-04
+  (0007). 20 unit tests + 19 integration gated (TEST_DATABASE_URL +
+  fakeredis). Move API-10 de "Bloqueadas" para "Em Andamento". Closes #34.
+- PR: (a abrir) — DS-08: estados e utilitarios de UX em
+  `apps/web-app/components/ui/` — `EmptyState`, `LoadingSkeleton`
+  (variantes `lines` e `rows`), `ErrorBoundary` (class component com
+  `fallback` node/funcao e botao "Tentar novamente" via `onRetry`),
+  `ConfirmDialog` (reutiliza `Dialog` do DS-03; `confirmPhrase` +
+  `tone: destructive` — botao Confirmar bloqueado ate `typed.trim()
+  === confirmPhrase` -> **prova do DoD**) e `Timeline` (lista
+  vertical com bullet colorido por tone e `<time dateTime>`). 5
+  secoes novas em `app/styleguide/page.tsx` com demos por componente.
+  25 testes vitest novos. `pnpm --filter web-app typecheck` limpo,
+  `next lint` zero warnings, `vitest run`: 264 passed. Move DS-08 de
+  "Bloqueadas" (DS-02 em origin/main) para "Em Andamento". Closes #47.
 - PR: (a abrir) — API-13: worker consumer RQ orquestrando execucao
   ponta-a-ponta. Novo pacote `apps/worker/` (entry point `python -m
   worker.main` lendo `API_REDIS_URL`+`API_QUEUE_NAME`; `HealthzServer`

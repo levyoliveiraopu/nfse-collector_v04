@@ -21,6 +21,16 @@ export type OccurrenceStatus =
   | "snoozed"
   | "resolved"
   | "ignored";
+ * Usado pelo dashboard (APP-02) para a contagem de ocorrencias
+ * abertas. Para esse KPI basta o `total` do envelope — por isso
+ * consultamos com `page_size=1`.
+ */
+import { ApiError, apiFetch } from "@/lib/auth/api-client";
+
+import type { ApiCallContext } from "./companies";
+
+export type OccurrenceStatus = "open" | "ack" | "snoozed" | "resolved" | "ignored";
+export type OccurrenceSeverity = "info" | "warning" | "error" | "critical";
 
 export interface Occurrence {
   id: string;
@@ -78,6 +88,21 @@ export function buildListQuery(params: FetchParams): string {
   if (typeof companyId === "string" && companyId.trim().length > 0) {
     sp.set("company_id", companyId.trim());
   }
+export interface ListOccurrencesParams {
+  page?: number;
+  page_size?: number;
+  status?: OccurrenceStatus;
+  severity?: OccurrenceSeverity;
+  company_id?: string;
+}
+
+function buildQuery(params: ListOccurrencesParams): string {
+  const sp = new URLSearchParams();
+  if (params.page !== undefined) sp.set("page", String(params.page));
+  if (params.page_size !== undefined) sp.set("page_size", String(params.page_size));
+  if (params.status) sp.set("status", params.status);
+  if (params.severity) sp.set("severity", params.severity);
+  if (params.company_id) sp.set("company_id", params.company_id);
   return sp.toString();
 }
 
@@ -101,6 +126,10 @@ export async function listOccurrences(
   ctx: ApiCallContext,
 ): Promise<FetchResult<Occurrence>> {
   const qs = buildListQuery(params);
+  params: ListOccurrencesParams,
+  ctx: ApiCallContext,
+): Promise<OccurrenceListResponse> {
+  const qs = buildQuery(params);
   const res = await apiFetch(`/occurrences${qs ? `?${qs}` : ""}`, {
     method: "GET",
     accessToken: ctx.accessToken,
@@ -191,4 +220,5 @@ export const OCCURRENCE_SEVERITY_LABEL: Record<OccurrenceSeverity, string> = {
 /** Status que nao aceitam mais transicao de acknowledge/resolve. */
 export function isTerminal(status: OccurrenceStatus): boolean {
   return status === "resolved" || status === "ignored";
+  return readJsonOrThrow<OccurrenceListResponse>(res);
 }

@@ -35,6 +35,11 @@ operacao. Adicione um codigo novo aqui antes de comecar a emiti-lo.
 | `PARSE_ERROR`        | `error`          | Resposta do portal nao casa com o XSD/contrato esperado.                  | `docs/runbooks/parse-error.md` |
 | `STORAGE_ERROR`      | `critical`       | Falha ao gravar XML/anexo no storage S3 apos tentativas.                  | `docs/runbooks/storage-error.md` |
 | `UNKNOWN`            | `error`          | Erro nao classificado. So usar como ultimo recurso; abrir issue.          | `docs/runbooks/erro-desconhecido.md` |
+| `REPROCESS_NEEDED`   | `info`           | Item reprocessavel detectado — operador pode disparar reprocess.          | (em redacao) |
+| `PARSE_ERROR`        | `error`          | Resposta do portal nao casa com o XSD/contrato esperado.                  | (em redacao) |
+| `STORAGE_ERROR`      | `critical`       | Falha ao gravar XML/anexo no storage S3 apos tentativas.                  | (em redacao) |
+| `UNKNOWN`            | `error`          | Erro nao classificado. So usar como ultimo recurso; abrir issue.          | (em redacao) |
+| `SCHEDULE_OVERLAP`   | `warning`        | Disparo agendado pulado porque a execucao anterior da mesma company ainda esta em curso. | (em redacao) |
 
 ## Transicoes de status
 
