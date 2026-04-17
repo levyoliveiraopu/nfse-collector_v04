@@ -749,6 +749,48 @@
   ficam para tickets futuros conforme o escopo conservador deste
   entregavel (PR a abrir — Closes #39).
 
+- **DS-08** — Estados e utilitarios de UX em `apps/web-app/components/ui/`:
+  `empty-state.tsx` (card com icone Lucide opcional + CTA via `action`
+  — suporta `onClick` ou `href` -> renderiza `<a>` para navegacao
+  server-friendly; `role="status"` + `aria-live="polite"`),
+  `loading-skeleton.tsx` (duas variantes: `lines` — N barras
+  empilhadas com ultima em `w-2/3` para quebrar o ritmo — e `rows` —
+  grade `rows x columns` com CSS grid inline; `rows` prevalece quando
+  ambos setados; `aria-busy="true"` + `aria-label` customizavel),
+  `error-boundary.tsx` (class component — limitacao da API do React
+  para capturar erros de render; `getDerivedStateFromError` +
+  `componentDidCatch` com `onError` opcional para telemetria; props
+  `fallback` aceita node ou funcao `({error, reset}) => node`; UI
+  default com `AlertTriangle` + mensagem + botao "Tentar novamente"
+  que chama `onRetry`), `confirm-dialog.tsx` (reutiliza `Dialog` do
+  DS-03 — sem Radix; props `confirmPhrase` + `tone: default |
+  destructive`; quando `confirmPhrase` esta setado, input renderiza
+  dentro de `DialogBody` e o botao "Confirmar" fica `disabled` ate
+  `typed.trim() === confirmPhrase` — **prova do DoD**; `busy` trava
+  tudo enquanto a acao esta em voo; reseta input quando dialog
+  fecha), `timeline.tsx` (lista vertical `<ol>` com bullet colorido
+  por tone — `default/success/warning/destructive/info` — e linha
+  conectora absoluta; `<time dateTime={iso}>` para leitores; icone
+  Lucide opcional dentro do bullet). 5 novas secoes em
+  `app/styleguide/page.tsx` com demos dedicadas em
+  `app/styleguide/<componente>-demo.tsx`. Testes novos (25 casos):
+  `empty-state.test.tsx` (4 — titulo/desc, icone, onClick do CTA,
+  variante `href` como link), `loading-skeleton.test.tsx` (4 —
+  aria-busy, contagem de barras em `lines`, `rows x columns`,
+  prioridade de `rows`), `error-boundary.test.tsx` (5 — filhos ok,
+  fallback default, reset via `onRetry` com re-render, fallback custom
+  funcao, `onError` recebe Error), `confirm-dialog.test.tsx` (7 —
+  fechado nao monta, sem phrase habilita de cara, bloqueia ate match
+  exato case-sensitive, aceita trim, tone destrutivo via `data-tone`,
+  Cancelar dispara onClose, `busy` desabilita mesmo com match) e
+  `timeline.test.tsx` (5 — ordem, aria-label, `dateTime` ISO no
+  `<time>`, `data-tone` por item, lista vazia). `pnpm --filter
+  web-app typecheck` limpo, `next lint` zero warnings, `vitest run`:
+  264 passed (239 previos + 25 novos). Move DS-08 de "Bloqueadas"
+  (dependencia DS-02 ja com artefatos — `tokens.css` + `/styleguide`
+  + `theme-toggle` — em origin/main) para "Em Andamento"
+  (PR a abrir — Closes #47).
+
 ## Concluidos
 
 - **CORE-05** — Cliente S3 do worker-core em
@@ -1338,6 +1380,18 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
   por nota. Sem migration nova — `reprocess_jobs` vem de DATA-04
   (0007). 20 unit tests + 19 integration gated (TEST_DATABASE_URL +
   fakeredis). Move API-10 de "Bloqueadas" para "Em Andamento". Closes #34.
+- PR: (a abrir) — DS-08: estados e utilitarios de UX em
+  `apps/web-app/components/ui/` — `EmptyState`, `LoadingSkeleton`
+  (variantes `lines` e `rows`), `ErrorBoundary` (class component com
+  `fallback` node/funcao e botao "Tentar novamente" via `onRetry`),
+  `ConfirmDialog` (reutiliza `Dialog` do DS-03; `confirmPhrase` +
+  `tone: destructive` — botao Confirmar bloqueado ate `typed.trim()
+  === confirmPhrase` -> **prova do DoD**) e `Timeline` (lista
+  vertical com bullet colorido por tone e `<time dateTime>`). 5
+  secoes novas em `app/styleguide/page.tsx` com demos por componente.
+  25 testes vitest novos. `pnpm --filter web-app typecheck` limpo,
+  `next lint` zero warnings, `vitest run`: 264 passed. Move DS-08 de
+  "Bloqueadas" (DS-02 em origin/main) para "Em Andamento". Closes #47.
 - PR: (a abrir) — API-13: worker consumer RQ orquestrando execucao
   ponta-a-ponta. Novo pacote `apps/worker/` (entry point `python -m
   worker.main` lendo `API_REDIS_URL`+`API_QUEUE_NAME`; `HealthzServer`
