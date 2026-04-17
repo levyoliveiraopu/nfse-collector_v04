@@ -15,6 +15,84 @@
 
 ## Em Andamento
 
+- **APP-07** — Pagina `/agendamentos` (UI de schedules cron):
+  rota `apps/web-app/app/agendamentos/` (`layout.tsx` com
+  `RequireAuth` + `AppShell`, `page.tsx` com header + view,
+  `agendamentos-view.tsx` client com react-query consumindo
+  `listSchedules`/`listSchedulePresets`/`listCompanies`).
+  Lista renderiza tabela com colunas Empresa (resolve `company_id` ->
+  `razao_social` via `GET /companies?page_size=100` client-side;
+  `null` vira "Todas as empresas") | Quando (cron humanizado +
+  `font-mono` com cron literal abaixo) | Timezone | Proximo run
+  (formatado pt-BR) | Status (toggle `role=switch` `aria-checked` +
+  `<StatusBadge>` Ativo/Pausado) | Acoes (editar/excluir). Toggle
+  on/off faz `PATCH /schedules/{id} { enabled }` via mutation do
+  react-query que invalida `[schedules:list]` em sucesso —
+  **reflete em `next_run_at`** (DoD): backend recalcula quando
+  `enabled` vira `true` e limpa quando vira `false`; em falha mostra
+  mensagem inline no status. Excluir (owner|admin) usa `confirm()`
+  nativo antes de `DELETE`. `<ScheduleFormDialog>` create/edit com
+  `<Modal>` existente: builder amigavel com 4 modos
+  (`daily|weekly|monthly|custom` via `role=radio`) + select de
+  hora/minuto (+ dia da semana em weekly, dia do mes em monthly) +
+  select de TZ (6 opcoes BR + UTC; preserva TZ existente fora da
+  lista em edicao) + select de empresa (UUIDs) + checkbox ativar
+  agora. Presets de `GET /schedules/presets` viram chips no topo
+  (clique aplica via `cronToBuilder`). Painel "Expressao cron"
+  mostra cron literal + preview "Proximos 5 runs ({TZ})" calculado
+  client-side em `data-testid="next-runs"`; **cron invalida**
+  (DoD) bloqueia submit e mostra `<p data-testid="cron-error">` com
+  a mensagem do parser, tambem desabilitando o botao — com
+  mensagens especificas para 400/403/404 vindos do backend.
+  Novo modulo puro `apps/web-app/lib/schedules/cron.ts`:
+  `parseField` (suporta `*`, `a-b`, `*\/N`, `a-b\/N`, `a,b,c` com
+  validacao de range por campo), `parseCron`/`validateCron`
+  (normaliza whitespace, exige 5 campos, mensagem curta em
+  `CronParseError`), `humanizeCron` (casa presets e formas do
+  builder — "Todo dia as HH:MM", "Toda segunda-feira as HH:MM",
+  "Todo mes no dia D as HH:MM", "A cada minuto"; fallback
+  "Cron customizado: <expr>"), `computeNextRuns` (minuto a minuto,
+  matches via `Intl.DateTimeFormat` com `timeZone` para honrar DST
+  + lookahead 2 anos p/ evitar loop em `0 0 31 2 *`; convencao
+  Unix para dia+dow: OR quando ambos restritos, AND quando um e
+  wildcard), `builderToCron`/`cronToBuilder` (round-trip entre os
+  4 modos do builder). Novo cliente HTTP
+  `apps/web-app/lib/api/schedules.ts` (`listSchedules` com filtros
+  `enabled|company_id`, `getSchedule`, `listSchedulePresets`,
+  `createSchedule`, `updateSchedule`, `toggleSchedule` — atalho que
+  delega em `updateSchedule({ enabled })`, `deleteSchedule`,
+  `extractErrorDetail` para FastAPI-style `{ detail }`).
+  `nav-items.ts` ganha item "Agendamentos" (icone `CalendarClock`)
+  entre "Empresas" e "Notas". RBAC alinhado a matriz: leitura e
+  toggle bloqueado para viewer (UI desabilita toggle + oculta
+  Novo/Editar/Excluir quando papel insuficiente; backend ja devolve
+  403 com mensagem clara repassada na UI). 35 testes vitest de
+  cron (`parseField` 6, `parseCron` 4, `validateCron` 2,
+  `normalizeCronExpr` 1, `humanizeCron` 7, `computeNextRuns` 6 —
+  com caso cross-TZ `0 3 * * *` em `America/Sao_Paulo` -> 06:00Z
+  e weekly picking segunda-feira, `builderToCron` 5,
+  `cronToBuilder` 4) + 12 do cliente HTTP (`listSchedules` query
+  building, header Authorization, presets unwrap, create/patch/
+  toggle/delete, ApiError em 400/403, `extractErrorDetail`) + 7
+  testes de view (RBAC viewer/owner/admin/operator, linha com cron
+  humanizado, toggle desabilitado em viewer, toggle chama
+  `toggleSchedule(false)` em agenda ativa, excluir sim/nao por
+  papel, empty state) + 7 de dialog (render default + 5 runs,
+  aplicar preset, cron customizada invalida mostra erro e
+  desabilita submit, submit feliz chama `createSchedule` com
+  payload correto, ApiError 400 vira alert, 403 mostra mensagem
+  clara, edicao pre-preenche e chama `updateSchedule`). Suite
+  completa: `pnpm test` = 300 passed em 30 files (253 -> 300;
+  +47 novos); `tsc --noEmit` verde; `next lint` sem warnings. Sem
+  E2E Playwright novo — escolha deliberada: o dialog + toggle
+  tem cobertura rasa de jsdom suficiente e nao ha fluxo multi-
+  pagina no ticket. API-12 (CRUD `/schedules`) ja estava em
+  `main` via PR #130 — nova nota em
+  `docs/architecture/rbac-matrix.md` nao foi necessaria
+  (API-12 ja incluiu a secao Schedules). Move APP-07 de
+  "Bloqueadas" (dependencia API-12 ja mergeada) para
+  "Em Andamento" (PR a abrir — Closes #55).
+
 - **APP-06** — Inbox `/ocorrencias` consumindo API-09. Nova rota
   `apps/web-app/app/ocorrencias/` com `layout.tsx` (RequireAuth +
   AppShell, igual `/empresas`), `page.tsx` + `OcorrenciasView` +
@@ -1699,6 +1777,30 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-17
+- PR: (a abrir) — APP-07: pagina `/agendamentos` consumindo API-12
+  (ja mergeada em main via #130). Nova rota
+  `apps/web-app/app/agendamentos/` com layout (RequireAuth + AppShell),
+  `page.tsx` + `agendamentos-view.tsx` (react-query,
+  `listSchedules`/`listSchedulePresets`/`listCompanies`, tabela com
+  cron humanizado, timezone, proximo run, toggle on/off que faz
+  PATCH `{ enabled }` — reflete em `next_run_at` pelo backend cumprindo
+  DoD, confirm() nativo no delete, RBAC alinhado a matriz) +
+  `schedule-form-dialog.tsx` (builder 4 modos radio
+  daily|weekly|monthly|custom, presets chips do backend, select de
+  empresa + TZ + hora/minuto, preview "Proximos 5 runs" client-side,
+  cron invalida bloqueia submit com mensagem clara cumprindo segunda
+  DoD, erros 400/403/404 do backend viram alert contextual). Novo
+  modulo puro `lib/schedules/cron.ts` (parser 5-campos com `*`/range/
+  step/list, `humanizeCron` com fallback custom, `computeNextRuns`
+  iterando minutos com `Intl.DateTimeFormat` para DST + lookahead
+  2 anos, `builderToCron`/`cronToBuilder` round-trip) + cliente HTTP
+  `lib/api/schedules.ts` (CRUD, toggle, extractErrorDetail). Novo
+  item "Agendamentos" (icone `CalendarClock`) em
+  `components/app-shell/nav-items.ts` entre "Empresas" e "Notas". 47
+  testes vitest novos (35 cron + 12 client + 7 view + 7 dialog).
+  `pnpm test` = 300 passed em 30 files; `tsc --noEmit` verde;
+  `next lint` zero warnings. Move APP-07 de "Bloqueadas" para
+  "Em Andamento". Closes #55.
 - PR: (a abrir) — APP-06: inbox `/ocorrencias` consumindo API-09, com
   lista filtravel (status/severity/company_id), detalhe renderizando
   runbook inline por codigo (via `react-markdown` + route handler que
