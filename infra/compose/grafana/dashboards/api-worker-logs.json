@@ -6,7 +6,44 @@
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
   "id": null,
-  "links": [],
+  "links": [
+    {
+      "title": "Runbook: disco cheio",
+      "url": "https://github.com/levyoliveiraopu/nfse-collector_v04/blob/main/docs/runbooks/disco-cheio.md",
+      "tooltip": "Diagnostico + mitigacao de disco cheio na VPS",
+      "type": "link",
+      "targetBlank": true,
+      "icon": "external link",
+      "tags": []
+    },
+    {
+      "title": "Runbook: fila travada",
+      "url": "https://github.com/levyoliveiraopu/nfse-collector_v04/blob/main/docs/runbooks/fila-travada.md",
+      "tooltip": "Worker RQ nao processa / executions presas em queued",
+      "type": "link",
+      "targetBlank": true,
+      "icon": "external link",
+      "tags": []
+    },
+    {
+      "title": "Runbook: SSL expirando",
+      "url": "https://github.com/levyoliveiraopu/nfse-collector_v04/blob/main/docs/runbooks/ssl-expirando.md",
+      "tooltip": "Certbot / Let's Encrypt — renovacao quebrada",
+      "type": "link",
+      "targetBlank": true,
+      "icon": "external link",
+      "tags": []
+    },
+    {
+      "title": "Runbook: backup falhou",
+      "url": "https://github.com/levyoliveiraopu/nfse-collector_v04/blob/main/docs/runbooks/backup-falhou.md",
+      "tooltip": "INFRA-08 — pg_dump / cifra age / upload S3",
+      "type": "link",
+      "targetBlank": true,
+      "icon": "external link",
+      "tags": []
+    }
+  ],
   "liveNow": false,
   "panels": [
     {
