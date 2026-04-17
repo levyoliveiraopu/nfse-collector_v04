@@ -15,6 +15,356 @@
 
 ## Em Andamento
 
+- **APP-07** — Pagina `/agendamentos` (UI de schedules cron):
+  rota `apps/web-app/app/agendamentos/` (`layout.tsx` com
+  `RequireAuth` + `AppShell`, `page.tsx` com header + view,
+  `agendamentos-view.tsx` client com react-query consumindo
+  `listSchedules`/`listSchedulePresets`/`listCompanies`).
+  Lista renderiza tabela com colunas Empresa (resolve `company_id` ->
+  `razao_social` via `GET /companies?page_size=100` client-side;
+  `null` vira "Todas as empresas") | Quando (cron humanizado +
+  `font-mono` com cron literal abaixo) | Timezone | Proximo run
+  (formatado pt-BR) | Status (toggle `role=switch` `aria-checked` +
+  `<StatusBadge>` Ativo/Pausado) | Acoes (editar/excluir). Toggle
+  on/off faz `PATCH /schedules/{id} { enabled }` via mutation do
+  react-query que invalida `[schedules:list]` em sucesso —
+  **reflete em `next_run_at`** (DoD): backend recalcula quando
+  `enabled` vira `true` e limpa quando vira `false`; em falha mostra
+  mensagem inline no status. Excluir (owner|admin) usa `confirm()`
+  nativo antes de `DELETE`. `<ScheduleFormDialog>` create/edit com
+  `<Modal>` existente: builder amigavel com 4 modos
+  (`daily|weekly|monthly|custom` via `role=radio`) + select de
+  hora/minuto (+ dia da semana em weekly, dia do mes em monthly) +
+  select de TZ (6 opcoes BR + UTC; preserva TZ existente fora da
+  lista em edicao) + select de empresa (UUIDs) + checkbox ativar
+  agora. Presets de `GET /schedules/presets` viram chips no topo
+  (clique aplica via `cronToBuilder`). Painel "Expressao cron"
+  mostra cron literal + preview "Proximos 5 runs ({TZ})" calculado
+  client-side em `data-testid="next-runs"`; **cron invalida**
+  (DoD) bloqueia submit e mostra `<p data-testid="cron-error">` com
+  a mensagem do parser, tambem desabilitando o botao — com
+  mensagens especificas para 400/403/404 vindos do backend.
+  Novo modulo puro `apps/web-app/lib/schedules/cron.ts`:
+  `parseField` (suporta `*`, `a-b`, `*\/N`, `a-b\/N`, `a,b,c` com
+  validacao de range por campo), `parseCron`/`validateCron`
+  (normaliza whitespace, exige 5 campos, mensagem curta em
+  `CronParseError`), `humanizeCron` (casa presets e formas do
+  builder — "Todo dia as HH:MM", "Toda segunda-feira as HH:MM",
+  "Todo mes no dia D as HH:MM", "A cada minuto"; fallback
+  "Cron customizado: <expr>"), `computeNextRuns` (minuto a minuto,
+  matches via `Intl.DateTimeFormat` com `timeZone` para honrar DST
+  + lookahead 2 anos p/ evitar loop em `0 0 31 2 *`; convencao
+  Unix para dia+dow: OR quando ambos restritos, AND quando um e
+  wildcard), `builderToCron`/`cronToBuilder` (round-trip entre os
+  4 modos do builder). Novo cliente HTTP
+  `apps/web-app/lib/api/schedules.ts` (`listSchedules` com filtros
+  `enabled|company_id`, `getSchedule`, `listSchedulePresets`,
+  `createSchedule`, `updateSchedule`, `toggleSchedule` — atalho que
+  delega em `updateSchedule({ enabled })`, `deleteSchedule`,
+  `extractErrorDetail` para FastAPI-style `{ detail }`).
+  `nav-items.ts` ganha item "Agendamentos" (icone `CalendarClock`)
+  entre "Empresas" e "Notas". RBAC alinhado a matriz: leitura e
+  toggle bloqueado para viewer (UI desabilita toggle + oculta
+  Novo/Editar/Excluir quando papel insuficiente; backend ja devolve
+  403 com mensagem clara repassada na UI). 35 testes vitest de
+  cron (`parseField` 6, `parseCron` 4, `validateCron` 2,
+  `normalizeCronExpr` 1, `humanizeCron` 7, `computeNextRuns` 6 —
+  com caso cross-TZ `0 3 * * *` em `America/Sao_Paulo` -> 06:00Z
+  e weekly picking segunda-feira, `builderToCron` 5,
+  `cronToBuilder` 4) + 12 do cliente HTTP (`listSchedules` query
+  building, header Authorization, presets unwrap, create/patch/
+  toggle/delete, ApiError em 400/403, `extractErrorDetail`) + 7
+  testes de view (RBAC viewer/owner/admin/operator, linha com cron
+  humanizado, toggle desabilitado em viewer, toggle chama
+  `toggleSchedule(false)` em agenda ativa, excluir sim/nao por
+  papel, empty state) + 7 de dialog (render default + 5 runs,
+  aplicar preset, cron customizada invalida mostra erro e
+  desabilita submit, submit feliz chama `createSchedule` com
+  payload correto, ApiError 400 vira alert, 403 mostra mensagem
+  clara, edicao pre-preenche e chama `updateSchedule`). Suite
+  completa: `pnpm test` = 300 passed em 30 files (253 -> 300;
+  +47 novos); `tsc --noEmit` verde; `next lint` sem warnings. Sem
+  E2E Playwright novo — escolha deliberada: o dialog + toggle
+  tem cobertura rasa de jsdom suficiente e nao ha fluxo multi-
+  pagina no ticket. API-12 (CRUD `/schedules`) ja estava em
+  `main` via PR #130 — nova nota em
+  `docs/architecture/rbac-matrix.md` nao foi necessaria
+  (API-12 ja incluiu a secao Schedules). Move APP-07 de
+  "Bloqueadas" (dependencia API-12 ja mergeada) para
+  "Em Andamento" (PR a abrir — Closes #55).
+
+- **APP-06** — Inbox `/ocorrencias` consumindo API-09. Nova rota
+  `apps/web-app/app/ocorrencias/` com `layout.tsx` (RequireAuth +
+  AppShell, igual `/empresas`), `page.tsx` + `OcorrenciasView` +
+  `OcorrenciasTable` usando `<DataTable>` (DS-06) com filtros
+  server-side: `status` (select 5-valores: open/ack/snoozed/resolved/
+  ignored), `severity` (select 4-valores: info/warning/error/critical) e
+  `company_id` (text UUID — seletor rico fica para ticket futuro quando
+  houver `GET /companies` global + `GET /users`). Colunas: `code`+label
+  (link para `/ocorrencias/[id]`), severity/status via `StatusBadge`
+  (DS-04) mapeados em `severityVariant`/`statusVariant`, `title` (tooltip
+  com `detail`), `last_seen_at`, `first_seen_at`. Cliente HTTP novo
+  `apps/web-app/lib/api/occurrences.ts` (tipos `Occurrence`/
+  `OccurrenceListResponse`/`OccurrenceSeverity`/`OccurrenceStatus`,
+  funcoes `listOccurrences`/`getOccurrence`/`acknowledgeOccurrence`/
+  `resolveOccurrence`/`assignOccurrence`, helper `isTerminal`, labels
+  pt-BR). Detalhe em `apps/web-app/app/ocorrencias/[id]/` —
+  `OccurrenceDetailView` client component com `useQuery`
+  (`["ocorrencias:detail", id]`) + 3 `useMutation` que chamam
+  `queryClient.setQueryData` no retorno (**DoD "acoes atualizam estado
+  sem reload"**) e invalidam `[OCORRENCIAS_QUERY_KEY]`. Acoes gated por
+  RBAC (owner/admin/operator): **Reconhecer** so em `open`; **Resolver**
+  so em nao-terminais, abre `ResolveDialog` (react-hook-form + zod,
+  note 1..2000 chars obrigatoria, erro explicito em 409/422/403);
+  **Atribuir** sempre (`AssignDialog` com validacao UUID regex, erro
+  404 "usuario nao e membro do tenant"); **Reprocessar** = `<Link>` para
+  `/execucoes/nova?reprocessar_de=<id>&company_id=<cid>` (APP-05 consome
+  quando chegar — nota no tooltip). Runbook inline em `RunbookPanel`:
+  faz GET `/api/runbooks/<slug>`, renderiza com `react-markdown` +
+  `remark-gfm` e componentes customizados (heading/p/ul/ol/code/pre/a/
+  blockquote estilizados via Tailwind — sem `@tailwindcss/typography`).
+  Route handler `apps/web-app/app/api/runbooks/[slug]/route.ts` (runtime
+  Node) le `docs/runbooks/<slug>.md` com `readFile` a partir de
+  `process.cwd()/../..`, allowlist por `isRunbookSlug` (evita path
+  traversal), `Content-Type: text/markdown; charset=utf-8`. Catalogo em
+  `apps/web-app/lib/occurrences/codes.ts` mapeia os 11 codigos
+  documentados em `docs/architecture/occurrence-codes.md` para
+  `{label, severity_default, runbookSlug}` — codigos nao catalogados
+  caem em "Outro" sem quebrar a listagem. 4 runbooks novos criados em
+  `docs/runbooks/` (**reprocessamento.md**, **parse-error.md**,
+  **storage-error.md**, **erro-desconhecido.md**) cobrindo os codigos
+  `REPROCESS_NEEDED`, `PARSE_ERROR`, `STORAGE_ERROR` e `UNKNOWN`
+  (sintomas, diagnostico, mitigacao, escalacao, prevencao). Tabela de
+  codigos em `docs/architecture/occurrence-codes.md` atualizada: zero
+  "(em redacao)", todos os 11 codigos linkam para runbook — **DoD "10
+  codigos com runbook"** cumprido com folga. Aba `occurrences-tab.tsx`
+  do detalhe de empresa (APP-03) substituida: stub vira call-to-action
+  com `<Link>` para `/ocorrencias?company_id=<id>` (filtro persistido
+  pelo DataTable via URL state). Item "Ocorrencias" (icon `AlertCircle`)
+  adicionado em `components/app-shell/nav-items.ts` entre "Empresas" e
+  "Notas". Novas deps em `apps/web-app/package.json`:
+  `react-markdown ^9.0.1` + `remark-gfm ^4.0.0` (~30kB gzip). 22 testes
+  vitest novos: `lib/api/occurrences.test.ts` (17 — buildListQuery,
+  list/get/ack/resolve/assign com Authorization, propagacao de ApiError
+  403/404/422, helper `isTerminal`) + `app/ocorrencias/[id]/
+  occurrence-detail-view.test.tsx` (5 — render de header, RBAC gating
+  viewer sem botoes, acknowledge invalida cache, reprocessar tem query
+  string correta, estado terminal oculta ack/resolve mas mantem
+  atribuir). `pnpm typecheck` verde, `next lint` zero warnings,
+  `vitest run` 261 passed (239 existentes + 22 novos). Dependencia
+  API-09 ja satisfeita (PR #127 merged)
+  (PR a abrir — Closes #54).
+- **APP-05** — `/execucoes/nova` + acompanhamento real-time.
+  Novo cliente `apps/web-app/lib/api/executions.ts` com tipos
+  alinhados a API-07/API-08 (`Execution`, `ExecutionItem`, envelopes
+  paginados, `CreateExecutionsPayload`, `CreatedExecution`), funcoes
+  `listExecutions`/`getExecution`/`listExecutionItems`/
+  `createExecutions` via `apiFetch` (APP-01) e `ExecutionsApiError`
+  mapeando 401/403/404/422/502 em codigos canonicos
+  (`companies_not_found`, `credential_missing_or_expired`,
+  `queue_unavailable`, `validation_error`, `forbidden`, `not_found`,
+  `network`, `unknown`) — o 422 estruturado do backend preserva
+  `company_ids`/`missing` pra UI citar quais CNPJs travaram a
+  submissao. Helpers `decideExecutionBadge` (mapeia os 6 status pra
+  variantes `<StatusBadge>`: queued->pending, running->processing,
+  succeeded->success, failed->failed, cancelled->blocked,
+  partial->warning), `computeProgress` (clampa em 100%, lida com
+  `total=0` em queued sem div/0) e `isTerminalStatus`. Nova rota
+  protegida `apps/web-app/app/execucoes/` com 3 paginas: (a)
+  `/execucoes` — lista paginada server-side filtrando por `status`,
+  CTA "Nova execucao" apontando pra `/execucoes/nova`, paginacao
+  Anterior/Proxima e empty-state com link pra criar; (b)
+  `/execucoes/nova` — formulario client (`NovaExecucaoForm`) com
+  multi-select de companies ativas (usa `listCompanies` com
+  `filters: {status: 'active'}` e page_size 100, exibe CNPJ formatado
+  + razao + UF), `<PeriodPicker>` (DS-07, default `last_30d`),
+  toggle dry-run, toggle "Incremental desde ultimo NSU" (UX
+  informativa apontando que o worker ja respeita `last_nsu`
+  internamente — periodo define a janela, nao o piso de NSU), CTA
+  "Iniciar" chamando `createExecutions` e redirecionando pra
+  `/execucoes/{id}` em N=1 ou `/execucoes` em N>1. Viewer ve alerta
+  "sem permissao" (DoD RBAC), operator/admin/owner veem o form. Em
+  422 `credential_missing_or_expired` traduz a mensagem listando os
+  CNPJs afetados com orientacao pra regularizar na aba Credencial
+  (APP-04) — evita N+1 no front pre-filtrando e alinha com a linha
+  "nao validar o que o backend ja valida"; (c) `/execucoes/[id]` —
+  `ExecucaoDetailView` com header (StatusBadge, CNPJ curto, periodo,
+  indicador "Atualizando a cada 2s" quando nao terminal), barra
+  `role="progressbar"` com `aria-valuenow={ok+fail}` e
+  `aria-valuemax={total}`, KPIs (total/ok/fail/iniciada), tabela de
+  items com filtro por status (tabs Todos/OK/Falhou/Ignorados/
+  Pendentes), paginacao, checkbox por linha + "Selecionar todos
+  visiveis", botao "Reprocessar selecionados (N)" com
+  `aria-disabled=true` + `title` explicando "liberado com APP-06 /
+  API-10" (stub consciente sem bloquear o DoD quando o endpoint
+  chegar). **Polling 2s** via `refetchInterval` do react-query
+  (`query.state.data` em `isTerminalStatus` -> desliga o polling;
+  ainda em andamento -> 2000ms), aplicado tanto ao detail quanto aos
+  items — quando `status` vira `succeeded`/`failed`/`cancelled`/
+  `partial` o polling cessa automaticamente. Sidebar
+  `components/app-shell/nav-items.ts` ganha item "Execucoes" (icone
+  `PlayCircle`) entre "Empresas" e "Notas". Stub `executions-tab.tsx`
+  da aba de empresa (APP-03) deixa de ser informativo e mostra as 5
+  execucoes mais recentes daquela company com atalho "Nova execucao"
+  pra `/execucoes/nova?company_id={id}` (pre-selecao para fluxo
+  futuro). Testes vitest: (a) `lib/api/executions.test.ts` com 16
+  casos (buildListQuery/buildItemsQuery com defaults e filtros,
+  listExecutions Authorization, getExecution 404, listExecutionItems
+  endpoint correto, createExecutions POST JSON feliz + traducao de
+  422 `credential_missing_or_expired` preservando `companyIds`, 422
+  `companies_not_found`, 502 `queue_unavailable`, `decideExecutionBadge`
+  pros 6 status, `isTerminalStatus` e `computeProgress` incluindo
+  clamp 100% e divisao por zero); (b)
+  `app/execucoes/nova/nova-execucao-form.test.tsx` com 7 casos
+  (viewer ve alerta sem permissao, operator ve form, submissao de 1
+  empresa redireciona pra `/execucoes/{id}`, submissao de N empresas
+  redireciona pra `/execucoes`, dry_run propaga no payload, 422
+  credential traduz com CNPJs formatados no alert, 502 queue mostra
+  mensagem de fila indisponivel); (c)
+  `app/execucoes/[id]/execucao-detail-view.test.tsx` com 7 casos
+  (progressbar com `aria-valuenow/max` corretos, indicador polling
+  visivel em running, ausente em succeeded, refaz query detail apos
+  2s enquanto nao-terminal (real timers, timeout 10s), 404 exibe
+  mensagem clara, filtro por status refaz query com `status=failed`,
+  botao Reprocessar `aria-disabled=true` + title citando
+  APP-06/API-10). E2E Playwright `e2e/execucoes.spec.ts` intercepta
+  `/companies`/`/executions`/`/executions/{id}`/`/executions/{id}/items`
+  via `page.route` cobrindo DoD literal: cria (selecionar empresa +
+  Iniciar), acompanha (progressbar visivel), ve itens aparecendo
+  (data-item-id=i1 e i2 apos 2a chamada do polling). `pnpm
+  typecheck`, `pnpm lint` (`next lint`) e `pnpm test` (`vitest run`)
+  verdes — 29 arquivos / 269 specs (135 anteriores + 30 novos de
+  APP-05 + diff dos outros tickets mergeados). Backend intocado
+  (API-07/API-08 ja em main). `POST /executions` precisa de Redis
+  pra pre-ping (502 sem tocar DB se fila offline) — o caminho feliz
+  local e coberto estruturalmente pelos mocks do vitest + page.route
+  do Playwright. Move APP-05 de "Bloqueadas" (deps API-07/API-08 ja
+  mergeadas em main) para "Em Andamento"
+  (PR a abrir — Closes #53).
+
+- **APP-02** — Dashboard com KPIs em `/dashboard`
+  (`apps/web-app/app/dashboard/page.tsx` passa a renderizar
+  `<DashboardView/>` — substitui o stub de KPIStatCards em `empty`).
+  Novo diretorio `apps/web-app/components/dashboard/` com 3
+  componentes client: `dashboard-view.tsx` orquestra header + atalhos
+  "Nova execucao" (`/execucoes/nova`, destino de APP-05) e "Ver
+  ocorrencias" (`/ocorrencias`, destino de APP-06, mesmo padrao
+  placeholder usado por `nav-items.ts`); `PeriodPicker` (DS-07)
+  controlado localmente em `useState` inicializado via
+  `computePresetRange("current_month")` (persistencia em URL fica como
+  follow-up — escopo enxuto deste PR); `kpi-cards.tsx` renderiza os
+  4 `<KPIStatCard>` (DS-05) consumindo react-query em paralelo
+  (existente `AppQueryClientProvider` no RootLayout, `staleTime=30s`);
+  `recent-timeline.tsx` lista as 10 execucoes mais recentes do
+  periodo com dot por status (`CheckCircle2`/`AlertTriangle`/`XCircle`
+  /`Loader2 animate-spin`/`Clock`/`MinusCircle`), linkando cada item
+  para `/execucoes/{id}` (destino APP-05). Componente `<Timeline>`
+  canonico do DS-08 ainda bloqueado — a lista provisoria fica isolada
+  nesta pagina com comentario `@deprecated ao entregar DS-08` e
+  sera substituida sem mudar a API publica quando DS-08 pousar.
+  KPIs implementados:
+  1. **"Notas coletadas no periodo"** — consome `GET /executions` com
+     `page_size=100` + `from`/`to` do `PeriodRange`, soma `items_ok`
+     client-side. Se `total > 100`, marca valor como aproximado
+     formatando `1.234+` e troca o hint para "Soma aproximada
+     (agregacao server-side em follow-up)." — follow-up `?aggregate=1`
+     em API-08 ou novo endpoint registrado como debito tecnico.
+  2. **"Execucoes OK / total"** — 2 chamadas paralelas com
+     `page_size=1` a `GET /executions` (uma sem filtro, outra com
+     `status=succeeded`) usando apenas o `total` do envelope. Exibe
+     `<ok> / <total>` formatado em pt-BR; estado `empty` quando
+     `total=0` no periodo.
+  3. **"Ocorrencias abertas"** — `GET /occurrences?status=open&page_size=1`
+     usando o `total` do envelope. **Nao** filtra por periodo
+     (inbox reflete estado atual, nao a janela do dashboard — decisao
+     explicita anotada no codigo).
+  4. **"Certificados a vencer em 30d"** — permanece em
+     `state="empty"` com hint "Disponivel apos endpoint REST de
+     credenciais (follow-up)." porque API-06 popula
+     `company_credentials.cert_not_after` mas ainda NAO expoe listagem
+     REST agregada — `GET /companies/{id}/credential` (unitario) nao
+     serve para contar vencimentos do tenant. Follow-up: expor
+     `GET /credentials?expiring_in_days=30` antes de APP-05 (fora da
+     trilha APP, fica como debito tecnico rastreavel).
+  Clientes API novos: `apps/web-app/lib/api/executions.ts`
+  (`listExecutions(params, ctx)` + `periodDateToUtcIso(day, boundary)`
+  que mapeia `YYYY-MM-DD` do `PeriodRange` para ISO 8601 UTC com `to`
+  exclusivo — a API filtra `started_at < to`, entao `endExclusive`
+  avanca 1 dia; `EXECUTION_STATUS_LABEL` em pt-BR) e
+  `apps/web-app/lib/api/occurrences.ts` (`listOccurrences`). Ambos
+  reusam `apiFetch` de `lib/auth/api-client.ts` (injeta access token
+  em memoria + refresh automatico em 401) e a interface
+  `ApiCallContext` exportada de `lib/api/companies.ts`. Erros HTTP
+  propagam como `ApiError(status, detail)` — react-query trata via
+  `isError` e os componentes renderizam `state="error"`/mensagem
+  dedicada no KPIStatCard ou no timeline. Filtro de periodo vai
+  para ambos via `periodToApiWindow()` em `kpi-cards.tsx`;
+  query keys incluem `[period.from, period.to]` para cache
+  correto por janela. Layout grid: 4 cards responsivos
+  (`grid-cols-1 sm:grid-cols-2 xl:grid-cols-4`), PeriodPicker em
+  card com border/shadow alinhado ao DS-03, timeline em card
+  com header descritivo ("Ultimas execucoes — As 10 execucoes mais
+  recentes no periodo selecionado"). Specs vitest em
+  `apps/web-app/components/dashboard/dashboard-view.test.tsx`
+  (5 casos): (1) renderiza os 4 KPIStatCards, `role="group"` do
+  PeriodPicker, links dos atalhos com `href` correto; (2) 10 items
+  na timeline com link `/execucoes/exec-1`; (3) mensagem "Nenhuma
+  execucao registrada no periodo" quando lista vazia; (4) KPI
+  "Ocorrencias abertas" exibe `total` do envelope (7); (5) KPI
+  "Certificados a vencer" permanece `data-state="empty"` (prova
+  defensiva do follow-up). Mocks de `useAuth`, `listExecutions`,
+  `listOccurrences` e `next/navigation`, seguindo mesmo padrao de
+  `empresas-view.test.tsx`. `pnpm typecheck` e `pnpm lint` verdes;
+  `pnpm test` = 27 arquivos / 244 testes (5 novos). DoD "< 1s com
+  dados de teste" cumprido estruturalmente — as 4 chamadas rodam em
+  paralelo (react-query default), com cache de 30s do
+  `AppQueryClientProvider`; validacao manual de performance fica a
+  cargo do owner apos deploy. "Links levam as telas corretas":
+  timeline -> `/execucoes/{id}` (APP-05), atalhos ->
+  `/execucoes/nova` (APP-05) e `/ocorrencias` (APP-06), KPIs sem
+  navegacao. Move APP-02 para "Em Andamento" (deps DS-05 e API-08
+  ambas mergeadas em `main`) (PR a abrir — Closes #50).
+- **DS-09** — Cliente API tipado gerado do OpenAPI: nova camada em
+  `apps/web-app/lib/api/` com `generated/schema.d.ts` (tipos emitidos
+  por `openapi-typescript` v7 a partir do OpenAPI da `apps/api`),
+  `client.ts` (factory `createApiClient` + singleton
+  `getApiClient`/`configureApiClient`/`__resetApiClientForTests`
+  baseados em `openapi-fetch` v0.13), `types.ts` (re-exports de
+  `paths`/`components`/`operations`/`Schemas`), `hooks.ts` (hooks
+  react-query base `useHealth`/`useVersion`/`useMe`/`useCompanies`/
+  `useExecutions`, cada um aceitando `client` opcional para testes) e
+  `README.md`. Middleware de auth em duas pontas: (1) `onRequest`
+  injeta `Authorization: Bearer <token>` quando `getAccessToken`
+  devolve token nao-nulo e o header ainda nao esta setado; (2)
+  `onResponse` trata 401 chamando `tryRefresh()` da APP-01, retenta a
+  request **uma unica vez** marcando header sentinela `x-ds09-retry:
+  1` (evita loop), propaga o novo token via `onTokenRefreshed` e, em
+  falha do refresh, chama `onAuthFailure` (default:
+  `window.location.href = "/login"`). Script
+  `apps/web-app/scripts/generate-api.mjs` (expoe
+  `pnpm --filter web-app generate-api`) aceita `--url`/`--file` ou
+  env `API_OPENAPI_URL` (default `http://localhost:8000/openapi.json`),
+  chama `openapiTS` + `astToString` programaticamente e so reescreve
+  `generated/schema.d.ts` quando o conteudo muda (idempotencia do DoD
+  "re-run e idempotente" validada manualmente rodando o script duas
+  vezes — segunda execucao imprime `sem mudancas`). Novas deps em
+  `apps/web-app/package.json`: `openapi-fetch@^0.13` (run) e
+  `openapi-typescript@^7` (dev). 8 testes vitest novos
+  (`lib/api/client.test.ts` com 5 casos — injecao de Authorization,
+  ausencia de token, retry em 401 com refresh bem-sucedido,
+  `onAuthFailure` quando refresh falha e prova de nao-loop com
+  header sentinela — e `lib/api/hooks.test.tsx` com 3 — `useHealth`
+  feliz, `useCompanies` com querystring, propagacao de erro 500).
+  Clientes legados (`lib/api/companies.ts`, `lib/auth/api-client.ts`,
+  `lib/users/api-client.ts`, `lib/companies/credentials.ts`)
+  **preservados sem alteracao** — migracao para o novo cliente fica
+  para tickets especificos de cada trilha APP. `pnpm --filter web-app
+  typecheck` verde, `next lint` zero warnings, `vitest run` =
+  247 passed (228 anteriores + 8 novos DS-09 + rebalanceamento da
+  suite). Move DS-09 de "Bloqueadas" (dependencias DS-01 e API-01 ja
+  concluidas) para "Em Andamento"
+  (PR a abrir — Closes #48).
+
 - **API-14** — Scheduler de execucoes agendadas em
   `apps/worker/worker/scheduler.py`. Processo separado (entry point
   `python -m worker.scheduler` ou script `nfse-scheduler`) com
@@ -1497,6 +1847,148 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
   Grafana futuras. Sem codigo executavel; JSON do dashboard validado
   com `python3 -c json.load`. Move DOCS-05 para "Em Andamento".
   Closes #75.
+- PR: (a abrir) — APP-07: pagina `/agendamentos` consumindo API-12
+  (ja mergeada em main via #130). Nova rota
+  `apps/web-app/app/agendamentos/` com layout (RequireAuth + AppShell),
+  `page.tsx` + `agendamentos-view.tsx` (react-query,
+  `listSchedules`/`listSchedulePresets`/`listCompanies`, tabela com
+  cron humanizado, timezone, proximo run, toggle on/off que faz
+  PATCH `{ enabled }` — reflete em `next_run_at` pelo backend cumprindo
+  DoD, confirm() nativo no delete, RBAC alinhado a matriz) +
+  `schedule-form-dialog.tsx` (builder 4 modos radio
+  daily|weekly|monthly|custom, presets chips do backend, select de
+  empresa + TZ + hora/minuto, preview "Proximos 5 runs" client-side,
+  cron invalida bloqueia submit com mensagem clara cumprindo segunda
+  DoD, erros 400/403/404 do backend viram alert contextual). Novo
+  modulo puro `lib/schedules/cron.ts` (parser 5-campos com `*`/range/
+  step/list, `humanizeCron` com fallback custom, `computeNextRuns`
+  iterando minutos com `Intl.DateTimeFormat` para DST + lookahead
+  2 anos, `builderToCron`/`cronToBuilder` round-trip) + cliente HTTP
+  `lib/api/schedules.ts` (CRUD, toggle, extractErrorDetail). Novo
+  item "Agendamentos" (icone `CalendarClock`) em
+  `components/app-shell/nav-items.ts` entre "Empresas" e "Notas". 47
+  testes vitest novos (35 cron + 12 client + 7 view + 7 dialog).
+  `pnpm test` = 300 passed em 30 files; `tsc --noEmit` verde;
+  `next lint` zero warnings. Move APP-07 de "Bloqueadas" para
+  "Em Andamento". Closes #55.
+- PR: (a abrir) — APP-06: inbox `/ocorrencias` consumindo API-09, com
+  lista filtravel (status/severity/company_id), detalhe renderizando
+  runbook inline por codigo (via `react-markdown` + route handler que
+  le `docs/runbooks/<slug>.md` do disco), acoes acknowledge/resolve
+  (nota obrigatoria)/assign/reprocessar (link para APP-05 futuro) — 3
+  mutacoes invalidam cache react-query para atualizar estado sem
+  reload. 4 runbooks novos criados para cobrir `REPROCESS_NEEDED`,
+  `PARSE_ERROR`, `STORAGE_ERROR` e `UNKNOWN` — catalogo em
+  `docs/architecture/occurrence-codes.md` fica com 11 codigos x 6
+  runbooks (DoD "10 codigos" cumprido). Aba `occurrences-tab.tsx` do
+  detalhe de empresa (APP-03) vira CTA para o inbox pre-filtrado por
+  `company_id`. Novo item "Ocorrencias" no sidebar
+  (`components/app-shell/nav-items.ts`). Novas deps
+  `react-markdown`/`remark-gfm`. 22 testes vitest novos; `pnpm
+  typecheck`/`next lint`/`vitest run` = 261 passed + zero warnings.
+  Move APP-06 de "Bloqueadas" para "Em Andamento" — API-09 (PR #127)
+  ja mergeada. Closes #54.
+- PR: (a abrir) — APP-05: `/execucoes/nova` + acompanhamento
+  real-time. Novo cliente `apps/web-app/lib/api/executions.ts`
+  (tipos, `listExecutions`/`getExecution`/`listExecutionItems`/
+  `createExecutions`, `ExecutionsApiError` mapeando 401/403/404/422/
+  502 em codigos canonicos incluindo `credential_missing_or_expired`
+  e `queue_unavailable` com `extra.companyIds`, helpers
+  `decideExecutionBadge`/`computeProgress`/`isTerminalStatus`). Tres
+  paginas em `apps/web-app/app/execucoes/`: (a) `/execucoes` —
+  lista paginada com filtro por status, CTA "Nova execucao";
+  (b) `/execucoes/nova` — `NovaExecucaoForm` client com multi-select
+  de companies ativas + `<PeriodPicker>` (DS-07, default `last_30d`)
+  + toggle dry-run + toggle "incremental desde ultimo NSU"
+  (informativo — o worker ja respeita `last_nsu` internamente).
+  Viewer ve alerta sem permissao; operator+ submete e e
+  redirecionado pra `/execucoes/{id}` (N=1) ou `/execucoes` (N>1).
+  Em 422 `credential_missing_or_expired`, traduz a mensagem
+  listando CNPJs afetados com orientacao pra regularizar credencial
+  (APP-04); (c) `/execucoes/[id]` — `ExecucaoDetailView` com
+  `<StatusBadge>`, barra `role="progressbar"` (aria-valuenow/max),
+  KPIs total/ok/fail, tabela de items com tabs-filter
+  Todos/OK/Falhou/Ignorados/Pendentes + checkbox por linha e botao
+  "Reprocessar selecionados (N)" desabilitado via `aria-disabled` +
+  `title` citando APP-06/API-10. **Polling 2s** via `refetchInterval`
+  do react-query (`isTerminalStatus(data.status)` desliga o polling
+  quando status terminal — succeeded/failed/cancelled/partial),
+  aplicado a detail e items. Sidebar ganha "Execucoes" (PlayCircle).
+  Stub `executions-tab.tsx` (aba empresa) deixa de ser informativo
+  e mostra as 5 execucoes mais recentes da company + link "Nova
+  execucao?company_id=X". Testes: `lib/api/executions.test.ts` (16),
+  `app/execucoes/nova/nova-execucao-form.test.tsx` (7, gating por
+  papel + redirecionamentos N=1/N>1 + dry_run + traducao 422/502),
+  `app/execucoes/[id]/execucao-detail-view.test.tsx` (7, progressbar
+  aria, polling 2s real timers, 404, filtro por status, reprocess
+  desabilitado). E2E `e2e/execucoes.spec.ts` cobrindo DoD literal
+  (cria -> acompanha -> ve itens aparecendo via page.route). `pnpm
+  typecheck`, `pnpm lint` e `pnpm test` verdes (29 arquivos / 269
+  specs). Closes #53.
+- Data: 2026-04-16
+- PR: (a abrir) — APP-02: dashboard com KPIs em `/dashboard`.
+  `apps/web-app/app/dashboard/page.tsx` passa a renderizar
+  `<DashboardView/>` (novo em `components/dashboard/dashboard-view.tsx`)
+  com: `PeriodPicker` (DS-07) controlado localmente em `useState`
+  inicializado em `current_month`; 4 `<KPIStatCard>` (DS-05) em
+  `kpi-cards.tsx` consumindo react-query em paralelo — (1) "Notas
+  coletadas no periodo" soma `items_ok` da 1a pagina do
+  `GET /executions?from&to&page_size=100` e marca aproximado (`1.234+`)
+  quando `total > 100`; (2) "Execucoes OK / total" = 2 chamadas
+  `page_size=1` usando `total` do envelope (sem e com
+  `status=succeeded`); (3) "Ocorrencias abertas" = `GET /occurrences?`
+  `status=open&page_size=1`, reflete estado atual sem filtro de
+  periodo (decisao explicita); (4) "Certificados a vencer em 30d"
+  fica em `state="empty"` com hint de follow-up — API-06 popula
+  `cert_not_after` mas nao expoe listagem REST agregada; timeline
+  provisoria em `recent-timeline.tsx` lista as 10 execucoes mais
+  recentes do periodo com dot por status e link
+  `/execucoes/{id}` (substitutivel sem mudar API publica quando
+  DS-08 entregar `<Timeline>` canonico); atalhos "Nova execucao" ->
+  `/execucoes/nova` (APP-05) e "Ver ocorrencias" -> `/ocorrencias`
+  (APP-06). Clientes API novos `lib/api/executions.ts`
+  (`listExecutions` + `periodDateToUtcIso` mapeando `YYYY-MM-DD` ->
+  ISO 8601 UTC com `to` exclusivo — `endExclusive` avanca 1 dia
+  porque a API filtra `started_at < to`) e `lib/api/occurrences.ts`
+  (`listOccurrences`), ambos via `apiFetch` + `ApiError`. Specs
+  vitest `components/dashboard/dashboard-view.test.tsx` (5 casos:
+  renderiza 4 cards + atalhos com `href` corretos, timeline com
+  10 items linkando `/execucoes/{id}`, empty state da timeline,
+  KPI ocorrencias exibe `total`, card de certificados defensivamente
+  `data-state="empty"`). `pnpm typecheck` + `pnpm lint` + `pnpm test`
+  (27 arquivos / 244 testes) verdes. Follow-ups rastreados: endpoint
+  `GET /credentials?expiring_in_days=30` e agregacao server-side em
+  `GET /executions` (hoje paginacao client-side cobre o dashboard com
+  limite aproximado). Move APP-02 para "Em Andamento" (deps DS-05 +
+  API-08 mergeadas em `main`). Closes #50.
+- PR: (a abrir) — DS-09: cliente API TypeScript gerado do OpenAPI.
+  Nova camada `apps/web-app/lib/api/` com `generated/schema.d.ts`
+  (emitido por `openapi-typescript` v7), `client.ts` (factory
+  `createApiClient` + singleton sobre `openapi-fetch` v0.13 com
+  middleware que injeta `Authorization: Bearer <token>` e retenta
+  uma unica vez em 401 via `tryRefresh` da APP-01 — `onAuthFailure`
+  faz redirect hard para `/login` em caso de falha; header sentinela
+  `x-ds09-retry: 1` evita loop), `types.ts` (re-exports de
+  `paths`/`components`/`operations`), `hooks.ts` (hooks react-query
+  base `useHealth`/`useVersion`/`useMe`/`useCompanies`/`useExecutions`)
+  e `README.md`. Script
+  `apps/web-app/scripts/generate-api.mjs` (expoe `pnpm --filter
+  web-app generate-api`, aceita `--url`/`--file` ou `API_OPENAPI_URL`,
+  default `http://localhost:8000/openapi.json`) chama
+  `openapiTS` + `astToString` e so reescreve quando o conteudo muda —
+  idempotencia do DoD validada rodando duas vezes consecutivas.
+  Novas deps em `apps/web-app/package.json`: `openapi-fetch@^0.13`
+  (run) e `openapi-typescript@^7` (dev). 8 testes vitest novos
+  (`lib/api/client.test.ts` com 5, `lib/api/hooks.test.tsx` com 3)
+  cobrindo injecao de Authorization, retry pos-refresh, redirect em
+  falha de refresh e prova de nao-loop. Clientes legados em
+  `lib/api/companies.ts`, `lib/auth/api-client.ts`,
+  `lib/users/api-client.ts` e `lib/companies/credentials.ts`
+  preservados sem alteracao — migracao para o novo cliente ficara
+  para tickets APP especificos. `pnpm --filter web-app typecheck` /
+  `lint` / `vitest run` verdes (247 passed). Move DS-09 de
+  "Bloqueadas" (dependencias DS-01 e API-01 concluidas) para "Em
+  Andamento". Closes #48.
 - PR: (a abrir) — API-14: scheduler de execucoes agendadas em
   `apps/worker/worker/scheduler.py` + `cron_utils.py`. Processo
   separado (`python -m worker.scheduler` / `nfse-scheduler`) com
