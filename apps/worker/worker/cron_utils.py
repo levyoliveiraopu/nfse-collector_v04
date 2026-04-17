@@ -73,12 +73,18 @@ def compute_next_run(
         timezone_name: nome IANA (validado).
         base: instante de referencia; default = agora em UTC.
     """
-    tz = ZoneInfo(timezone_name)
+    try:
+        tz = ZoneInfo(timezone_name)
+    except (ZoneInfoNotFoundError, ValueError, KeyError) as exc:
+        raise CronValidationError(f"timezone invalida: {timezone_name!r}") from exc
     if base is None:
         base = datetime.now(tz=timezone.utc)
     local_base = base.astimezone(tz)
-    it = croniter(cron_expr, local_base)
-    nxt_local = it.get_next(datetime)
+    try:
+        it = croniter(cron_expr, local_base)
+        nxt_local = it.get_next(datetime)
+    except Exception as exc:  # noqa: BLE001 — croniter levanta varias subclasses
+        raise CronValidationError(f"cron_expr invalida: {exc}") from exc
     if nxt_local.tzinfo is None:
         nxt_local = nxt_local.replace(tzinfo=tz)
     return nxt_local.astimezone(timezone.utc)

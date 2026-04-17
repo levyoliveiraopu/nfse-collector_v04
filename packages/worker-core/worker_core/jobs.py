@@ -17,39 +17,6 @@ de `WORKER_DATABASE_URL` (fallback: `API_DATABASE_URL`). O worker
 deve rodar como role com `BYPASSRLS` (tipicamente `app_admin`); como
 defesa em profundidade as queries filtram explicitamente por
 `tenant_id`.
-"""Handler RQ `run_execution(execution_id)` — orquestracao ponta-a-ponta (API-13).
-
-Enfileirado pela API em `apps/api/api/queue.py`:
-
-    queue.enqueue("worker_core.jobs.run_execution", str(execution_id), ...)
-
-Fluxo:
-
-    1. Busca `executions` + `companies` + `company_credentials` (RLS via
-       `app.current_tenant`).
-    2. Le o blob cifrado do S3 (prefixo `S3_CREDENTIALS_PREFIX`) e decifra
-       senha + PFX com `worker_core.crypto.decrypt` (envelope AES-256-GCM
-       compativel com API-06).
-    3. Chama `worker_core.fetch_nfse` com `DbNsuSource` (persiste
-       `companies.last_nsu`) + callback que:
-        a. INSERE `execution_items` com `ON CONFLICT (tenant_id, chave_nfse)
-           DO NOTHING` — **idempotencia**: retry do job nao duplica itens.
-        b. Sobe o XML bruto pro S3 (`S3StorageClient`).
-        c. Atualiza `execution_items.xml_object_key` com a chave S3.
-    4. Marca `executions.status` como `succeeded`/`partial`/`failed`
-       de acordo com o resumo da coleta.
-    5. Cria `occurrences` para erros categorizados (credencial, portal,
-       parse). Codigos alinhados com `docs/architecture/occurrence-codes.md`.
-
-Idempotencia / retry:
-- `execution_items` tem unique parcial `(tenant_id, chave_nfse) WHERE
-  chave_nfse IS NOT NULL` (DATA-03 / migration 0005). Usamos `ON CONFLICT
-  DO NOTHING` no INSERT; uma segunda rodada com a mesma chave nao insere
-  linha nova e nao levanta erro.
-- Upload S3 e determinista (mesma key, mesmo sha256) — re-subir o mesmo
-  XML e seguro.
-- Atualizacao de `companies.last_nsu` via `DbNsuSource` ja honra "nunca
-  regride".
 """
 
 from __future__ import annotations
@@ -64,10 +31,6 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional
-
-import logging
-from dataclasses import dataclass
 from typing import Callable, Optional
 from uuid import UUID
 

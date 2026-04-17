@@ -15,6 +15,76 @@
 
 ## Em Andamento
 
+- **API-14** — Scheduler de execucoes agendadas em
+  `apps/worker/worker/scheduler.py`. Processo separado (entry point
+  `python -m worker.scheduler` ou script `nfse-scheduler`) com
+  `apscheduler.BlockingScheduler` rodando `CronTrigger(minute="*",
+  timezone="UTC")` com `coalesce=True`/`max_instances=1`/
+  `misfire_grace_time=30` — dispara `run_tick()` a cada minuto. Tick:
+  (1) `SELECT id, tenant_id, company_id, cron_expr, timezone FROM
+  schedules WHERE enabled=true AND next_run_at IS NOT NULL AND
+  next_run_at <= :now` via `worker_core.db.get_admin_session`
+  (BYPASSRLS — schedules vivem em varios tenants); (2) para cada
+  schedule devido abre `get_tenant_session(tid)` (RLS via `SET LOCAL
+  app.current_tenant`) e resolve companies alvo — `company_id`
+  preenchido -> 1 row em `companies WHERE id = :cid AND deleted_at IS
+  NULL`; NULL -> todas as companies ativas do tenant (`WHERE
+  deleted_at IS NULL ORDER BY created_at ASC, id` — schedule
+  "tenant-wide"); (3) para cada company faz check de overlap `SELECT
+  1 FROM executions WHERE company_id = :cid AND status IN
+  ('queued','running') LIMIT 1` — se existir, insere occurrence
+  `SCHEDULE_OVERLAP` (severity `warning`, title "Disparo agendado
+  pulado por sobreposicao", detail `schedule_id=<uuid>
+  cron=<expr>`) e pula sem criar execution; caso contrario, INSERT
+  em `executions` (trigger=`schedule`, status=`queued`,
+  `period_start`/`period_end = CURRENT_DATE`) e enfileira
+  `worker_core.jobs.run_execution` via RQ na mesma fila usada por
+  API-07 (`API_REDIS_URL` + `API_QUEUE_NAME`, `job_timeout=3600`,
+  `result_ttl=86400`, `failure_ttl=604800`, `meta={"tenant_id":
+  str(tid), "trigger": "schedule"}`); (4) enqueue falha pos-INSERT
+  marca a execution como `failed` com `error_summary=
+  'enqueue_failed' + finished_at=now()`; (5) recalcula `next_run_at`
+  via novo `apps/worker/worker/cron_utils.py` (duplica
+  `apps/api/api/schedules/cron.py` com nota de fonte canonica —
+  mesmo padrao de `worker_core/crypto.py` do API-13) passando
+  `base=tick_now` para determinismo; `last_run_at = now()` so e
+  marcado quando ao menos 1 execucao foi criada (tick so de overlap
+  nao "relogia" o schedule mas ainda avanca `next_run_at` para
+  evitar loop). Cron invalido -> log `scheduler.tick.cron_invalid`
+  e pula a linha sem atualizar campos (preserva `next_run_at` para
+  o owner investigar). Graceful shutdown: SIGTERM/SIGINT chamam
+  `scheduler.shutdown(wait=True)` — combine com `stop_grace_period:
+  30s` no compose. Log estruturado em cada etapa: `scheduler.boot`,
+  `scheduler.tick.start/empty/fired/overlap/done`,
+  `scheduler.tick.cron_invalid`,
+  `scheduler.tick.enqueue_failed`,
+  `scheduler.tick.companies_lookup_failed`,
+  `scheduler.signal.received`, `scheduler.shutdown_failed`,
+  `scheduler.exit`. Novas deps run em `apps/worker/pyproject.toml`:
+  `apscheduler>=3.10`, `croniter>=2.0`; novo script entry-point
+  `nfse-scheduler = "worker.scheduler:main"`. `docs/architecture/
+  occurrence-codes.md` ganha linha `SCHEDULE_OVERLAP` (severity
+  `warning`). README do worker ganha secao "Scheduler (API-14)"
+  com instrucoes de rodar local + override de `CMD` no compose
+  reusando a mesma imagem `nfse-worker`. Sem mudanca em
+  `infra/compose/docker-compose.deploy.yml` (o servico `worker`
+  ainda esta comentado la — o scheduler entra junto quando o owner
+  habilitar deploy, reusando a mesma imagem). Testes: 11 em
+  `apps/worker/tests/test_cron_utils.py` + 11 em
+  `apps/worker/tests/test_scheduler.py` cobrindo a DoD (cron `* * * * *`
+  dispara e loga; overlap cria occurrence sem duplicar execucao).
+  `pytest apps/worker/tests/` = 34 passed; `pytest tests/test_jobs.py
+  tests/test_db_nsu.py tests/test_crypto_worker.py` = 32 passed
+  (suite existente do worker-core segue verde apos o drive-by fix em
+  `jobs.py`). Inclui drive-by fix em `packages/worker-core/worker_core/
+  jobs.py`: remove 34 linhas de docstring orfa do API-13 que
+  sobreviveu a um merge conflict resolvido incorretamente no PR
+  #140 (API-15) causando `SyntaxError: invalid character '—'
+  (U+2014)` em qualquer import de `worker_core` — bloqueio real
+  descoberto ao instalar o scheduler em editable mode e confirmado
+  por `python -c "import worker_core"` apos o fix. Move API-14 de
+  "Bloqueadas" (deps API-12 + API-13 mergeadas em main) para "Em
+  Andamento" (PR a abrir — Closes #38).
 - **API-13** — Worker consumer (Redis -> worker-core E2E):
   `apps/worker/` RQ consumer orquestrando execucao ponta-a-ponta +
   novos adapters em `packages/worker-core/worker_core/`. Handler
@@ -1254,7 +1324,33 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 
 ## Ultima atualizacao
 
-- Data: 2026-04-16
+- Data: 2026-04-17
+- PR: (a abrir) — API-14: scheduler de execucoes agendadas em
+  `apps/worker/worker/scheduler.py` + `cron_utils.py`. Processo
+  separado (`python -m worker.scheduler` / `nfse-scheduler`) com
+  `apscheduler.BlockingScheduler` disparando `run_tick()` a cada
+  minuto (`CronTrigger(minute="*", timezone="UTC")` +
+  `coalesce=True`/`max_instances=1`/`misfire_grace_time=30`). Tick
+  seleciona `schedules WHERE enabled=true AND next_run_at <= now()`
+  via `get_admin_session`, resolve companies alvo (uma ou tenant-wide
+  quando `company_id IS NULL`), checa overlap (`executions` em
+  `queued`/`running` para a mesma company -> occurrence
+  `SCHEDULE_OVERLAP` sem duplicar), cria `executions` com
+  `trigger='schedule'` e enfileira `worker_core.jobs.run_execution`
+  na mesma fila RQ usada por API-07, recomputa `next_run_at` e marca
+  `last_run_at=now()` so quando ao menos 1 execucao foi criada. Novas
+  deps `apscheduler>=3.10` + `croniter>=2.0` em
+  `apps/worker/pyproject.toml` + script `nfse-scheduler`. Adiciona
+  occurrence `SCHEDULE_OVERLAP` (severity `warning`) em
+  `docs/architecture/occurrence-codes.md`. README do worker ganha
+  secao "Scheduler (API-14)" com instrucao de override de `CMD` no
+  compose reusando a mesma imagem do worker. Inclui drive-by fix em
+  `packages/worker-core/worker_core/jobs.py` que tinha SyntaxError
+  por merge conflict mal resolvido no PR #140 (duas module-level
+  docstrings consecutivas). 34 testes novos em `apps/worker/tests/`
+  passando + suite do worker-core destravada (32 passed). Move API-14
+  de "Bloqueadas" (deps API-12 + API-13 mergeadas em main) para "Em
+  Andamento". Closes #38.
 - PR: (a abrir) — API-13: worker consumer RQ orquestrando execucao
   ponta-a-ponta. Novo pacote `apps/worker/` (entry point `python -m
   worker.main` lendo `API_REDIS_URL`+`API_QUEUE_NAME`; `HealthzServer`
