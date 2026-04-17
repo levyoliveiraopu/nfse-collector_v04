@@ -15,6 +15,87 @@
 
 ## Em Andamento
 
+- **APP-11** — Wizard de onboarding (3 passos, modal persistente):
+  novo pacote `apps/web-app/components/onboarding/` montado em
+  `<RequireAuth>` (cobre todas as rotas autenticadas via
+  `components/auth/require-auth.tsx`, sem tocar nos 6 layouts
+  individuais). `<OnboardingWizard>` renderiza modal bloqueante
+  enquanto o tenant nao concluiu os 3 passos. Deteccao do passo
+  atual e 100% derivada do backend em `use-onboarding-state.ts`
+  (nenhuma migration / flag nova):
+  1. **Passo 1 (empresa)** ativo quando `listCompanies(pageSize=1)`
+     devolve `total=0`. Form inline em `step-empresa.tsx` reusa
+     `CNPJInput` (DS-07) + `isValidCnpj`/`normalizeCnpj` — schema Zod
+     duplica deliberadamente ~20 linhas do `<NovaEmpresaDialog>` para
+     nao refatorar a entrega APP-03. Chama `createCompany` direto.
+  2. **Passo 2 (credencial)** ativo quando a 1a empresa existe mas
+     `fetchCredential(companyId)` retorna `null` ou status !=
+     `active` ou cert_not_after <= now. Form inline em
+     `step-credencial.tsx` usa `FileDropzone` + `SecretField` (DS-07)
+     e chama `uploadCredential` — reusa o mesmo mapa de `CredentialApiError`
+     do dialog APP-04 (traducao humana: senha incorreta, PFX invalido,
+     413 pfx_too_large, etc.).
+  3. **Passo 3 (execucao)** ativo quando `listExecutions(status=
+     "succeeded", page_size=1)` **e** `listExecutions(status=
+     "partial", page_size=1)` ambos retornam `total=0`. Form em
+     `step-execucao.tsx` enfileira uma coleta dos ultimos 30 dias
+     da 1a empresa via `createExecutions` e polla `getExecution` a
+     cada 2s (mesma cadencia de APP-05) ate estado terminal. Em
+     `succeeded|partial`, dispara **uma vez** `postFirstCollectionDone`
+     (novo cliente `lib/api/onboarding.ts`) que chama o endpoint
+     `POST /onboarding/first-collection-done` — backend insere linha
+     em `notifications` (`channel='email'`, `type='first_collection_done'`,
+     `payload='{}'::jsonb`, `user_id=<sub>`, `tenant_id=GUC`) com
+     idempotencia via lookup-antes-insert por (user_id, type, channel).
+     Ate um consumer SMTP aparecer (ticket futuro), a linha permanece
+     na outbox como `status='pending'`. Falha na notificacao nao
+     bloqueia a UX — a tela de "parabens" abre mesmo assim.
+  **Skip destacado (DoD)**: botao "Pular por enquanto" com texto muted
+  e aviso "Nao recomendado: sem credencial a coleta nao pode iniciar"
+  grava `Date.now()` em `localStorage` (`nfse:onboarding:dismissed:
+  <tenantId>:<userId>`). `isDismissalActive` suprime o modal por 24h;
+  apos expirar, wizard reaparece enquanto onboarding estiver
+  incompleto. Quando completo (isComplete=true + user clicou "Finalizar
+  1a coleta" que flipou o state via `refresh()`), mostra
+  `<OnboardingCelebration>` uma unica vez — fechar limpa o dismiss
+  (ja nao e preciso). Escolha de `<RequireAuth>` como host (nao de
+  cada layout individual) garante que o wizard aparece em `/empresas`,
+  `/execucoes`, `/ocorrencias` etc. sem duplicacao.
+  Novo endpoint backend em `apps/api/api/onboarding/routes.py`
+  (`POST /onboarding/first-collection-done`), registrado em
+  `main.py`; schemas Pydantic em `apps/api/api/onboarding/schemas.py`
+  (`FirstCollectionDoneOut` com `already_recorded` + `notification_id`).
+  RBAC: `_AnyMember = require_role("owner","admin","operator","viewer")`
+  — qualquer membro autenticado pode registrar, o wizard nao bloqueia
+  viewer de concluir onboarding (o step 3 exibe aviso "sem permissao
+  para disparar coleta" mas o banner persistente continua visivel).
+  Testes: 5 de integracao em `apps/api/tests/test_onboarding_routes_integration.py`
+  (feliz, idempotente, viewer pode registrar, sem token -> 401, RLS
+  isola cross-tenant) gated por `TEST_DATABASE_URL`; 8 vitest em
+  `apps/web-app/components/onboarding/onboarding-wizard.test.tsx`
+  (sessao nao autenticada, 3 passos de fato renderizam, onboarding
+  completo nao renderiza, skip grava localStorage e fecha, dismiss
+  ativo suprime, dismiss expirado reabre). `pnpm typecheck` verde,
+  `pnpm lint` zero warnings, `pnpm test` = 44 files / **398 passed**
+  (8 novos vs 390 em main).
+  **Drive-by fix (CHANGELOG `### Fixed`)**: trazidos pelo merge
+  de `task/APP-05-execucoes` + `task/APP-02-dashboard`, os arquivos
+  `apps/web-app/lib/api/{executions,occurrences}.ts` e
+  `apps/web-app/components/app-shell/nav-items.ts` estavam em `main`
+  com **artefatos de merge** (duplas declaracoes de interface,
+  imports soltos, funcoes duplicadas com assinaturas conflitantes,
+  array `NAV_ITEMS` nao fechado). TS declaration merging mascarou o
+  erro em runtime mas `pnpm typecheck` explodia com ~50 erros de
+  sintaxe. Reconstrucao minima: `executions.ts` e `occurrences.ts`
+  aceitam agora inputs em camelCase (APP-05, APP-06) **ou**
+  snake_case (APP-02 dashboard) — o serializador normaliza para
+  snake_case no URL. `nav-items.ts` reunido em um unico array com
+  todas as 11 rotas (Dashboard, Empresas, Execucoes, Agendamentos,
+  Ocorrencias, Notas, Certificados, Tenants, Assinatura, Usuarios,
+  Configuracoes). Nenhum consumidor precisou ser refatorado.
+  Move APP-11 de "Bloqueadas" (deps APP-03 + APP-04 + APP-05 todas
+  mergeadas em `main` via PRs #136/#133/#152) para "Em Andamento"
+  (PR a abrir — Closes #59).
 - **APP-07** — Pagina `/agendamentos` (UI de schedules cron):
   rota `apps/web-app/app/agendamentos/` (`layout.tsx` com
   `RequireAuth` + `AppShell`, `page.tsx` com header + view,
@@ -1818,6 +1899,34 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-17
+- PR: (a abrir) — APP-11: wizard de onboarding em 3 passos (cadastrar
+  empresa -> subir PFX -> rodar 1a coleta). Novo pacote
+  `apps/web-app/components/onboarding/` montado em `<RequireAuth>`
+  (cobre todas as rotas autenticadas). Deteccao do passo atual e 100%
+  derivada do backend (`use-onboarding-state`: listCompanies +
+  fetchCredential + listExecutions(status=succeeded|partial)), sem
+  migration. Skip visivel mas destacado como nao recomendado suprime
+  modal por 24h via localStorage `nfse:onboarding:dismissed:<tid>:<uid>`.
+  Passo 3 dispara `POST /onboarding/first-collection-done` (novo endpoint
+  FastAPI em `apps/api/api/onboarding/routes.py`, registrado em
+  `main.py`) — grava linha idempotente em `notifications`
+  (channel=email, type=first_collection_done, payload={}) por
+  (tenant_id, user_id, type); entrega SMTP fica como tech debt ate o
+  consumer de outbox existir. Novos schemas em `onboarding/schemas.py`
+  (`FirstCollectionDoneOut` com `already_recorded + notification_id`).
+  RBAC: qualquer membro autenticado registra (owner|admin|operator|
+  viewer). Novo cliente `lib/api/onboarding.ts`. Drive-by fix em
+  `apps/web-app/lib/api/{executions,occurrences}.ts` e
+  `apps/web-app/components/app-shell/nav-items.ts` — o merge do PR #152
+  deixou artefatos de conflito (interfaces duplicadas, imports soltos,
+  array nao fechado) que explodiam `pnpm typecheck` com ~50 erros de
+  sintaxe. Reconstrucao minima preserva ambos os shapes de input
+  (camelCase de APP-05 + snake_case de APP-02) sem refatorar nenhum
+  consumidor. `pnpm typecheck`/`pnpm lint` verdes; `pnpm test` = 44
+  files / 398 passed (+8 do wizard). 5 testes de integracao novos em
+  `apps/api/tests/test_onboarding_routes_integration.py` gated por
+  `TEST_DATABASE_URL`. Move APP-11 de "Bloqueadas" para "Em Andamento".
+  Closes #59.
 - PR: (a abrir) — DOCS-05: runbooks de infra (disco cheio, fila
   travada, SSL expirando, backup falhou). 4 novos arquivos em
   `docs/runbooks/` seguindo o template dos runbooks de dominio
