@@ -66,3 +66,46 @@ python -m worker.main
 # A partir da raiz do monorepo:
 docker build -f apps/worker/Dockerfile -t nfse-worker:dev .
 ```
+
+## Scheduler (API-14)
+
+O scheduler e um processo separado que le `schedules` a cada minuto
+e enfileira `worker_core.jobs.run_execution` (mesmo handler picado
+por este worker) quando `next_run_at <= now()`. Se a execucao
+anterior da mesma company ainda estiver `queued`/`running`, o tick
+**pula** a company e registra uma occurrence `SCHEDULE_OVERLAP`.
+
+### Rodar local
+
+```bash
+# A partir da raiz do monorepo (mesmas envs do worker):
+python -m worker.scheduler
+```
+
+### Container separado
+
+A mesma imagem Docker do worker serve ao scheduler — apenas sobrescreva
+o `CMD`:
+
+```yaml
+scheduler:
+  image: ghcr.io/.../nfse-worker:${DEPLOY_TAG}
+  command: ["python", "-m", "worker.scheduler"]
+  environment:
+    API_REDIS_URL: ...
+    API_DATABASE_URL: ...
+  restart: unless-stopped
+  stop_grace_period: 30s
+```
+
+### Variaveis
+
+Reusa as mesmas do worker (`API_REDIS_URL`, `API_QUEUE_NAME`,
+`API_DATABASE_URL`, `LOG_LEVEL`). Nenhuma env nova para o scheduler.
+
+### DoD
+
+- Tick cron `* * * * *` dispara a cada minuto (`apscheduler.BlockingScheduler`).
+- Overlap cria occurrence `SCHEDULE_OVERLAP` sem duplicar execution.
+- Log estruturado em cada tick: `scheduler.tick.start`, `scheduler.tick.fired`,
+  `scheduler.tick.overlap`, `scheduler.tick.done`.
