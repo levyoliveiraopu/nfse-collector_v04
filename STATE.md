@@ -15,6 +15,88 @@
 
 ## Em Andamento
 
+- **APP-02** — Dashboard com KPIs em `/dashboard`
+  (`apps/web-app/app/dashboard/page.tsx` passa a renderizar
+  `<DashboardView/>` — substitui o stub de KPIStatCards em `empty`).
+  Novo diretorio `apps/web-app/components/dashboard/` com 3
+  componentes client: `dashboard-view.tsx` orquestra header + atalhos
+  "Nova execucao" (`/execucoes/nova`, destino de APP-05) e "Ver
+  ocorrencias" (`/ocorrencias`, destino de APP-06, mesmo padrao
+  placeholder usado por `nav-items.ts`); `PeriodPicker` (DS-07)
+  controlado localmente em `useState` inicializado via
+  `computePresetRange("current_month")` (persistencia em URL fica como
+  follow-up — escopo enxuto deste PR); `kpi-cards.tsx` renderiza os
+  4 `<KPIStatCard>` (DS-05) consumindo react-query em paralelo
+  (existente `AppQueryClientProvider` no RootLayout, `staleTime=30s`);
+  `recent-timeline.tsx` lista as 10 execucoes mais recentes do
+  periodo com dot por status (`CheckCircle2`/`AlertTriangle`/`XCircle`
+  /`Loader2 animate-spin`/`Clock`/`MinusCircle`), linkando cada item
+  para `/execucoes/{id}` (destino APP-05). Componente `<Timeline>`
+  canonico do DS-08 ainda bloqueado — a lista provisoria fica isolada
+  nesta pagina com comentario `@deprecated ao entregar DS-08` e
+  sera substituida sem mudar a API publica quando DS-08 pousar.
+  KPIs implementados:
+  1. **"Notas coletadas no periodo"** — consome `GET /executions` com
+     `page_size=100` + `from`/`to` do `PeriodRange`, soma `items_ok`
+     client-side. Se `total > 100`, marca valor como aproximado
+     formatando `1.234+` e troca o hint para "Soma aproximada
+     (agregacao server-side em follow-up)." — follow-up `?aggregate=1`
+     em API-08 ou novo endpoint registrado como debito tecnico.
+  2. **"Execucoes OK / total"** — 2 chamadas paralelas com
+     `page_size=1` a `GET /executions` (uma sem filtro, outra com
+     `status=succeeded`) usando apenas o `total` do envelope. Exibe
+     `<ok> / <total>` formatado em pt-BR; estado `empty` quando
+     `total=0` no periodo.
+  3. **"Ocorrencias abertas"** — `GET /occurrences?status=open&page_size=1`
+     usando o `total` do envelope. **Nao** filtra por periodo
+     (inbox reflete estado atual, nao a janela do dashboard — decisao
+     explicita anotada no codigo).
+  4. **"Certificados a vencer em 30d"** — permanece em
+     `state="empty"` com hint "Disponivel apos endpoint REST de
+     credenciais (follow-up)." porque API-06 popula
+     `company_credentials.cert_not_after` mas ainda NAO expoe listagem
+     REST agregada — `GET /companies/{id}/credential` (unitario) nao
+     serve para contar vencimentos do tenant. Follow-up: expor
+     `GET /credentials?expiring_in_days=30` antes de APP-05 (fora da
+     trilha APP, fica como debito tecnico rastreavel).
+  Clientes API novos: `apps/web-app/lib/api/executions.ts`
+  (`listExecutions(params, ctx)` + `periodDateToUtcIso(day, boundary)`
+  que mapeia `YYYY-MM-DD` do `PeriodRange` para ISO 8601 UTC com `to`
+  exclusivo — a API filtra `started_at < to`, entao `endExclusive`
+  avanca 1 dia; `EXECUTION_STATUS_LABEL` em pt-BR) e
+  `apps/web-app/lib/api/occurrences.ts` (`listOccurrences`). Ambos
+  reusam `apiFetch` de `lib/auth/api-client.ts` (injeta access token
+  em memoria + refresh automatico em 401) e a interface
+  `ApiCallContext` exportada de `lib/api/companies.ts`. Erros HTTP
+  propagam como `ApiError(status, detail)` — react-query trata via
+  `isError` e os componentes renderizam `state="error"`/mensagem
+  dedicada no KPIStatCard ou no timeline. Filtro de periodo vai
+  para ambos via `periodToApiWindow()` em `kpi-cards.tsx`;
+  query keys incluem `[period.from, period.to]` para cache
+  correto por janela. Layout grid: 4 cards responsivos
+  (`grid-cols-1 sm:grid-cols-2 xl:grid-cols-4`), PeriodPicker em
+  card com border/shadow alinhado ao DS-03, timeline em card
+  com header descritivo ("Ultimas execucoes — As 10 execucoes mais
+  recentes no periodo selecionado"). Specs vitest em
+  `apps/web-app/components/dashboard/dashboard-view.test.tsx`
+  (5 casos): (1) renderiza os 4 KPIStatCards, `role="group"` do
+  PeriodPicker, links dos atalhos com `href` correto; (2) 10 items
+  na timeline com link `/execucoes/exec-1`; (3) mensagem "Nenhuma
+  execucao registrada no periodo" quando lista vazia; (4) KPI
+  "Ocorrencias abertas" exibe `total` do envelope (7); (5) KPI
+  "Certificados a vencer" permanece `data-state="empty"` (prova
+  defensiva do follow-up). Mocks de `useAuth`, `listExecutions`,
+  `listOccurrences` e `next/navigation`, seguindo mesmo padrao de
+  `empresas-view.test.tsx`. `pnpm typecheck` e `pnpm lint` verdes;
+  `pnpm test` = 27 arquivos / 244 testes (5 novos). DoD "< 1s com
+  dados de teste" cumprido estruturalmente — as 4 chamadas rodam em
+  paralelo (react-query default), com cache de 30s do
+  `AppQueryClientProvider`; validacao manual de performance fica a
+  cargo do owner apos deploy. "Links levam as telas corretas":
+  timeline -> `/execucoes/{id}` (APP-05), atalhos ->
+  `/execucoes/nova` (APP-05) e `/ocorrencias` (APP-06), KPIs sem
+  navegacao. Move APP-02 para "Em Andamento" (deps DS-05 e API-08
+  ambas mergeadas em `main`) (PR a abrir — Closes #50).
 - **API-13** — Worker consumer (Redis -> worker-core E2E):
   `apps/worker/` RQ consumer orquestrando execucao ponta-a-ponta +
   novos adapters em `packages/worker-core/worker_core/`. Handler
@@ -1254,7 +1336,42 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 
 ## Ultima atualizacao
 
-- Data: 2026-04-16
+- Data: 2026-04-17
+- PR: (a abrir) — APP-02: dashboard com KPIs em `/dashboard`.
+  `apps/web-app/app/dashboard/page.tsx` passa a renderizar
+  `<DashboardView/>` (novo em `components/dashboard/dashboard-view.tsx`)
+  com: `PeriodPicker` (DS-07) controlado localmente em `useState`
+  inicializado em `current_month`; 4 `<KPIStatCard>` (DS-05) em
+  `kpi-cards.tsx` consumindo react-query em paralelo — (1) "Notas
+  coletadas no periodo" soma `items_ok` da 1a pagina do
+  `GET /executions?from&to&page_size=100` e marca aproximado (`1.234+`)
+  quando `total > 100`; (2) "Execucoes OK / total" = 2 chamadas
+  `page_size=1` usando `total` do envelope (sem e com
+  `status=succeeded`); (3) "Ocorrencias abertas" = `GET /occurrences?`
+  `status=open&page_size=1`, reflete estado atual sem filtro de
+  periodo (decisao explicita); (4) "Certificados a vencer em 30d"
+  fica em `state="empty"` com hint de follow-up — API-06 popula
+  `cert_not_after` mas nao expoe listagem REST agregada; timeline
+  provisoria em `recent-timeline.tsx` lista as 10 execucoes mais
+  recentes do periodo com dot por status e link
+  `/execucoes/{id}` (substitutivel sem mudar API publica quando
+  DS-08 entregar `<Timeline>` canonico); atalhos "Nova execucao" ->
+  `/execucoes/nova` (APP-05) e "Ver ocorrencias" -> `/ocorrencias`
+  (APP-06). Clientes API novos `lib/api/executions.ts`
+  (`listExecutions` + `periodDateToUtcIso` mapeando `YYYY-MM-DD` ->
+  ISO 8601 UTC com `to` exclusivo — `endExclusive` avanca 1 dia
+  porque a API filtra `started_at < to`) e `lib/api/occurrences.ts`
+  (`listOccurrences`), ambos via `apiFetch` + `ApiError`. Specs
+  vitest `components/dashboard/dashboard-view.test.tsx` (5 casos:
+  renderiza 4 cards + atalhos com `href` corretos, timeline com
+  10 items linkando `/execucoes/{id}`, empty state da timeline,
+  KPI ocorrencias exibe `total`, card de certificados defensivamente
+  `data-state="empty"`). `pnpm typecheck` + `pnpm lint` + `pnpm test`
+  (27 arquivos / 244 testes) verdes. Follow-ups rastreados: endpoint
+  `GET /credentials?expiring_in_days=30` e agregacao server-side em
+  `GET /executions` (hoje paginacao client-side cobre o dashboard com
+  limite aproximado). Move APP-02 para "Em Andamento" (deps DS-05 +
+  API-08 mergeadas em `main`). Closes #50.
 - PR: (a abrir) — API-13: worker consumer RQ orquestrando execucao
   ponta-a-ponta. Novo pacote `apps/worker/` (entry point `python -m
   worker.main` lendo `API_REDIS_URL`+`API_QUEUE_NAME`; `HealthzServer`
