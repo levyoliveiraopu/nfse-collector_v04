@@ -15,6 +15,47 @@
 
 ## Em Andamento
 
+- **DS-09** — Cliente API tipado gerado do OpenAPI: nova camada em
+  `apps/web-app/lib/api/` com `generated/schema.d.ts` (tipos emitidos
+  por `openapi-typescript` v7 a partir do OpenAPI da `apps/api`),
+  `client.ts` (factory `createApiClient` + singleton
+  `getApiClient`/`configureApiClient`/`__resetApiClientForTests`
+  baseados em `openapi-fetch` v0.13), `types.ts` (re-exports de
+  `paths`/`components`/`operations`/`Schemas`), `hooks.ts` (hooks
+  react-query base `useHealth`/`useVersion`/`useMe`/`useCompanies`/
+  `useExecutions`, cada um aceitando `client` opcional para testes) e
+  `README.md`. Middleware de auth em duas pontas: (1) `onRequest`
+  injeta `Authorization: Bearer <token>` quando `getAccessToken`
+  devolve token nao-nulo e o header ainda nao esta setado; (2)
+  `onResponse` trata 401 chamando `tryRefresh()` da APP-01, retenta a
+  request **uma unica vez** marcando header sentinela `x-ds09-retry:
+  1` (evita loop), propaga o novo token via `onTokenRefreshed` e, em
+  falha do refresh, chama `onAuthFailure` (default:
+  `window.location.href = "/login"`). Script
+  `apps/web-app/scripts/generate-api.mjs` (expoe
+  `pnpm --filter web-app generate-api`) aceita `--url`/`--file` ou
+  env `API_OPENAPI_URL` (default `http://localhost:8000/openapi.json`),
+  chama `openapiTS` + `astToString` programaticamente e so reescreve
+  `generated/schema.d.ts` quando o conteudo muda (idempotencia do DoD
+  "re-run e idempotente" validada manualmente rodando o script duas
+  vezes — segunda execucao imprime `sem mudancas`). Novas deps em
+  `apps/web-app/package.json`: `openapi-fetch@^0.13` (run) e
+  `openapi-typescript@^7` (dev). 8 testes vitest novos
+  (`lib/api/client.test.ts` com 5 casos — injecao de Authorization,
+  ausencia de token, retry em 401 com refresh bem-sucedido,
+  `onAuthFailure` quando refresh falha e prova de nao-loop com
+  header sentinela — e `lib/api/hooks.test.tsx` com 3 — `useHealth`
+  feliz, `useCompanies` com querystring, propagacao de erro 500).
+  Clientes legados (`lib/api/companies.ts`, `lib/auth/api-client.ts`,
+  `lib/users/api-client.ts`, `lib/companies/credentials.ts`)
+  **preservados sem alteracao** — migracao para o novo cliente fica
+  para tickets especificos de cada trilha APP. `pnpm --filter web-app
+  typecheck` verde, `next lint` zero warnings, `vitest run` =
+  247 passed (228 anteriores + 8 novos DS-09 + rebalanceamento da
+  suite). Move DS-09 de "Bloqueadas" (dependencias DS-01 e API-01 ja
+  concluidas) para "Em Andamento"
+  (PR a abrir — Closes #48).
+
 - **API-14** — Scheduler de execucoes agendadas em
   `apps/worker/worker/scheduler.py`. Processo separado (entry point
   `python -m worker.scheduler` ou script `nfse-scheduler`) com
@@ -1427,6 +1468,34 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 ## Ultima atualizacao
 
 - Data: 2026-04-17
+- PR: (a abrir) — DS-09: cliente API TypeScript gerado do OpenAPI.
+  Nova camada `apps/web-app/lib/api/` com `generated/schema.d.ts`
+  (emitido por `openapi-typescript` v7), `client.ts` (factory
+  `createApiClient` + singleton sobre `openapi-fetch` v0.13 com
+  middleware que injeta `Authorization: Bearer <token>` e retenta
+  uma unica vez em 401 via `tryRefresh` da APP-01 — `onAuthFailure`
+  faz redirect hard para `/login` em caso de falha; header sentinela
+  `x-ds09-retry: 1` evita loop), `types.ts` (re-exports de
+  `paths`/`components`/`operations`), `hooks.ts` (hooks react-query
+  base `useHealth`/`useVersion`/`useMe`/`useCompanies`/`useExecutions`)
+  e `README.md`. Script
+  `apps/web-app/scripts/generate-api.mjs` (expoe `pnpm --filter
+  web-app generate-api`, aceita `--url`/`--file` ou `API_OPENAPI_URL`,
+  default `http://localhost:8000/openapi.json`) chama
+  `openapiTS` + `astToString` e so reescreve quando o conteudo muda —
+  idempotencia do DoD validada rodando duas vezes consecutivas.
+  Novas deps em `apps/web-app/package.json`: `openapi-fetch@^0.13`
+  (run) e `openapi-typescript@^7` (dev). 8 testes vitest novos
+  (`lib/api/client.test.ts` com 5, `lib/api/hooks.test.tsx` com 3)
+  cobrindo injecao de Authorization, retry pos-refresh, redirect em
+  falha de refresh e prova de nao-loop. Clientes legados em
+  `lib/api/companies.ts`, `lib/auth/api-client.ts`,
+  `lib/users/api-client.ts` e `lib/companies/credentials.ts`
+  preservados sem alteracao — migracao para o novo cliente ficara
+  para tickets APP especificos. `pnpm --filter web-app typecheck` /
+  `lint` / `vitest run` verdes (247 passed). Move DS-09 de
+  "Bloqueadas" (dependencias DS-01 e API-01 concluidas) para "Em
+  Andamento". Closes #48.
 - PR: (a abrir) — API-14: scheduler de execucoes agendadas em
   `apps/worker/worker/scheduler.py` + `cron_utils.py`. Processo
   separado (`python -m worker.scheduler` / `nfse-scheduler`) com
