@@ -109,8 +109,10 @@ Regras escritas (aplicadas por `ensure_can_manage_member`):
 | `GET /executions/{id}/items`          |   R   |   R   |    R     |   R    |
 | `POST /executions` (dispara manual)   |   W   |   W   |    W     |   —    |
 | `POST /executions/{id}/cancel`        |   W   |   W   |    W     |   —    |
-| `POST /executions/{id}/reprocess`     |   W   |   W   |    W     |   —    |
 | Download de XLSX / artefatos          |   R   |   R   |    R     |   R    |
+
+Reprocessamento (seletivo, com 3 escopos) fica no recurso dedicado
+`/reprocess` (API-10) — ver secao propria abaixo.
 
 ### Occurrences (inbox operacional) — implementacao em API-09
 
@@ -137,6 +139,30 @@ Viewer pode consultar o status de um export que ja foi pedido, mas
 nao pode criar novos pedidos. `GET` de export em `status='ready'`
 devolve URL pre-assinada 1h (mesmo TTL de API-11) e grava audit
 `export.download_url` — a URL em si nunca e persistida.
+
+### Reprocess (jobs de reprocessamento) — implementacao em API-10
+
+| Endpoint                          | owner | admin | operator | viewer |
+|-----------------------------------|:-----:|:-----:|:--------:|:------:|
+| `POST /reprocess`                 |   W   |   W   |    W     |   —    |
+| `GET /reprocess/{id}`             |   R   |   R   |    R     |   R    |
+
+Escopos aceitos no body do `POST /reprocess` (exatamente 1):
+
+1. `{"execution_item_ids": [...]}` — reprocessa items especificos; o
+   handler agrupa por `(company_id, period_start, period_end)` da
+   execution-pai e cria 1 execution filha por tupla distinta.
+2. `{"company_id": "...", "nsus": [...]}` — reprocessa NSUs de uma
+   unica company; o handler infere o periodo a partir do
+   `MIN/MAX(data_emissao)` dos items existentes.
+3. `{"company_id": "...", "period": {...}, "statuses": [...]}` —
+   reprocessa a janela inteira; `statuses` e auditado em
+   `reprocess_jobs.scope`.
+
+Cada POST grava 1 linha em `reprocess_jobs` + N linhas em `executions`
+com `trigger='reprocess'` e enfileira N jobs RQ (mesmo pipeline de
+`POST /executions`). O unique parcial em `execution_items` garante
+idempotencia — items ja `ok` nao duplicam ao serem revisitados.
 
 ### Schedules (agendamentos) — implementacao em API-12
 
