@@ -2,12 +2,17 @@
 
 import { useEffect, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { OnboardingWizard } from "@/components/onboarding/onboarding-wizard";
 import { useAuth } from "./auth-provider";
 
 /**
  * Guard client-side: redireciona para `/login` se a sessao for resolvida
  * como nao autenticada. Enquanto o AuthProvider esta `loading`, mostra
  * fallback (evita flash de conteudo protegido).
+ *
+ * Alem do guard, monta `<OnboardingWizard/>` (APP-11) — renderizado em
+ * todas as rotas autenticadas para que o modal persista enquanto o
+ * tenant nao conclui os 3 passos iniciais.
  */
 export function RequireAuth({ children }: { children: ReactNode }) {
   const { status } = useAuth();
@@ -31,5 +36,10 @@ export function RequireAuth({ children }: { children: ReactNode }) {
     );
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      <OnboardingWizard />
+    </>
+  );
 }

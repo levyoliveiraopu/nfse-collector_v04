@@ -23,6 +23,7 @@ from .executions.routes import router as executions_router
 from .exports.routes import router as exports_router
 from .logging import configure_logging
 from .occurrences.routes import router as occurrences_router
+from .onboarding.routes import router as onboarding_router
 from .reprocess.routes import router as reprocess_router
 
 
@@ -78,6 +79,7 @@ def create_app() -> FastAPI:
     app.include_router(files_router)
     app.include_router(executions_router)
     app.include_router(exports_router)
+    app.include_router(onboarding_router)
     app.include_router(reprocess_router)
 
     return app

@@ -10,21 +10,18 @@
  *   `companies_not_found` / `credential_missing_or_expired` vem do 422
  *   estruturado do backend; `queue_unavailable` do 502; `forbidden` do
  *   403; `not_found` do 404.
+ *
+ * Convencao de parametros: o input aceita **camelCase** (pageSize,
+ * companyId) OU **snake_case** (page_size, company_id). Isso preserva
+ * os 2 consumidores pre-existentes: APP-02 (dashboard) usa snake_case
+ * por pegar `...window` ja no shape da API; APP-05 (execucoes list
+ * etc.) usa camelCase. A querystring final e sempre snake_case,
+ * alinhada com a API FastAPI.
  */
 import { ApiError, apiFetch } from "@/lib/auth/api-client";
 import type { AuthSessionPayload } from "@/lib/auth/types";
 
 export type ExecutionTrigger = "manual" | "schedule" | "api" | "reprocess";
- * Cliente HTTP de `/executions` (consome API-07 + API-08).
- *
- * Usado pelo dashboard (APP-02) para KPIs agregados e timeline das
- * ultimas execucoes. A agregacao "notas coletadas" e feita client-side
- * somando `items_ok` da primeira pagina (`page_size=100`); quando o
- * total excede 100, o valor e marcado como aproximado no chamador.
- */
-import { ApiError, apiFetch } from "@/lib/auth/api-client";
-
-import type { ApiCallContext } from "./companies";
 
 export type ExecutionStatus =
   | "queued"
@@ -45,7 +42,6 @@ export interface Execution {
   tenant_id: string;
   company_id: string;
   trigger: ExecutionTrigger;
-  trigger: "manual" | "schedule" | "api" | "reprocess";
   status: ExecutionStatus;
   period_start: string;
   period_end: string;
@@ -127,12 +123,6 @@ export type ExecutionsErrorCode =
 export class ExecutionsApiError extends Error {
   status: number;
   code: ExecutionsErrorCode;
-  /**
-   * Dados extras vindos do backend — quando aplicavel. Para
-   * `companies_not_found`/`credential_missing_or_expired` a API devolve
-   * a lista de UUIDs afetados; a UI usa isso para mostrar quais empresas
-   * precisam de correcao antes de re-submeter.
-   */
   extra: { companyIds: string[] };
 
   constructor(
@@ -256,10 +246,17 @@ function wrapApiError(err: unknown): never {
   );
 }
 
+/**
+ * Parametros de `listExecutions`. Aceita os dois estilos de nomeacao
+ * (camelCase vindo de APP-05 e snake_case vindo de APP-02) — o
+ * serializador normaliza para snake_case no URL.
+ */
 export interface ListExecutionsParams {
   page?: number;
   pageSize?: number;
+  page_size?: number;
   companyId?: string;
+  company_id?: string;
   status?: ExecutionStatus;
   /** ISO 8601 UTC (started_at >=). */
   from?: string;
@@ -267,27 +264,16 @@ export interface ListExecutionsParams {
   to?: string;
 }
 
-export function buildListQuery(params: ListExecutionsParams): string {
-  const sp = new URLSearchParams();
-  sp.set("page", String(params.page ?? 1));
-  sp.set("page_size", String(params.pageSize ?? 20));
-  if (params.companyId) sp.set("company_id", params.companyId);
-export interface ListExecutionsParams {
-  page?: number;
-  page_size?: number;
-  company_id?: string;
-  status?: ExecutionStatus;
-  /** ISO 8601 UTC. Filtra `started_at >= from`. */
-  from?: string;
-  /** ISO 8601 UTC. Filtra `started_at < to`. */
-  to?: string;
-}
+const DEFAULT_LIST_PAGE_SIZE = 20;
 
-function buildQuery(params: ListExecutionsParams): string {
+export function buildListQuery(params: ListExecutionsParams = {}): string {
   const sp = new URLSearchParams();
-  if (params.page !== undefined) sp.set("page", String(params.page));
-  if (params.page_size !== undefined) sp.set("page_size", String(params.page_size));
-  if (params.company_id) sp.set("company_id", params.company_id);
+  const page = params.page ?? 1;
+  const pageSize = params.pageSize ?? params.page_size ?? DEFAULT_LIST_PAGE_SIZE;
+  sp.set("page", String(page));
+  sp.set("page_size", String(pageSize));
+  const companyId = params.companyId ?? params.company_id;
+  if (companyId) sp.set("company_id", companyId);
   if (params.status) sp.set("status", params.status);
   if (params.from) sp.set("from", params.from);
   if (params.to) sp.set("to", params.to);
@@ -331,14 +317,20 @@ export async function getExecution(
 export interface ListItemsParams {
   page?: number;
   pageSize?: number;
+  page_size?: number;
   status?: ExecutionItemStatus;
   nsu?: number;
 }
 
-export function buildItemsQuery(params: ListItemsParams): string {
+const DEFAULT_ITEMS_PAGE_SIZE = 50;
+
+export function buildItemsQuery(params: ListItemsParams = {}): string {
   const sp = new URLSearchParams();
   sp.set("page", String(params.page ?? 1));
-  sp.set("page_size", String(params.pageSize ?? 50));
+  sp.set(
+    "page_size",
+    String(params.pageSize ?? params.page_size ?? DEFAULT_ITEMS_PAGE_SIZE),
+  );
   if (params.status) sp.set("status", params.status);
   if (typeof params.nsu === "number") sp.set("nsu", String(params.nsu));
   return sp.toString();
@@ -411,33 +403,6 @@ export function decideExecutionBadge(
     case "partial":
       return "warning";
   }
-async function readJsonOrThrow<T>(res: Response): Promise<T> {
-  const text = await res.text();
-  if (!res.ok) {
-    let detail: unknown = text;
-    try {
-      detail = text ? JSON.parse(text) : null;
-    } catch {
-      // mantem string crua
-    }
-    throw new ApiError(res.status, detail);
-  }
-  if (!text) return null as T;
-  return JSON.parse(text) as T;
-}
-
-export async function listExecutions(
-  params: ListExecutionsParams,
-  ctx: ApiCallContext,
-): Promise<ExecutionListResponse> {
-  const qs = buildQuery(params);
-  const res = await apiFetch(`/executions${qs ? `?${qs}` : ""}`, {
-    method: "GET",
-    accessToken: ctx.accessToken,
-    onTokenRefreshed: ctx.onTokenRefreshed,
-    signal: ctx.signal,
-  });
-  return readJsonOrThrow<ExecutionListResponse>(res);
 }
 
 /**
@@ -449,7 +414,6 @@ export function periodDateToUtcIso(
   day: string,
   boundary: "start" | "endExclusive",
 ): string {
-  // `boundary === "endExclusive"` avanca 1 dia — a API filtra `started_at < to`.
   const [y, m, d] = day.split("-").map(Number);
   const base = new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
   if (boundary === "endExclusive") {
@@ -474,21 +438,16 @@ export const EXECUTION_ITEM_STATUS_LABEL: Record<ExecutionItemStatus, string> = 
   pending: "Pendente",
 };
 
-export function computeProgress(execution: Pick<
-  Execution,
-  "items_total" | "items_ok" | "items_fail" | "status"
->): { processed: number; total: number; percent: number } {
+export function computeProgress(
+  execution: Pick<Execution, "items_total" | "items_ok" | "items_fail" | "status">,
+): { processed: number; total: number; percent: number } {
   const processed = execution.items_ok + execution.items_fail;
   const total = Math.max(execution.items_total, processed);
-  // Quando queued/running sem items, exibe indeterminado (0).
-  const percent = total === 0 ? 0 : Math.min(100, Math.round((processed / total) * 100));
+  const percent =
+    total === 0 ? 0 : Math.min(100, Math.round((processed / total) * 100));
   return { processed, total, percent };
 }
 
 export function isTerminalStatus(status: ExecutionStatus): boolean {
   return EXECUTION_TERMINAL_STATUSES.has(status);
 }
-  partial: "Parcial",
-  failed: "Falhou",
-  cancelled: "Cancelada",
-};
