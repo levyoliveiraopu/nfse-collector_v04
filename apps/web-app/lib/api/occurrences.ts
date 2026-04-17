@@ -1,6 +1,26 @@
 /**
  * Cliente HTTP de `/occurrences` (consome API-09).
  *
+ * Espelha o contrato de `apps/api/api/occurrences/schemas.py`:
+ * - `OccurrenceOut`               -> `Occurrence`
+ * - `OccurrenceListOut`           -> `OccurrenceListResponse`
+ * - `OccurrenceResolveIn`         -> `ResolvePayload`
+ * - `OccurrenceAssignIn`          -> `AssignPayload`
+ *
+ * Convencoes iguais a `companies.ts` (APP-03): `apiFetch` faz refresh de
+ * access token em 401; erros 4xx/5xx viram `ApiError`.
+ */
+import { ApiError, apiFetch } from "@/lib/auth/api-client";
+import type { AuthSessionPayload } from "@/lib/auth/types";
+import type { FetchParams, FetchResult } from "@/components/ui/data-table";
+
+export type OccurrenceSeverity = "info" | "warning" | "error" | "critical";
+export type OccurrenceStatus =
+  | "open"
+  | "ack"
+  | "snoozed"
+  | "resolved"
+  | "ignored";
  * Usado pelo dashboard (APP-02) para a contagem de ocorrencias
  * abertas. Para esse KPI basta o `total` do envelope — por isso
  * consultamos com `page_size=1`.
@@ -37,6 +57,37 @@ export interface OccurrenceListResponse {
   total: number;
 }
 
+export interface ResolvePayload {
+  note: string;
+}
+
+export interface AssignPayload {
+  assignee_user_id: string;
+}
+
+export interface ApiCallContext {
+  accessToken: string | null;
+  onTokenRefreshed?: (payload: AuthSessionPayload) => void;
+  signal?: AbortSignal;
+}
+
+/** Mapeia parametros do `<DataTable>` para a querystring de `GET /occurrences`. */
+export function buildListQuery(params: FetchParams): string {
+  const sp = new URLSearchParams();
+  sp.set("page", String(params.pagination.pageIndex + 1));
+  sp.set("page_size", String(params.pagination.pageSize));
+  const status = params.filters.status;
+  if (typeof status === "string" && status.length > 0) {
+    sp.set("status", status);
+  }
+  const severity = params.filters.severity;
+  if (typeof severity === "string" && severity.length > 0) {
+    sp.set("severity", severity);
+  }
+  const companyId = params.filters.company_id;
+  if (typeof companyId === "string" && companyId.trim().length > 0) {
+    sp.set("company_id", companyId.trim());
+  }
 export interface ListOccurrencesParams {
   page?: number;
   page_size?: number;
@@ -71,6 +122,10 @@ async function readJsonOrThrow<T>(res: Response): Promise<T> {
 }
 
 export async function listOccurrences(
+  params: FetchParams,
+  ctx: ApiCallContext,
+): Promise<FetchResult<Occurrence>> {
+  const qs = buildListQuery(params);
   params: ListOccurrencesParams,
   ctx: ApiCallContext,
 ): Promise<OccurrenceListResponse> {
@@ -81,5 +136,89 @@ export async function listOccurrences(
     onTokenRefreshed: ctx.onTokenRefreshed,
     signal: ctx.signal,
   });
+  const data = await readJsonOrThrow<OccurrenceListResponse>(res);
+  return { rows: data.items, total: data.total };
+}
+
+export async function getOccurrence(
+  id: string,
+  ctx: ApiCallContext,
+): Promise<Occurrence> {
+  const res = await apiFetch(`/occurrences/${id}`, {
+    method: "GET",
+    accessToken: ctx.accessToken,
+    onTokenRefreshed: ctx.onTokenRefreshed,
+    signal: ctx.signal,
+  });
+  return readJsonOrThrow<Occurrence>(res);
+}
+
+export async function acknowledgeOccurrence(
+  id: string,
+  ctx: ApiCallContext,
+): Promise<Occurrence> {
+  const res = await apiFetch(`/occurrences/${id}/acknowledge`, {
+    method: "POST",
+    accessToken: ctx.accessToken,
+    onTokenRefreshed: ctx.onTokenRefreshed,
+    signal: ctx.signal,
+  });
+  return readJsonOrThrow<Occurrence>(res);
+}
+
+export async function resolveOccurrence(
+  id: string,
+  body: ResolvePayload,
+  ctx: ApiCallContext,
+): Promise<Occurrence> {
+  const res = await apiFetch(`/occurrences/${id}/resolve`, {
+    method: "POST",
+    accessToken: ctx.accessToken,
+    onTokenRefreshed: ctx.onTokenRefreshed,
+    body: JSON.stringify(body),
+    headers: { "Content-Type": "application/json" },
+    signal: ctx.signal,
+  });
+  return readJsonOrThrow<Occurrence>(res);
+}
+
+export async function assignOccurrence(
+  id: string,
+  body: AssignPayload,
+  ctx: ApiCallContext,
+): Promise<Occurrence> {
+  const res = await apiFetch(`/occurrences/${id}/assign`, {
+    method: "POST",
+    accessToken: ctx.accessToken,
+    onTokenRefreshed: ctx.onTokenRefreshed,
+    body: JSON.stringify(body),
+    headers: { "Content-Type": "application/json" },
+    signal: ctx.signal,
+  });
+  return readJsonOrThrow<Occurrence>(res);
+}
+
+/**
+ * Helpers de apresentacao.
+ */
+
+export const OCCURRENCE_STATUS_LABEL: Record<OccurrenceStatus, string> = {
+  open: "Aberta",
+  ack: "Reconhecida",
+  snoozed: "Adiada",
+  resolved: "Resolvida",
+  ignored: "Ignorada",
+};
+
+export const OCCURRENCE_SEVERITY_LABEL: Record<OccurrenceSeverity, string> = {
+  info: "Info",
+  warning: "Aviso",
+  error: "Erro",
+  critical: "Critico",
+};
+
+/** Status que nao aceitam mais transicao de acknowledge/resolve. */
+export function isTerminal(status: OccurrenceStatus): boolean {
+  return status === "resolved" || status === "ignored";
   return readJsonOrThrow<OccurrenceListResponse>(res);
 }
