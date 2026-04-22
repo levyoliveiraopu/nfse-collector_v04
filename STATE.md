@@ -1885,6 +1885,9 @@
 
 - **SITE-00..10** — aguardando definicao do nome comercial.
 
+> APP-08 sai de "Bloqueadas" (dependencias API-11 em #128 e API-15 em
+> #140 ja em `main`) para "Em Andamento" nesta atualizacao.
+
 ## Limite de WIP
 
 Maximo **4 tarefas** em "Em Andamento" simultaneamente.
@@ -1898,7 +1901,72 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 
 ## Ultima atualizacao
 
-- Data: 2026-04-17
+- Data: 2026-04-22
+- PR: (a abrir) — APP-08: pagina `/arquivos` em
+  `apps/web-app/app/arquivos/` consumindo API-11 (listagem + URL
+  pre-assinada 1h) e API-15 (export ZIP assincrono). Lista paginada
+  filtravel por `kind` (UI expoe XMLs/Exports/Relatorios; `pfx` e
+  `other` ocultos como internos), `company` (select alimentado por
+  `listCompanies(page_size=100)`) e `periodo` via `<PeriodPicker>`
+  (DS-07) convertendo `YYYY-MM-DD` em ISO 8601 UTC com `to` exclusivo.
+  **Banner de retencao permanente** (`retention-banner.tsx` com
+  `role="note"` + `data-testid="retention-banner"`, nao descartavel,
+  cobre retencao 90d default e 30d de exports) satisfaz DoD "banner
+  visivel sempre" (ADR-003). Acao "Baixar" chama `getFileDownloadUrl`
+  (API-11) e abre a URL pre-assinada 1h em nova aba via
+  `window.open(url, "_blank", "noopener,noreferrer")` — a URL nunca e
+  persistida no estado do front. `<GerarZipDialog>` (gated RBAC
+  operator+) dispara `POST /exports kind="zip_xml"` e faz **polling em
+  `GET /exports/{id}` a cada 3s** com maquina de estados declarativa
+  (`idle | submitting | polling{status} | ready{record} | empty |
+  failed | timed_out`) — `ready` exibe link `<a href={download_url}
+  target="_blank">Baixar ZIP`, `empty` (status canonico de API-15)
+  exibe mensagem amigavel, `timed_out` (10 min) orienta atualizar a
+  pagina; modal fica nao-descartavel enquanto em `submitting|polling`.
+  Ao atingir `ready` invalida a query `[files:list]` para que o novo
+  `file` (kind=export) apareca na listagem sem refresh. Novos clientes
+  HTTP em `apps/web-app/lib/api/`: `files.ts` (tipos `ApiFile`,
+  `FileListResponse`, `FileUrlResponse`, `listFiles`,
+  `getFileDownloadUrl`, `FilesApiError` com codigos `not_found`/
+  `forbidden`/`unauthorized`/`presign_unavailable`/`validation_error`/
+  `network`/`unknown`, helpers `FILE_KIND_LABEL`, `UI_FILTER_KINDS`,
+  `formatBytes`) e `exports.ts` (tipos `ExportRecord`, `ExportStatus`,
+  `createExport`, `getExport`, `isTerminalExportStatus`,
+  `ExportsApiError` com codigos `company_not_found`/`queue_unavailable`/
+  `validation_error`/`forbidden`/`unauthorized`/`not_found`/
+  `presign_unavailable`/`network`/`unknown`). Ambos seguem o padrao de
+  `lib/api/executions.ts` (reusam `apiFetch` com retry unico em 401 via
+  `tryRefresh`, aceitam `ApiCallContext`, mapeiam `ApiError` em
+  codigos canonicos). Item **"Arquivos"** (icone `FolderArchive`) em
+  `components/app-shell/nav-items.ts` entre "Ocorrencias" e "Notas".
+  Testes novos: 17 em `lib/api/files.test.ts` (buildListQuery + GET
+  feliz + mapeamentos 403/422/404/502/rede + helpers
+  `formatBytes`/`UI_FILTER_KINDS`/`FILE_KIND_LABEL`), 11 em
+  `lib/api/exports.test.ts` (POST feliz + `enqueue_failed` preserva
+  `status=failed` + 422 `company_not_found` + 502 `queue_unavailable`
+  + `getExport` ready/not_found + `isTerminalExportStatus`), 6 em
+  `app/arquivos/arquivos-view.test.tsx` (banner sempre presente mesmo
+  com lista vazia, empty state, linha renderizada, `window.open` com
+  `noopener,noreferrer`, troca de filtro `kind=export` dispara nova
+  query, viewer nao ve botao "Gerar ZIP") e 4 em
+  `app/arquivos/gerar-zip-dialog.test.tsx` (submit sem empresa nao
+  chama `createExport`, polling `running -> ready` exibe link de
+  download com `href` batendo `download_url`, `status=empty` exibe
+  painel dedicado, `ExportsApiError(queue_unavailable)` mostra a
+  mensagem). Polling testado com `vi.useFakeTimers({shouldAdvanceTime:
+  true})` + `vi.advanceTimersByTimeAsync(3000)`; usa `fireEvent`
+  (projeto nao tem `@testing-library/user-event`). `pnpm typecheck`,
+  `pnpm lint` (`next lint`) e `pnpm test` (`vitest run`) verdes —
+  **433 testes em 48 arquivos** (400 anteriores + 33 novos). Decisao
+  consciente de **nao resolver nome da empresa** quando o filtro nao
+  esta aplicado (API-11 so expoe `source_execution_id`) — exibe
+  "Execucao {uuid-curto}…" como fallback; enriquecimento server-side
+  fica como follow-up. Decisao consciente de **omitir kinds `pfx`/
+  `other`** do filtro da UI. DoD "download funciona" coberto
+  estruturalmente pelos mocks; validacao empirica com bucket B2 real
+  fica com o owner (issue #8). Move APP-08 de "Bloqueadas" (dependencias
+  API-11 #128 e API-15 #140 ja em `main`) para "Em Andamento".
+  Closes #56.
 - PR: (a abrir) — APP-11: wizard de onboarding em 3 passos (cadastrar
   empresa -> subir PFX -> rodar 1a coleta). Novo pacote
   `apps/web-app/components/onboarding/` montado em `<RequireAuth>`
