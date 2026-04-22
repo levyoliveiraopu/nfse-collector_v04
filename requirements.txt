@@ -6,3 +6,6 @@ python-dotenv
 tenacity
 tqdm
 pytest
+httpx
+moto[s3]
+fakeredis
