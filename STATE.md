@@ -15,6 +15,14 @@
 
 ## Em Andamento
 
+_Nenhuma tarefa ativa em 29/04/2026._ Todas as entregas que estavam nesta
+secao foram mergeadas em `main` e movidas para "Concluidos (entregas recentes)"
+abaixo. Trabalhos em aberto agora vivem em `docs/auditoria-tecnica-2026-04-22.md`
+(correcoes pendentes de seguranca/CI/scheduler) e nas decisoes do final do
+arquivo (nome comercial e gateway de pagamento).
+
+## Concluidos (entregas recentes)
+
 - **APP-11** — Wizard de onboarding (3 passos, modal persistente):
   novo pacote `apps/web-app/components/onboarding/` montado em
   `<RequireAuth>` (cobre todas as rotas autenticadas via
@@ -1333,7 +1341,7 @@
   DOCS-05 de "Proximas destravadas" para "Em Andamento"
   (PR a abrir — Closes #75).
 
-## Concluidos
+## Concluidos (anteriores)
 
 - **CORE-05** — Cliente S3 do worker-core em
   `packages/worker-core/worker_core/storage.py`: `S3StorageClient` com
@@ -1854,39 +1862,32 @@
 
 ## Proximas Destravadas (prontas para iniciar)
 
-- **INFRA-05** — Docker Compose (base + overrides prod/staging) com
-  Nginx host ja publicando os 5 hostnames (INFRA-04). Descomentar os
-  `proxy_pass` em `infra/nginx/sites-available/{app,api}.conf`.
+_Backlog ativo aguardando priorizacao do owner._ A trilha CORE/API/DATA/
+INFRA esta toda em `main` (ver "Concluidos"). Os proximos passos naturais
+sao:
 
-> INFRA-05 saiu de "Proximas Destravadas" para "Em Andamento" nesta
-> atualizacao. API-06, API-11 e INFRA-08 continuam parcialmente
-> bloqueados pelas dependencias de codigo (API-05 / DATA-05 /
-> INFRA-05); a parte automatizada de INFRA-06 (template de lifecycle,
-> variaveis `S3_*`, smoke test) ja esta disponivel para esses tickets
-> consumirem, e o setup manual do bucket B2 segue em aberto no issue #8
-> sem bloquear o desenvolvimento das integracoes. CORE-05 saiu da lista
-> (entregue como cliente reusavel — a integracao com o batch_processor
-> e com o schema `files` vai junto de API-11 / CORE-04).
-> atualizacao. CORE-05, API-06 e INFRA-08 continuam parcialmente
-> bloqueados pelas dependencias de codigo (CORE-01 / API-05 / DATA-05 /
-> INFRA-05); a parte automatizada de INFRA-06 (template de lifecycle,
-> variaveis `S3_*`, smoke test) ja esta disponivel para esses tickets
-> consumirem, e o setup manual do bucket B2 segue em aberto no issue #8
-> sem bloquear o desenvolvimento das integracoes.
->
-> Update 2026-04-16: INFRA-08 saiu dessa nota e foi para "Em Andamento"
-> (INFRA-05 ja esta em "Concluidos" via compose base; parte automatizada
-> de INFRA-06 consumida no backup script para upload via `aws s3 cp` e
-> nas 2 novas lifecycle rules em `infra/s3-lifecycle.json`).
-> sem bloquear o desenvolvimento das integracoes. API-11 sai desta lista
-> e entra em "Em Andamento" nesta atualizacao.
+1. **Aplicar correcoes da auditoria** descritas em
+   `docs/auditoria-tecnica-2026-04-22.md` — tres itens criticos abertos:
+   (a) `_revoke_chain` em `apps/api/api/security/tokens.py` (CTE recursiva
+   inverte o sentido `replaced_by`); (b) condicao de corrida em
+   `apps/worker/worker/scheduler.py` (`_has_inflight_execution` +
+   `_insert_execution` sem `pg_advisory_xact_lock`); (c) `.github/
+   workflows/ci.yml` so roda `pytest tests/`, deixando
+   `apps/api/tests/` e `apps/worker/tests/` fora do gate.
+2. **Setup manual do bucket B2** (issue #8) — habilita os DoDs manuais
+   pendentes em INFRA-06, API-06, API-11, API-15 e CORE-06 (upload real,
+   download via URL pre-assinada, smoke E2E com PFX real).
+3. **Provisionar VPS + secrets** (`SSH_HOST`/`SSH_USER`/`SSH_KEY` no
+   GitHub e `/srv/nfse/<env>` no host) para habilitar o pipeline de
+   deploy do INFRA-09. Apos isso, descomentar os `proxy_pass` em
+   `infra/nginx/sites-available/{app,api}.conf` para o Nginx host
+   comecar a rotear para os containers.
+4. **Trilha SITE (00..10)** — bloqueada apenas pelo nome comercial /
+   dominio definitivo (ver "Pendencias de Decisao").
 
 ## Bloqueadas
 
 - **SITE-00..10** — aguardando definicao do nome comercial.
-
-> APP-08 sai de "Bloqueadas" (dependencias API-11 em #128 e API-15 em
-> #140 ja em `main`) para "Em Andamento" nesta atualizacao.
 
 ## Limite de WIP
 
@@ -1901,7 +1902,21 @@ Maximo **4 tarefas** em "Em Andamento" simultaneamente.
 
 ## Ultima atualizacao
 
-- Data: 2026-04-22
+- Data: 2026-04-29
+- Revisao geral da documentacao na branch `claude/review-project-docs-2og85`:
+  - Secao "Em Andamento" esvaziada — todas as 26 entregas que viviam ali
+    (APP-02/03/04/05/06/07/08/09/10/11, API-06/07/08/09/10/11/12/13/14/15,
+    CORE-06, DS-07/08/09, INFRA-08, DOCS-05) ja estao em `main` e foram
+    movidas para "Concluidos (entregas recentes)".
+  - "Concluidos" original renomeado para "Concluidos (anteriores)".
+  - "Proximas Destravadas" reescrito em torno do que realmente destrava
+    valor agora (correcoes da auditoria, setup manual do B2, secrets de
+    deploy, nome comercial) — INFRA-05 saiu da lista (compose ja em main).
+  - README, SETUP, TROUBLESHOOTING, CHANGELOG e `infra/deploy/README.md`
+    revisados na mesma branch.
+
+## Historico anterior (PRs ainda nao indexados aqui)
+
 - PR: (a abrir) — APP-08: pagina `/arquivos` em
   `apps/web-app/app/arquivos/` consumindo API-11 (listagem + URL
   pre-assinada 1h) e API-15 (export ZIP assincrono). Lista paginada

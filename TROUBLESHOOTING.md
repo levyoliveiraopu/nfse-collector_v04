@@ -1,6 +1,28 @@
-# Guia de Resolução de Problemas — nfse-collector
+# Guia de Resolução de Problemas — coletor legado (single-tenant)
 
-Este documento cobre os cenários de erro mais comuns. Para cada cenário, você encontrará como identificar o problema, a causa raiz e os passos para resolver.
+> ⚠️ **Este documento cobre apenas o coletor legado** (CLI Python em
+> `main.py`). Para a **plataforma SaaS multi-tenant**, os runbooks
+> operacionais vivem em `docs/runbooks/`:
+>
+> - `credencial-invalida.md` — PFX recusado, senha errada, CN != CNPJ
+> - `portal-indisponivel.md` — PORTAL_5XX / PORTAL_TIMEOUT / RATE_LIMIT
+> - `parse-error.md` — XML invalido / sem campos obrigatorios
+> - `storage-error.md` — falha ao subir XML/export para o S3
+> - `reprocessamento.md` — como reprocessar items que falharam
+> - `erro-desconhecido.md` — UNKNOWN sem categorizacao automatica
+> - `disco-cheio.md` — VPS sem espaco (Docker, Postgres WAL, Loki)
+> - `fila-travada.md` — RQ travado em `started_registry` ou `failed`
+> - `ssl-expirando.md` — Let's Encrypt nao renovou via certbot
+> - `backup-falhou.md` — exit code do `backup-postgres.sh` por camada
+>
+> Cada runbook segue o template "escopo / sintomas / como detectar /
+> diagnostico / mitigacao / prevencao" e e linkado em
+> `docs/architecture/occurrence-codes.md` e nos dashboards Grafana
+> (`infra/compose/grafana/dashboards/api-worker-logs.json`).
+
+Este documento cobre os cenários de erro mais comuns do **coletor legado**.
+Para cada cenário, você encontrará como identificar o problema, a causa
+raiz e os passos para resolver.
 
 ---
 
