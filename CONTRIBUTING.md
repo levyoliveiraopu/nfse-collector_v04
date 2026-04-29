@@ -51,6 +51,9 @@ Escopos sugeridos: `api`, `worker`, `web-app`, `web-site`, `worker-core`,
 Maximo **4 tarefas** em andamento simultaneamente. Se passar disso, parar
 e fechar o que esta em revisao antes de pegar mais.
 
+> Em 29/04/2026 nao ha tarefa em andamento — ver `STATE.md` -> "Em
+> Andamento". O backlog priorizado esta em "Proximas Destravadas".
+
 ## Quando uma tarefa esta maior do que o ticket previa
 
 1. Pare a execucao.

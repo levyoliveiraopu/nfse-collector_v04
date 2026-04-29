@@ -1,5 +1,28 @@
-# Guia de Instalação e Configuração — nfse-collector
+# Guia de Instalação e Configuração — coletor legado (single-tenant)
 **Ambiente:** VPS Ubuntu 22.04 LTS
+
+> ⚠️ **Este documento cobre apenas o coletor legado** — o CLI Python
+> single-tenant em `main.py` + `src/` (atualmente reaproveitado via
+> `packages/worker-core/`). Continua util para uma operacao manual
+> sem painel ou para a fase 1 de validacao do PFX/CNPJ.
+>
+> Para a **plataforma SaaS multi-tenant** (API FastAPI + Worker RQ +
+> Painel Next.js + Postgres + Redis + S3), use:
+>
+> - `infra/deploy/README.md` — pipeline GitHub Actions -> VPS, runbook
+>   de provisionamento, secrets, rollback.
+> - `apps/api/README.md` — bootstrap da API local, migrations Alembic,
+>   isolamento RLS, EXPLAINs esperados.
+> - `infra/compose/README.md` — docker-compose base + override de deploy
+>   + override de observabilidade.
+> - `infra/vps-docker.md` + `infra/vps-hardening.md` — preparacao da VPS
+>   antes do primeiro deploy.
+> - `infra/nginx.md` + `infra/dns.md` — Nginx host + Cloudflare DNS-only.
+> - `infra/backup.md` + `infra/observability.md` — backup diario e stack
+>   de observabilidade.
+>
+> O `README.md` do repositorio tem a visao geral consolidada e link
+> direto para tudo isso na secao "Status atual" e na arvore de docs.
 
 ---
 
