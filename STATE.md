@@ -15,11 +15,26 @@
 
 ## Em Andamento
 
-_Nenhuma tarefa ativa em 29/04/2026._ Todas as entregas que estavam nesta
-secao foram mergeadas em `main` e movidas para "Concluidos (entregas recentes)"
-abaixo. Trabalhos em aberto agora vivem em `docs/auditoria-tecnica-2026-04-22.md`
-(correcoes pendentes de seguranca/CI/scheduler) e nas decisoes do final do
-arquivo (nome comercial e gateway de pagamento).
+- **PROD-READY** — Checklist de prontidao para producao criado em
+  `docs/production-readiness-checklist.md`. Este passa a ser o backlog
+  mestre de producao, enquanto este `STATE.md` segue como arquivo de
+  atualizacao do andamento. A cada alteracao concluida rumo a producao,
+  atualizar o item correspondente no checklist, registrar a evidencia
+  neste arquivo e atualizar o `CHANGELOG.md` quando houver mudanca de
+  comportamento, seguranca, deploy, API, worker ou UI.
+  - **2026-06-12 — PROD-READY 1.1 / refresh token chain revoke:**
+    corrigida a CTE recursiva de `apps/api/api/security/tokens.py` para
+    caminhar do token reutilizado para seus descendentes via `replaced_by`
+    (`rt.id = c.replaced_by`). Evidencia local: `python -m pytest
+    apps/api/tests/test_auth_tokens_unit.py -q` verde; a suite de
+    integracao existente `test_refresh_reuse_detection_invalidates_chain`
+    cobre o fluxo `/auth/refresh` com cadeia A -> B -> C quando
+    `TEST_DATABASE_URL` estiver disponivel.
+
+Trabalhos em aberto tambem seguem referenciados em
+`docs/auditoria-tecnica-2026-04-22.md` (correcoes pendentes de
+seguranca/CI/scheduler) e nas decisoes do final do arquivo (nome
+comercial e gateway de pagamento).
 
 ## Concluidos (entregas recentes)
 
