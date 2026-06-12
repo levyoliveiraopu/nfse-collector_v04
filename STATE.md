@@ -15,11 +15,18 @@
 
 ## Em Andamento
 
-_Nenhuma tarefa ativa em 29/04/2026._ Todas as entregas que estavam nesta
-secao foram mergeadas em `main` e movidas para "Concluidos (entregas recentes)"
-abaixo. Trabalhos em aberto agora vivem em `docs/auditoria-tecnica-2026-04-22.md`
-(correcoes pendentes de seguranca/CI/scheduler) e nas decisoes do final do
-arquivo (nome comercial e gateway de pagamento).
+- **PROD-READY** — Checklist de prontidao para producao criado em
+  `docs/production-readiness-checklist.md`. Este passa a ser o backlog
+  mestre de producao, enquanto este `STATE.md` segue como arquivo de
+  atualizacao do andamento. A cada alteracao concluida rumo a producao,
+  atualizar o item correspondente no checklist, registrar a evidencia
+  neste arquivo e atualizar o `CHANGELOG.md` quando houver mudanca de
+  comportamento, seguranca, deploy, API, worker ou UI.
+
+Trabalhos em aberto tambem seguem referenciados em
+`docs/auditoria-tecnica-2026-04-22.md` (correcoes pendentes de
+seguranca/CI/scheduler) e nas decisoes do final do arquivo (nome
+comercial e gateway de pagamento).
 
 ## Concluidos (entregas recentes)
 
