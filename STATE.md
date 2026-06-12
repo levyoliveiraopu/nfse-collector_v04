@@ -122,6 +122,20 @@
     apps/worker/worker/scheduler.py packages/worker-core/worker_core/logging.py
     apps/api/tests/test_logging_redaction.py tests/test_worker_logging_redaction.py`.
 
+  - **2026-06-12 — PROD-READY 5 / produto, dados e LGPD:**
+    item 5 organizado em artefatos versionados. `/legal` passa a publicar
+    termos, privacidade, retencao e seguranca; signup aponta para as ancoras
+    `/legal#terms` e `/legal#privacy`; `docs/legal/lgpd-ropa.md` documenta
+    ROPA/base legal; `docs/legal/data-retention-policy.md` consolida retencao
+    de XMLs, exports, logs, credenciais e backups; `docs/product/tenant-users-lifecycle.md`
+    explicita lacunas de convites, owner protection, tenant switcher e
+    suspensao/cancelamento; e `docs/product/billing-limits.md` organiza limites
+    de plano, comportamento ao exceder quota e integracao futura de billing.
+    Permanecem bloqueados os itens que exigem implementacao de endpoints
+    `/tenant/*`, tenant switcher funcional, admin lifecycle de tenant e decisoes
+    comerciais de nome/gateway/precos. Evidencias locais: `pnpm --filter
+    web-app typecheck`, `pnpm --filter web-app lint` e `git diff --check`.
+
 Trabalhos em aberto tambem seguem referenciados em
 `docs/auditoria-tecnica-2026-04-22.md` (correcoes pendentes de
 seguranca/CI/scheduler) e nas decisoes do final do arquivo (nome

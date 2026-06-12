@@ -231,23 +231,34 @@ Arquivo de controle primario: `STATE.md`
 
 ## 5.1 Documentos legais e consentimento
 
-- [ ] Linkar Termos de Uso e Politica de Privacidade no signup.
-- [ ] Criar rota/pagina `/legal` no app/site.
-- [ ] Revisar ROPA e base legal para dados fiscais e certificados.
-- [ ] Validar retencao de XMLs, exports e logs com politica documentada.
+- [x] Linkar Termos de Uso e Politica de Privacidade no signup.
+  - Evidencia de organizacao: `apps/web-app/app/(auth)/signup/page.tsx` aponta para `/legal#terms` e `/legal#privacy`.
+- [x] Criar rota/pagina `/legal` no app/site.
+  - Evidencia de organizacao: `apps/web-app/app/legal/page.tsx` publica termos, privacidade, retencao e seguranca em pagina publica.
+- [x] Revisar ROPA e base legal para dados fiscais e certificados.
+  - Evidencia de organizacao: `docs/legal/lgpd-ropa.md` documenta papeis LGPD, atividades, dados, finalidade, base legal sugerida e pendencias juridicas.
+- [x] Validar retencao de XMLs, exports e logs com politica documentada.
+  - Evidencia de organizacao: `docs/legal/data-retention-policy.md` consolida retencao de XMLs, exports, credenciais, logs, audit logs e backups, incluindo pendencias pre go-live.
 
 ## 5.2 Gestao de usuarios e tenants
 
-- [ ] Fluxo completo de convites, aceite, revogacao e troca de papel em producao.
-- [ ] Garantir protecao do owner contra remocao indevida.
-- [ ] Implementar troca/seleção de tenant no painel se usuario tiver multiplos tenants.
-- [ ] Implementar suspensao/cancelamento de tenant refletindo em acesso, scheduler e worker.
+- [!] Fluxo completo de convites, aceite, revogacao e troca de papel em producao.
+  - Organizado em `docs/product/tenant-users-lifecycle.md`; bloqueio: UI e cliente existem, mas endpoints backend `/tenant/members` e `/tenant/invitations` ainda precisam ser implementados.
+- [!] Garantir protecao do owner contra remocao indevida.
+  - Organizado em `docs/product/tenant-users-lifecycle.md`; controle parcial: guardas `ensure_can_manage_member`/UI existem, mas falta aplica-los nos endpoints reais e impedir remocao/rebaixamento do ultimo owner.
+- [!] Implementar troca/seleção de tenant no painel se usuario tiver multiplos tenants.
+  - Organizado em `docs/product/tenant-users-lifecycle.md`; bloqueio: `TenantSwitcher` ainda e placeholder e falta endpoint para listar memberships e reemitir sessao por tenant.
+- [!] Implementar suspensao/cancelamento de tenant refletindo em acesso, scheduler e worker.
+  - Organizado em `docs/product/tenant-users-lifecycle.md`; controle parcial: API bloqueia tenants `suspended/canceled`, mas ainda falta endpoint administrativo e validacao explicita no scheduler/worker para jobs pendentes.
 
 ## 5.3 Billing e limites
 
-- [ ] Confirmar limites de plano em companies, execucoes, armazenamento e usuarios.
-- [ ] Definir comportamento ao exceder limites.
-- [ ] Preparar integracao de billing quando nome comercial/gateway forem definidos.
+- [!] Confirmar limites de plano em companies, execucoes, armazenamento e usuarios.
+  - Organizado em `docs/product/billing-limits.md`; controle parcial: `max_companies` ja existe, mas limites de usuarios, execucoes, storage, exports e schedules ainda precisam de implementacao.
+- [!] Definir comportamento ao exceder limites.
+  - Organizado em `docs/product/billing-limits.md`; bloqueio: falta padronizar erro `plan_limit_exceeded`, CTA de upgrade e regra de scheduler/reprocess ao exceder quota.
+- [!] Preparar integracao de billing quando nome comercial/gateway forem definidos.
+  - Organizado em `docs/product/billing-limits.md`; bloqueio: nome comercial, gateway, precos, quotas e grace period ainda dependem de decisao de produto/comercial.
 
 ---
 
