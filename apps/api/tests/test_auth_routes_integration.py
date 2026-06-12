@@ -114,6 +114,63 @@ def test_signup_login_refresh_logout_flow(client) -> None:
     assert after.status_code == 401
 
 
+def test_login_multi_tenant_requires_explicit_slug(client) -> None:
+    body = _signup(client, slug="multi-a", email="multi@acme.test")
+
+    from api.db import get_admin_session
+    from sqlalchemy import text
+
+    with get_admin_session() as session:
+        second_tenant = session.execute(
+            text(
+                """
+                INSERT INTO tenants (name, slug)
+                VALUES ('Multi B', 'multi-b')
+                RETURNING id
+                """
+            )
+        ).one()
+        session.execute(
+            text(
+                """
+                INSERT INTO tenant_users (tenant_id, user_id, role, accepted_at)
+                VALUES (:tid, :uid, 'admin', now())
+                """
+            ),
+            {"tid": str(second_tenant.id), "uid": body["user_id"]},
+        )
+
+    ambiguous = client.post(
+        "/auth/login",
+        json={"email": "multi@acme.test", "password": "super-senha-123"},
+    )
+    assert ambiguous.status_code == 409
+    assert ambiguous.json()["detail"]["error"] == "tenant_slug_required"
+
+    first_login = client.post(
+        "/auth/login",
+        json={
+            "email": "multi@acme.test",
+            "password": "super-senha-123",
+            "tenant_slug": "multi-a",
+        },
+    )
+    assert first_login.status_code == 200, first_login.text
+    assert first_login.json()["tenant_id"] == body["tenant_id"]
+    assert first_login.json()["role"] == "owner"
+
+    second_login = client.post(
+        "/auth/login",
+        json={
+            "email": "multi@acme.test",
+            "password": "super-senha-123",
+            "tenant_slug": "multi-b",
+        },
+    )
+    assert second_login.status_code == 200, second_login.text
+    assert second_login.json()["tenant_id"] == str(second_tenant.id)
+    assert second_login.json()["role"] == "admin"
+
 def test_login_wrong_password_is_generic_401(client) -> None:
     _signup(client)
     resp = client.post(

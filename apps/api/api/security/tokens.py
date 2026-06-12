@@ -95,11 +95,13 @@ def _revoke_chain(session: Session, start_id: UUID) -> None:
         text(
             """
             WITH RECURSIVE chain AS (
-                SELECT id FROM refresh_tokens WHERE id = :rid
+                SELECT id, replaced_by
+                  FROM refresh_tokens
+                 WHERE id = :rid
                 UNION ALL
-                SELECT rt.id
-                FROM refresh_tokens rt
-                JOIN chain c ON rt.replaced_by = c.id
+                SELECT rt.id, rt.replaced_by
+                  FROM refresh_tokens rt
+                  JOIN chain c ON rt.id = c.replaced_by
             )
             UPDATE refresh_tokens
                SET revoked_at = COALESCE(revoked_at, now())
