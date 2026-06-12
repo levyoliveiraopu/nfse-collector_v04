@@ -64,6 +64,26 @@
     `python -m pytest tests/test_jobs.py -q` e `ruff check` nos arquivos
     Python alterados.
 
+  - **2026-06-12 — PROD-READY 2 / deploy e infraestrutura minima:**
+    finalizados os itens versionaveis do bloco 2 do checklist de producao.
+    Workflows de staging/prod agora publicam tres imagens (`nfse-api`,
+    `nfse-worker`, `nfse-web-app`); o Compose de deploy ativa `migrate`,
+    API, worker, scheduler e web-app com healthchecks; a API separa
+    `/health` de `/ready`; `deploy.sh` valida `/ready` e documenta que o
+    release executa `alembic upgrade head`; o rollback com migrations ficou
+    formalizado em `infra/deploy/rollback.md`; Nginx de app/API agora aponta
+    para `127.0.0.1:3000/8000`; o smoke S3 valida presigned URL; e Alembic
+    prioriza `API_MIGRATION_DATABASE_URL` para separar conexao de migration.
+    Permanecem bloqueios manuais inevitaveis no checklist (`[!]`): criar VPS,
+    secrets GitHub, DNS/TLS e bucket/credenciais S3 reais. Evidencias locais:
+    `ruff check apps/api/api/main.py apps/api/alembic/env.py
+    apps/api/tests/test_observability_ready.py apps/worker/worker/scheduler.py
+    apps/worker/tests/test_scheduler.py`, `python -m pytest
+    apps/api/tests/test_observability_ready.py apps/worker/tests/test_scheduler.py -q`,
+    `pnpm --filter web-app typecheck`, `python -m json.tool
+    infra/s3-lifecycle.json` e `bash -n infra/deploy/deploy.sh
+    infra/scripts/s3-smoke-test.sh`.
+
 Trabalhos em aberto tambem seguem referenciados em
 `docs/auditoria-tecnica-2026-04-22.md` (correcoes pendentes de
 seguranca/CI/scheduler) e nas decisoes do final do arquivo (nome

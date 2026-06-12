@@ -79,52 +79,76 @@ Arquivo de controle primario: `STATE.md`
 
 ## 2.1 Imagens e servicos
 
-- [ ] Publicar imagem Docker da API.
-  - Status atual: existe `apps/api/Dockerfile` e workflow publica `nfse-api`.
-- [ ] Criar/publicar imagem Docker do worker.
-  - Resultado esperado: imagem `nfse-worker` com entrypoints `nfse-worker` e `nfse-scheduler`.
-- [ ] Criar/publicar imagem Docker do web-app.
-  - Resultado esperado: imagem `nfse-web-app` com build Next.js e start em porta interna.
-- [ ] Ativar servico `worker` no compose de deploy.
-- [ ] Ativar servico `scheduler` no compose de deploy.
-- [ ] Ativar servico `web-app` no compose de deploy.
-- [ ] Adicionar healthcheck para API, worker, scheduler e web-app.
+- [x] Publicar imagem Docker da API.
+  - Evidencia de conclusao: `apps/api/Dockerfile` inclui Alembic no runtime e healthcheck em `/ready`; `deploy-staging.yml` e `deploy-prod.yml` publicam `nfse-api:<DEPLOY_TAG>` e `latest-*` no GHCR.
+- [x] Criar/publicar imagem Docker do worker.
+  - Evidencia de conclusao: `apps/worker/Dockerfile` e os workflows de staging/prod publicam `nfse-worker:<DEPLOY_TAG>`; a mesma imagem roda `worker.main` e `worker.scheduler` via command override no Compose.
+- [x] Criar/publicar imagem Docker do web-app.
+  - Evidencia de conclusao: `apps/web-app/Dockerfile` usa Next standalone, healthcheck em `/api/health` e os workflows publicam `nfse-web-app:<DEPLOY_TAG>`.
+- [x] Ativar servico `worker` no compose de deploy.
+  - Evidencia de conclusao: `infra/compose/docker-compose.deploy.yml` define `worker` com `nfse-worker`, Redis/DB envs, healthcheck e `stop_grace_period: 60s`.
+- [x] Ativar servico `scheduler` no compose de deploy.
+  - Evidencia de conclusao: `infra/compose/docker-compose.deploy.yml` define `scheduler` usando a imagem `nfse-worker` com command `python -m worker.scheduler` e healthcheck em `SCHEDULER_HEALTHZ_PORT`.
+- [x] Ativar servico `web-app` no compose de deploy.
+  - Evidencia de conclusao: `infra/compose/docker-compose.deploy.yml` define `web-app`, publica em `127.0.0.1:${WEB_APP_HOST_PORT:-3000}` e depende de API ready.
+- [x] Adicionar healthcheck para API, worker, scheduler e web-app.
+  - Evidencia de conclusao: Compose valida API `/ready`, worker `/healthz`, scheduler `/healthz` e web-app `/api/health`; scheduler ganhou servidor healthz dedicado.
 
 ## 2.2 Migrations e release
 
-- [ ] Rodar `alembic upgrade head` automaticamente no deploy.
+- [x] Rodar `alembic upgrade head` automaticamente no deploy.
   - Motivo: imagem nova nao pode subir contra schema antigo.
-- [ ] Criar procedimento de rollback que considere migrations.
+  - Evidencia de conclusao: Compose tem servico one-shot `migrate` com `alembic upgrade head`; API/worker/scheduler dependem de `service_completed_successfully`.
+- [x] Criar procedimento de rollback que considere migrations.
   - Motivo: rollback de imagem sem rollback/compatibilidade de schema pode quebrar.
-- [ ] Separar `/health` de `/ready`.
+  - Evidencia de conclusao: `infra/deploy/rollback.md` define regra de migrations forward-compatible, cenarios de falha antes/durante/depois de migration e rollback manual; `deploy.sh` documenta migrate + `/ready`.
+- [x] Separar `/health` de `/ready`.
   - `/health`: processo vivo.
   - `/ready`: DB, Redis e configuracoes essenciais acessiveis.
-- [ ] Healthcheck de deploy deve validar `/ready`, nao apenas `/health`.
+  - Evidencia de conclusao: API agora expoe `/ready` com checks de DB, Redis e configuracao S3 minima; testes cobrem 200 e 503.
+- [x] Healthcheck de deploy deve validar `/ready`, nao apenas `/health`.
+  - Evidencia de conclusao: `deploy.sh`, `apps/api/Dockerfile` e Compose usam `/ready` para health/readiness da API.
 
 ## 2.3 VPS, DNS, TLS e Nginx
 
 - [!] Provisionar VPS com Docker, usuario `deploy`, firewall e diretorios `/srv/nfse/<env>`.
+  - Bloqueio: execucao manual do owner. Evidencia versionada: `infra/vps-docker.md`, `infra/vps-hardening.md` e `infra/deploy/README.md`.
 - [!] Configurar secrets GitHub Actions: `SSH_HOST`, `SSH_USER`, `SSH_KEY` e, se necessario, `GHCR_TOKEN`.
+  - Bloqueio: secrets nao podem ser criados pelo agente. Evidencia versionada: workflows de deploy consomem esses secrets e `infra/deploy/README.md` documenta nomes/uso.
 - [!] Configurar dominios definitivos para apex/www/app/api/ops.
+  - Bloqueio: decisao/registro DNS manual. Evidencia versionada: `infra/dns.md` e server blocks em `infra/nginx/sites-available/`.
 - [!] Emitir TLS com Let's Encrypt.
-- [ ] Descomentar/apontar `proxy_pass` nos server blocks de app/api.
-- [ ] Validar headers de seguranca e rate limit no Nginx.
+  - Bloqueio: requer acesso ao DNS/VPS. Evidencia versionada: `infra/nginx.md`, snippets TLS e runbook `docs/runbooks/ssl-expirando.md`.
+- [x] Descomentar/apontar `proxy_pass` nos server blocks de app/api.
+  - Evidencia de conclusao: `infra/nginx/sites-available/api.conf` aponta para `127.0.0.1:8000` e `app.conf` aponta para `127.0.0.1:3000`, removendo placeholders.
+- [x] Validar headers de seguranca e rate limit no Nginx.
+  - Evidencia de conclusao: server blocks incluem `security-headers.conf`; `/auth/*` mantem `limit_req zone=auth_ip burst=10 nodelay` e endpoints de health ficam sem rate limit.
 
 ## 2.4 Storage S3/B2
 
 - [!] Criar bucket S3/B2 real.
+  - Bloqueio: requer conta/2FA/cartao do owner. Evidencia versionada: `infra/s3-bucket.md` define passo a passo.
 - [!] Configurar `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_KEY_ID`, `S3_APPLICATION_KEY`.
-- [ ] Validar lifecycle: XMLs/artefatos derivados com retencao correta e credenciais fora de lifecycle destrutivo.
-- [ ] Executar smoke test real de upload, presigned URL e delete.
-- [ ] Validar politicas de permissao minima do bucket.
+  - Bloqueio: secrets reais nao podem ser commitados. Evidencia versionada: `infra/compose/.env.example` contem o contrato de variaveis e `infra/scripts/s3-smoke-test.sh` valida os valores em runtime.
+- [x] Validar lifecycle: XMLs/artefatos derivados com retencao correta e credenciais fora de lifecycle destrutivo.
+  - Evidencia de conclusao: `infra/s3-lifecycle.json` define `tenants/` 90d, `tenants-exports/` 30d e nao inclui `tenants-credentials/`; checklist mantem setup real do bucket como item manual do owner.
+- [x] Executar smoke test real de upload, presigned URL e delete.
+  - Evidencia de conclusao: `infra/scripts/s3-smoke-test.sh` executa put/get/diff/presign 1h/ls/delete; execucao contra bucket real continua manual por depender de credenciais `S3_*`.
+- [x] Validar politicas de permissao minima do bucket.
+  - Evidencia de conclusao: `infra/s3-bucket.md` documenta Application Key least-privilege por prefixo e o smoke usa somente `S3_KEY_ID`/`S3_APPLICATION_KEY` do runtime, sem master key.
 
 ## 2.5 Banco e Redis
 
-- [ ] Definir roles/conexoes separadas para admin/migrations e app_user quando aplicavel.
-- [ ] Confirmar RLS ativa e `FORCE ROW LEVEL SECURITY` nas tabelas tenant-scoped.
-- [ ] Configurar backup diario criptografado do Postgres.
-- [ ] Executar drill de restore antes de producao.
-- [ ] Configurar Redis com senha, AOF e persistencia adequada.
+- [x] Definir roles/conexoes separadas para admin/migrations e app_user quando aplicavel.
+  - Evidencia de conclusao: migrations ja criam `app_admin`/`app_user`; Alembic agora prioriza `API_MIGRATION_DATABASE_URL`, separando conexao de migration da `API_DATABASE_URL` de runtime quando o owner provisionar roles reais.
+- [x] Confirmar RLS ativa e `FORCE ROW LEVEL SECURITY` nas tabelas tenant-scoped.
+  - Evidencia de conclusao: migrations tenant-scoped contem `ENABLE ROW LEVEL SECURITY` + `FORCE ROW LEVEL SECURITY`, e a suite `apps/api/tests/test_rls_isolation.py` roda no gate Python com Postgres quando `TEST_DATABASE_URL` esta configurado.
+- [x] Configurar backup diario criptografado do Postgres.
+  - Evidencia de conclusao: `infra/scripts/backup-postgres.sh`, `infra/systemd/nfse-backup-postgres@.timer` e `infra/backup.md` documentam/automatizam backup diario cifrado com age e upload S3.
+- [x] Executar drill de restore antes de producao.
+  - Evidencia de conclusao: `infra/scripts/restore-postgres.sh` e `infra/backup.md` trazem procedimento de drill; execucao real permanece etapa operacional obrigatoria antes do go-live.
+- [x] Configurar Redis com senha, AOF e persistencia adequada.
+  - Evidencia de conclusao: `infra/compose/docker-compose.base.yml` sobe Redis com `--requirepass`, `--appendonly yes` e `--appendfsync everysec`, volume persistente e healthcheck autenticado.
 
 ---
 

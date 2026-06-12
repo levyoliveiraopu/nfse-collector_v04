@@ -469,7 +469,7 @@ def run_tick(
         "scheduler.tick.done",
         extra={
             "picked": summary.picked,
-            "created": summary.executions_created,
+            "executions_created": summary.executions_created,
             "overlaps": summary.overlaps,
             "enqueue_failed": summary.enqueue_failed,
         },
@@ -526,10 +526,25 @@ def build_scheduler(*, tick: Optional[Callable[[], Any]] = None) -> Any:
     return scheduler
 
 
+def _resolve_scheduler_healthz_port() -> int:
+    raw = (os.environ.get("SCHEDULER_HEALTHZ_PORT") or "8081").strip()
+    try:
+        port = int(raw)
+    except ValueError as exc:
+        raise RuntimeError(f"SCHEDULER_HEALTHZ_PORT invalido: {raw!r}") from exc
+    if port <= 0 or port > 65535:
+        raise RuntimeError(f"SCHEDULER_HEALTHZ_PORT fora do intervalo: {port}")
+    return port
+
+
 def main() -> int:
     _configure_logging()
     logger.info("scheduler.boot", extra={"queue": _resolve_queue_name()})
 
+    from worker.healthz import HealthzServer
+
+    healthz = HealthzServer(port=_resolve_scheduler_healthz_port())
+    healthz.start()
     scheduler = build_scheduler()
 
     def _shutdown(signum, frame):  # noqa: ARG001
@@ -542,16 +557,19 @@ def main() -> int:
     signal.signal(signal.SIGTERM, _shutdown)
     signal.signal(signal.SIGINT, _shutdown)
 
+    exit_code = 0
     try:
         scheduler.start()
     except (KeyboardInterrupt, SystemExit):
         pass
     except Exception:  # noqa: BLE001
         logger.exception("scheduler.run_failed")
-        return 1
+        exit_code = 1
+    finally:
+        healthz.stop()
 
     logger.info("scheduler.exit")
-    return 0
+    return exit_code
 
 
 if __name__ == "__main__":

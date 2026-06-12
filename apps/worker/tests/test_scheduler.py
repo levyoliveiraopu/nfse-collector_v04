@@ -475,3 +475,14 @@ def test_due_schedule_dataclass_imutavel() -> None:
     )
     with pytest.raises(Exception):
         sched.cron_expr = "0 3 * * *"  # type: ignore[misc]
+
+
+def test_resolve_scheduler_healthz_port_default(monkeypatch) -> None:
+    monkeypatch.delenv("SCHEDULER_HEALTHZ_PORT", raising=False)
+    assert scheduler_module._resolve_scheduler_healthz_port() == 8081
+
+
+def test_resolve_scheduler_healthz_port_invalida(monkeypatch) -> None:
+    monkeypatch.setenv("SCHEDULER_HEALTHZ_PORT", "99999")
+    with pytest.raises(RuntimeError, match="SCHEDULER_HEALTHZ_PORT"):
+        scheduler_module._resolve_scheduler_healthz_port()
