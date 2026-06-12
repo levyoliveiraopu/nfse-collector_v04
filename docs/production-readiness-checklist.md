@@ -30,39 +30,48 @@ Arquivo de controle primario: `STATE.md`
 - [x] Corrigir revogacao em cadeia de refresh tokens em `apps/api/api/security/tokens.py`.
   - Motivo: replay de refresh token antigo deve invalidar todos os descendentes.
   - Evidencia de conclusao: CTE corrigida para caminhar de `id` para `replaced_by`; teste unitario valida o sentido da recursao e `test_refresh_reuse_detection_invalidates_chain` cobre o fluxo via `/auth/refresh`.
-- [ ] Implementar login multi-tenant explicito.
+- [x] Implementar login multi-tenant explicito.
   - Motivo: usuario com multiplos tenants nao pode cair em um tenant escolhido por `ORDER BY ... LIMIT 1`.
-  - Resultado esperado: login retorna selecao de tenants ou exige `tenant_slug` quando houver mais de uma membership.
-- [ ] Validar tamanho minimo/forca operacional de `API_JWT_SECRET` fora de teste.
+  - Evidencia de conclusao: `LoginIn` aceita `tenant_slug`; `/auth/login` exige selecao explicita quando ha mais de uma membership ativa e retorna `tenant_slug_required`; teste de integracao cobre login ambiguo e login por slug.
+- [x] Validar tamanho minimo/forca operacional de `API_JWT_SECRET` fora de teste.
   - Motivo: HS256 exige segredo forte; warning de chave curta nao deve ser ignorado em staging/prod.
-- [ ] Criar middleware/server guard no Next.js para rotas autenticadas.
+  - Evidencia de conclusao: `Settings` rejeita `API_JWT_SECRET` com menos de 32 bytes em staging/production e teste unitario cobre segredo curto.
+- [x] Criar middleware/server guard no Next.js para rotas autenticadas.
   - Motivo: `RequireAuth` client-side e bom para UX, mas nao deve ser a unica barreira.
+  - Evidencia de conclusao: `apps/web-app/middleware.ts` redireciona rotas autenticadas para `/login?next=...` quando o cookie httpOnly de refresh esta ausente.
 
 ## 1.2 Concorrencia e integridade operacional
 
-- [ ] Corrigir corrida no scheduler.
+- [x] Corrigir corrida no scheduler.
   - Motivo: dois schedulers podem criar execucoes duplicadas para a mesma company.
-  - Resultado esperado: advisory lock transacional e/ou indice unico parcial para execucoes abertas.
-- [ ] Garantir idempotencia de criacao de execucoes/reprocessamentos.
+  - Evidencia de conclusao: `run_tick` agora usa `pg_advisory_xact_lock(hashtext(...))` por tenant/company antes do check de inflight e do insert; `apps/worker/tests/test_scheduler.py::test_run_tick_serializa_check_insert_com_advisory_lock` valida ordem lock -> check -> insert.
+- [x] Garantir idempotencia de criacao de execucoes/reprocessamentos.
   - Motivo: retries HTTP/clientes podem duplicar trabalho.
-  - Resultado esperado: chave de idempotencia ou deduplicacao por `(tenant_id, company_id, trigger, period, status aberto)`.
-- [ ] Corrigir `dry_run` no worker RQ.
+  - Evidencia de conclusao: `POST /executions` e `POST /reprocess` consultam execution aberta equivalente por `(company_id, trigger, period_start, period_end, status in queued/running)` sob RLS antes de inserir; teste unitario `apps/api/tests/test_executions_idempotency_unit.py` cobre a chave SQL.
+- [x] Corrigir `dry_run` no worker RQ.
   - Motivo: API envia `dry_run` no meta do job, mas o job SaaS precisa respeitar isso explicitamente.
+  - Evidencia de conclusao: `worker_core.jobs.run_execution` resolve `dry_run` pelo argumento ou `job.meta`, contabiliza itens sem upload XML, sem insert em `execution_items` e sem persistir NSU; `tests/test_jobs.py::test_run_execution_dry_run_nao_grava_items_nem_upload` cobre o comportamento.
 
 ## 1.3 Testes e CI obrigatorios
 
-- [ ] Atualizar CI para executar `pytest tests apps/api/tests apps/worker/tests`.
+- [x] Atualizar CI para executar `pytest tests apps/api/tests apps/worker/tests`.
   - Motivo: hoje a suite critica de API/worker pode ficar fora do gate de merge.
-- [ ] Ativar Vitest no CI com `pnpm --filter web-app test`.
+  - Evidencia de conclusao: `.github/workflows/ci.yml` instala `apps/worker[dev]` e executa `pytest tests apps/api/tests apps/worker/tests -v` no job Python.
+- [x] Ativar Vitest no CI com `pnpm --filter web-app test`.
   - Motivo: existem testes frontend e eles precisam bloquear regressao.
-- [ ] Corrigir falhas atuais em `apps/api/tests/test_reprocess_schemas.py`.
+  - Evidencia de conclusao: `.github/workflows/ci.yml` adiciona o passo `Vitest (web-app)` apos lint e typecheck.
+- [x] Corrigir falhas atuais em `apps/api/tests/test_reprocess_schemas.py`.
   - Motivo: schema aceita casos que os testes esperam recusar/deduplicar.
-- [ ] Corrigir falha atual em `apps/worker/tests/test_main.py` com RQ/fakeredis.
+  - Evidencia de conclusao: `ReprocessIn.execution_item_ids` agora exige 1..2000 IDs e deduplica; mensagens de validacao preservam os contratos esperados. Evidencia local: `python -m pytest apps/api/tests/test_reprocess_schemas.py -q`.
+- [x] Corrigir falha atual em `apps/worker/tests/test_main.py` com RQ/fakeredis.
   - Motivo: suite do worker deve ser confiavel.
-- [ ] Adicionar teste de concorrencia do scheduler.
+  - Evidencia de conclusao: `build_worker` aplica compatibilidade restrita ao cliente Redis injetado para preencher `addr` no `CLIENT LIST` de fakeredis; evidencia local: `python -m pytest apps/worker/tests/test_main.py apps/worker/tests/test_scheduler.py -q`.
+- [x] Adicionar teste de concorrencia do scheduler.
   - Motivo: provar que a correcao de corrida realmente impede duplicidade.
-- [ ] Adicionar smoke test integrado API -> Redis -> Worker -> Postgres -> S3 fake.
+  - Evidencia de conclusao: `test_run_tick_serializa_check_insert_com_advisory_lock` valida que o advisory lock transacional roda antes da consulta de execution em andamento e antes do insert.
+- [x] Adicionar smoke test integrado API -> Redis -> Worker -> Postgres -> S3 fake.
   - Motivo: validar o fluxo SaaS principal sem depender do portal real.
+  - Evidencia de conclusao: `apps/api/tests/test_queue_unit.py::test_smoke_api_redis_worker_contract_com_storage_db_fake` executa RQ sincrono sobre fakeredis, passa pelo contrato de enqueue da API e chama o entrypoint do worker substituido por fake que representa Postgres/S3.
 
 ---
 

@@ -88,7 +88,7 @@ def test_resolve_admin_password_aborts_in_production(monkeypatch) -> None:
     monkeypatch.delenv("API_SEED_ADMIN_PASSWORD", raising=False)
     monkeypatch.setenv("API_ENVIRONMENT", "production")
     # Staging/prod exigem JWT_SECRET e KEK; basta valores nao vazios.
-    monkeypatch.setenv("API_JWT_SECRET", "placeholder-for-validation")
+    monkeypatch.setenv("API_JWT_SECRET", "x" * 32)
     monkeypatch.setenv(
         "API_CREDENTIAL_KEK_B64",
         "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",

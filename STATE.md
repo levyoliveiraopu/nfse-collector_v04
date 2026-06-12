@@ -30,6 +30,39 @@
     integracao existente `test_refresh_reuse_detection_invalidates_chain`
     cobre o fluxo `/auth/refresh` com cadeia A -> B -> C quando
     `TEST_DATABASE_URL` estiver disponivel.
+  - **2026-06-12 — PROD-READY 1.1 / auth hardening completo:**
+    concluidos os demais itens de seguranca/autenticacao do bloco 1.1:
+    login multi-tenant agora exige `tenant_slug` quando o usuario possui
+    mais de uma membership ativa; `API_JWT_SECRET` passa a exigir pelo
+    menos 32 bytes em staging/production; e o painel Next.js ganhou
+    `middleware.ts` server-side para redirecionar rotas autenticadas sem
+    cookie httpOnly de refresh para `/login?next=...`. Evidencias locais:
+    `python -m pytest apps/api/tests/test_auth_jwt.py
+    apps/api/tests/test_auth_tokens_unit.py -q`, `ruff check
+    apps/api/api/auth apps/api/api/config.py apps/api/api/security/jwt.py
+    apps/api/api/security/tokens.py apps/api/tests/test_auth_jwt.py
+    apps/api/tests/test_auth_tokens_unit.py apps/api/tests/test_auth_routes_integration.py`,
+    `pnpm --filter web-app typecheck`, e a suite de integracao de auth
+    segue gated por `TEST_DATABASE_URL`.
+
+  - **2026-06-12 — PROD-READY 1.2 e 1.3 / bloqueadores criticos do item 1 concluidos:**
+    finalizados os itens restantes do bloco 1 do checklist de producao.
+    Scheduler agora usa advisory lock transacional por tenant/company antes
+    de verificar overlap e criar execution; `POST /executions` e
+    `POST /reprocess` reaproveitam execution aberta equivalente para evitar
+    duplicidade por retry; `worker_core.jobs.run_execution` respeita
+    `dry_run` vindo do argumento/RQ meta sem upload XML, sem insert de
+    `execution_items` e sem persistencia de NSU. O CI Python passa a rodar
+    `pytest tests apps/api/tests apps/worker/tests -v`, o CI frontend passa
+    a rodar `pnpm --filter web-app test`, e foram adicionados/corrigidos os
+    testes de schema de reprocessamento, RQ/fakeredis, concorrencia do
+    scheduler, smoke API->Redis/RQ->worker fake e idempotencia de execution.
+    Evidencias locais: `python -m pytest apps/api/tests/test_reprocess_schemas.py -q`,
+    `python -m pytest apps/api/tests/test_executions_idempotency_unit.py
+    apps/api/tests/test_queue_unit.py -q`, `python -m pytest
+    apps/worker/tests/test_main.py apps/worker/tests/test_scheduler.py -q`,
+    `python -m pytest tests/test_jobs.py -q` e `ruff check` nos arquivos
+    Python alterados.
 
 Trabalhos em aberto tambem seguem referenciados em
 `docs/auditoria-tecnica-2026-04-22.md` (correcoes pendentes de

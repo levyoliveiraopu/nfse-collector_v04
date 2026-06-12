@@ -107,6 +107,7 @@ async function postJsonLocal<T>(
 export function login(body: {
   email: string;
   password: string;
+  tenant_slug?: string;
 }): Promise<AuthSessionPayload> {
   return postJsonLocal<AuthSessionPayload>("/api/auth/login", body);
 }

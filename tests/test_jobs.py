@@ -240,11 +240,35 @@ def test_run_execution_sucesso(
     assert result["items_fail"] == 0
     assert len(fake_storage.uploads) == 2
     # Verifica que um UPDATE final marcou finished + contadores.
-    finished_updates = [
-        c for c in patched_db.calls
-        if "update executions" in c[0] and ":st" in str(c[0])
-    ]
+    finished_updates = [c for c in patched_db.calls if "update executions" in c[0] and ":st" in str(c[0])]
     assert finished_updates
+
+
+def test_run_execution_dry_run_nao_grava_items_nem_upload(
+    monkeypatch, patched_db, patched_decrypt, fake_storage, fake_read_blob, execution_id
+) -> None:
+    items = [_item(1), _item(2, status="parse_error", chave=None)]
+
+    def _fake_fetch(**kwargs):
+        for it in items:
+            kwargs["on_progress"](it)
+        return _summary(nsu_to=2, total_erro=1)
+
+    monkeypatch.setattr(jobs_module, "fetch_nfse", _fake_fetch)
+
+    result = run_execution(
+        str(execution_id),
+        storage_client=fake_storage,
+        read_credential_blob=fake_read_blob,
+        dry_run=True,
+    )
+
+    assert result["dry_run"] is True
+    assert result["status"] == "partial"
+    assert result["items_ok"] == 1
+    assert result["items_fail"] == 1
+    assert fake_storage.uploads == []
+    assert not any("insert into execution_items" in sql for sql, _ in patched_db.calls)
 
 
 # ---------------------------------------------------------------------------
@@ -433,9 +457,14 @@ def test_run_execution_inexistente_retorna_not_found(monkeypatch, execution_id) 
 def test_decide_final_status(ok, fail, storage_err, fatal, expected) -> None:
     summary = FetchSummary(
         cnpj="12345678000199",
-        nsu_from=0, nsu_to=1,
-        total_documentos=ok + fail, total_nfse=ok + fail,
-        total_sucesso=ok, total_cancelada=0, total_erro=fail,
-        callback_errors=0, fatal_rejected=fatal,
+        nsu_from=0,
+        nsu_to=1,
+        total_documentos=ok + fail,
+        total_nfse=ok + fail,
+        total_sucesso=ok,
+        total_cancelada=0,
+        total_erro=fail,
+        callback_errors=0,
+        fatal_rejected=fatal,
     )
     assert _decide_final_status(summary, ok, fail, storage_err) == expected

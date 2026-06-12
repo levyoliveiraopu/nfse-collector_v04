@@ -67,9 +67,7 @@ _ReadAccess = require_role("owner", "admin", "operator", "viewer")
 _CreateAccess = require_role("owner", "admin", "operator")
 
 
-def _validate_companies(
-    db: Session, company_ids: list[UUID]
-) -> dict[UUID, dict]:
+def _validate_companies(db: Session, company_ids: list[UUID]) -> dict[UUID, dict]:
     """Devolve `{company_id: {cnpj, status}}` para companies vivas no tenant.
 
     Companies que nao pertencem ao tenant (filtradas por RLS) ou estao
@@ -90,15 +88,10 @@ def _validate_companies(
         ),
         {"ids": ids_str},
     ).all()
-    return {
-        UUID(str(row.id)): {"cnpj": row.cnpj, "status": row.status}
-        for row in rows
-    }
+    return {UUID(str(row.id)): {"cnpj": row.cnpj, "status": row.status} for row in rows}
 
 
-def _validate_credentials(
-    db: Session, company_ids: list[UUID]
-) -> dict[UUID, dict]:
+def _validate_credentials(db: Session, company_ids: list[UUID]) -> dict[UUID, dict]:
     """Devolve `{company_id: {cert_not_after}}` das companies com credencial ativa.
 
     Considera valida a credencial com `status='active'` E
@@ -121,10 +114,7 @@ def _validate_credentials(
         ),
         {"ids": ids_str},
     ).all()
-    return {
-        UUID(str(row.company_id)): {"cert_not_after": row.cert_not_after}
-        for row in rows
-    }
+    return {UUID(str(row.company_id)): {"cert_not_after": row.cert_not_after} for row in rows}
 
 
 _EXECUTION_COLUMNS = (
@@ -225,6 +215,47 @@ def _row_to_item_out(row) -> ExecutionItemOut:
     )
 
 
+def _find_open_execution(
+    db: Session,
+    *,
+    company_id: UUID,
+    trigger: str,
+    period_start,
+    period_end,
+) -> Optional[UUID]:
+    """Retorna execution aberta equivalente para tornar retries idempotentes.
+
+    A deduplicacao cobre o caso operacional mais perigoso: clientes HTTP ou
+    schedulers repetindo a mesma janela enquanto uma execution ainda esta
+    `queued`/`running`. A RLS da sessao tenant restringe a busca ao tenant
+    corrente.
+    """
+    row = db.execute(
+        text(
+            """
+            SELECT id
+              FROM executions
+             WHERE company_id = :cid
+               AND trigger = :trigger
+               AND period_start = :pstart
+               AND period_end = :pend
+               AND status IN ('queued', 'running')
+             ORDER BY created_at DESC, id DESC
+             LIMIT 1
+            """
+        ),
+        {
+            "cid": str(company_id),
+            "trigger": trigger,
+            "pstart": period_start,
+            "pend": period_end,
+        },
+    ).one_or_none()
+    if row is None:
+        return None
+    return UUID(str(row.id))
+
+
 def _row_to_out(row) -> ExecutionOut:
     return ExecutionOut(
         id=row.id,
@@ -297,8 +328,19 @@ def create_executions(
         ) from exc
 
     # 4. INSERTs em transacao unica (get_tenant_db ja abriu tx).
-    created_rows: list[tuple[UUID, UUID]] = []
+    created_rows: list[tuple[UUID, UUID, bool]] = []
     for company_id in payload.company_ids:
+        existing_execution_id = _find_open_execution(
+            db,
+            company_id=company_id,
+            trigger=payload.trigger,
+            period_start=payload.period_start,
+            period_end=payload.period_end,
+        )
+        if existing_execution_id is not None:
+            created_rows.append((existing_execution_id, company_id, False))
+            continue
+
         row = db.execute(
             text(
                 """
@@ -321,11 +363,23 @@ def create_executions(
                 "pend": payload.period_end,
             },
         ).one()
-        created_rows.append((UUID(str(row.id)), company_id))
+        created_rows.append((UUID(str(row.id)), company_id, True))
 
     # 5. Enqueue pos-INSERT. Cada falha marca a linha como `failed`.
     results: list[CreatedExecution] = []
-    for execution_id, company_id in created_rows:
+    for execution_id, company_id, should_enqueue in created_rows:
+        if not should_enqueue:
+            results.append(
+                CreatedExecution(
+                    execution_id=execution_id,
+                    company_id=company_id,
+                    status="queued",
+                    job_id=None,
+                    enqueue_error=None,
+                )
+            )
+            continue
+
         try:
             job_id = enqueue_run_execution(
                 execution_id,

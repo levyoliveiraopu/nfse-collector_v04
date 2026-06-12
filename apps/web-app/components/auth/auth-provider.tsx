@@ -36,7 +36,7 @@ type AuthContextValue = {
   status: AuthStatus;
   user: AuthUser | null;
   accessToken: string | null;
-  login: (input: { email: string; password: string }) => Promise<void>;
+  login: (input: { email: string; password: string; tenant_slug?: string }) => Promise<void>;
   signup: (input: {
     tenant_name: string;
     tenant_slug: string;
