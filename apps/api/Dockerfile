@@ -13,6 +13,8 @@ WORKDIR /build
 
 COPY pyproject.toml ./
 COPY api ./api
+COPY alembic.ini ./alembic.ini
+COPY alembic ./alembic
 
 RUN pip install --upgrade pip build && \
     pip wheel --wheel-dir /wheels .
@@ -35,6 +37,8 @@ RUN groupadd --system --gid 1001 api && \
 WORKDIR /app
 
 COPY --from=builder /wheels /wheels
+COPY --from=builder /build/alembic.ini ./alembic.ini
+COPY --from=builder /build/alembic ./alembic
 RUN pip install --no-index --find-links=/wheels nfse-api && \
     rm -rf /wheels
 
@@ -44,6 +48,6 @@ EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request,sys; \
-sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status == 200 else 1)"
+sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/ready').status == 200 else 1)"
 
 CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]

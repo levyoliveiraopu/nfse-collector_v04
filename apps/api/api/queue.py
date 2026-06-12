@@ -67,9 +67,7 @@ def get_redis_client() -> Any:
     if _redis_client is None:
         settings = get_settings()
         if not settings.redis_url:
-            raise QueueError(
-                "API_REDIS_URL nao definida: nao e possivel enfileirar jobs"
-            )
+            raise QueueError("API_REDIS_URL nao definida: nao e possivel enfileirar jobs")
         _redis_client = _build_redis_client(settings.redis_url)
     return _redis_client
 
@@ -110,6 +108,16 @@ def ping_redis() -> None:
         raise QueueError("redis indisponivel") from exc
 
 
+def _job_timeout_seconds() -> int:
+    settings = get_settings()
+    raw = getattr(settings, "job_timeout_seconds", 60 * 60)
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return 60 * 60
+    return value if value > 0 else 60 * 60
+
+
 def enqueue_run_execution(
     execution_id: UUID,
     *,
@@ -129,7 +137,7 @@ def enqueue_run_execution(
         job = queue.enqueue(
             "worker_core.jobs.run_execution",
             str(execution_id),
-            job_timeout=60 * 60,  # 1h por job (coleta pode ser longa)
+            job_timeout=_job_timeout_seconds(),
             result_ttl=60 * 60 * 24,  # 24h de resultado
             failure_ttl=60 * 60 * 24 * 7,  # 7d de failure p/ diagnostico
             meta={

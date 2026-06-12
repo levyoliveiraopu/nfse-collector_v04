@@ -1,74 +1,122 @@
-# Compose override — INFRA-09 (pipeline de deploy)
-#
-# Adiciona os servicos aplicacionais (API; worker chega com CORE-05) que
-# consomem imagens publicadas no GHCR pelo workflow de deploy. Aplicado
-# em cima do `docker-compose.base.yml` (Postgres + Redis, INFRA-05):
-#
-#   docker compose \
-#     --env-file /srv/nfse/<env>/config/.env \
-#     -f docker-compose.base.yml \
-#     -f docker-compose.deploy.yml \
-#     up -d --remove-orphans
-#
-# Convencoes:
-#   - `DEPLOY_TAG` vem do ambiente (exportado por `deploy.sh`). Em staging
-#     e tipicamente `sha-<sha>`; em prod, a git tag (`vX.Y.Z`).
-#   - `IMAGE_REGISTRY` default `ghcr.io/levyoliveiraopu` (pode ser
-#     sobrescrito pelo `.env` do ambiente).
-#   - Portas publicadas em `127.0.0.1:` apenas; Nginx do host (INFRA-04)
-#     faz o proxy para `api.<DOMINIO>` e `app.<DOMINIO>`.
+# Compose override — deploy aplicacional (API + worker + scheduler + web-app).
+# Aplicar junto com docker-compose.base.yml:
+#   docker compose --env-file /srv/nfse/<env>/config/.env \
+#     -f docker-compose.base.yml -f docker-compose.deploy.yml up -d --remove-orphans
 
 services:
+  migrate:
+    image: ${IMAGE_REGISTRY:-ghcr.io/levyoliveiraopu}/nfse-api:${DEPLOY_TAG:?DEPLOY_TAG nao definido}
+    container_name: nfse-migrate
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - ${ENV_FILE:-./config/.env}
+    environment:
+      API_DATABASE_URL: ${API_DATABASE_URL:?API_DATABASE_URL nao definido}
+      API_MIGRATION_DATABASE_URL: ${API_MIGRATION_DATABASE_URL:-}
+    command: ["alembic", "upgrade", "head"]
+    networks:
+      - internal
+
   api:
     image: ${IMAGE_REGISTRY:-ghcr.io/levyoliveiraopu}/nfse-api:${DEPLOY_TAG:?DEPLOY_TAG nao definido}
     container_name: nfse-api
     restart: unless-stopped
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     env_file:
       - ${ENV_FILE:-./config/.env}
     environment:
-      # Conecta nos services internos pelo DNS do compose (network `internal`).
       API_DATABASE_URL: ${API_DATABASE_URL:?API_DATABASE_URL nao definido}
       API_REDIS_URL: ${API_REDIS_URL:-redis://:${REDIS_PASSWORD}@redis:6379/0}
     ports:
-      # Nginx host (INFRA-04) faz proxy_pass para 127.0.0.1:8000.
       - "127.0.0.1:${API_HOST_PORT:-8000}:8000"
     networks:
       - internal
     healthcheck:
-      # Reforca o HEALTHCHECK do Dockerfile (API-01); expoe para o compose
-      # como gatekeeper de `depends_on` se o worker vier depender da API.
-      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"]
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/ready').status==200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 30s
+
+  worker:
+    image: ${IMAGE_REGISTRY:-ghcr.io/levyoliveiraopu}/nfse-worker:${DEPLOY_TAG:?DEPLOY_TAG nao definido}
+    container_name: nfse-worker
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    env_file:
+      - ${ENV_FILE:-./config/.env}
+    environment:
+      API_DATABASE_URL: ${API_DATABASE_URL:?API_DATABASE_URL nao definido}
+      API_REDIS_URL: ${API_REDIS_URL:-redis://:${REDIS_PASSWORD}@redis:6379/0}
+      WORKER_HEALTHZ_PORT: ${WORKER_HEALTHZ_PORT:-8080}
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/healthz').status==200 else 1)"]
       interval: 15s
       timeout: 5s
       retries: 6
       start_period: 20s
+    stop_grace_period: 60s
 
-  # worker: TODO CORE-05 — publicar `packages/worker-core` como imagem
-  # `ghcr.io/.../nfse-worker:${DEPLOY_TAG}` e ativar este servico. Ja
-  # deixamos o esqueleto para reduzir o delta do proximo PR.
-  #
-  # worker:
-  #   image: ${IMAGE_REGISTRY:-ghcr.io/levyoliveiraopu}/nfse-worker:${DEPLOY_TAG}
-  #   container_name: nfse-worker
-  #   restart: unless-stopped
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     redis:
-  #       condition: service_healthy
-  #     api:
-  #       condition: service_healthy
-  #   env_file:
-  #     - ${ENV_FILE:-./config/.env}
-  #   networks:
-  #     - internal
+  scheduler:
+    image: ${IMAGE_REGISTRY:-ghcr.io/levyoliveiraopu}/nfse-worker:${DEPLOY_TAG:?DEPLOY_TAG nao definido}
+    container_name: nfse-scheduler
+    command: ["python", "-m", "worker.scheduler"]
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    env_file:
+      - ${ENV_FILE:-./config/.env}
+    environment:
+      API_DATABASE_URL: ${API_DATABASE_URL:?API_DATABASE_URL nao definido}
+      API_REDIS_URL: ${API_REDIS_URL:-redis://:${REDIS_PASSWORD}@redis:6379/0}
+      SCHEDULER_HEALTHZ_PORT: ${SCHEDULER_HEALTHZ_PORT:-8081}
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8081/healthz').status==200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    stop_grace_period: 30s
 
-# Rede `internal` e definida em `docker-compose.base.yml`; este override
-# apenas referencia pelos services acima (compose faz merge quando sobe
-# com `-f base -f deploy`).
-
+  web-app:
+    image: ${IMAGE_REGISTRY:-ghcr.io/levyoliveiraopu}/nfse-web-app:${DEPLOY_TAG:?DEPLOY_TAG nao definido}
+    container_name: nfse-web-app
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    env_file:
+      - ${ENV_FILE:-./config/.env}
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-https://api.${DOMAIN}}
+    ports:
+      - "127.0.0.1:${WEB_APP_HOST_PORT:-3000}:3000"
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 30s

@@ -29,12 +29,8 @@ class Settings(BaseSettings):
     )
 
     app_name: str = Field(default="nfse-api")
-    environment: Literal["development", "staging", "production"] = Field(
-        default="development"
-    )
-    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
-        default="INFO"
-    )
+    environment: Literal["development", "staging", "production"] = Field(default="development")
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(default="INFO")
     version: str = Field(default=__version__)
     git_commit: str = Field(default="unknown")
 
@@ -102,6 +98,12 @@ class Settings(BaseSettings):
         default="nfse-executions",
         validation_alias="API_QUEUE_NAME",
     )
+    job_timeout_seconds: int = Field(
+        default=60 * 60,
+        ge=60,
+        le=24 * 60 * 60,
+        validation_alias="API_JOB_TIMEOUT_SECONDS",
+    )
 
     @model_validator(mode="after")
     def _validate_auth_secrets(self) -> "Settings":
@@ -109,6 +111,11 @@ class Settings(BaseSettings):
             raise ValueError(
                 "API_JWT_SECRET e obrigatorio em staging/production. "
                 "Defina a variavel de ambiente antes de subir a API."
+            )
+        if self.environment in ("staging", "production") and len(self.jwt_secret.encode("utf-8")) < 32:
+            raise ValueError(
+                "API_JWT_SECRET deve ter pelo menos 32 bytes em "
+                "staging/production (HS256). Gere com: openssl rand -base64 32"
             )
         if self.environment in ("staging", "production") and not self.credential_kek_b64:
             raise ValueError(

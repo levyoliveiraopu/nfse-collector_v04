@@ -5,7 +5,7 @@
 #   set -a; source config/.env; set +a
 #   bash infra/scripts/s3-smoke-test.sh
 #
-# O teste executa put -> get -> diff -> ls -> delete sob o prefix
+# O teste executa put -> get -> diff -> presign -> ls -> delete sob o prefix
 # $S3_EXECUTIONS_PREFIX/_smoketest/, garantindo que a Application Key
 # tem permissao apenas onde deveria (least privilege — ver ADR-003).
 # Nao toca em dados de tenants reais.
@@ -61,6 +61,21 @@ if ! diff -q "$SRC" "$DST" >/dev/null; then
   exit 1
 fi
 echo "[s3-smoke] get  OK  -> conteudo identico"
+
+# presigned URL
+PRESIGNED_URL="$(aws --endpoint-url "$S3_ENDPOINT" s3 presign "s3://$S3_BUCKET/$KEY" --expires-in 3600)"
+if [[ -z "$PRESIGNED_URL" ]]; then
+  echo "[s3-smoke] ERRO: aws s3 presign nao retornou URL." >&2
+  exit 1
+fi
+if command -v curl >/dev/null 2>&1; then
+  curl -fsS --max-time 10 "$PRESIGNED_URL" -o "$TMP_DIR/presigned.txt"
+  if ! diff -q "$SRC" "$TMP_DIR/presigned.txt" >/dev/null; then
+    echo "[s3-smoke] ERRO: conteudo da presigned URL difere do enviado." >&2
+    exit 1
+  fi
+fi
+echo "[s3-smoke] url  OK  -> presigned URL 1h gerada e validada"
 
 # ls
 COUNT="$(aws --endpoint-url "$S3_ENDPOINT" s3 ls "s3://$S3_BUCKET/${S3_EXECUTIONS_PREFIX}_smoketest/" | wc -l | tr -d ' ')"

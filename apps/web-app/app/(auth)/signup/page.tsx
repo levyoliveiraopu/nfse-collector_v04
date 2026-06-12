@@ -114,11 +114,11 @@ export default function SignupPage() {
           />
           <span className="text-muted-foreground">
             Li e aceito os{" "}
-            <Link href="/legal" className="text-primary hover:underline">
+            <Link href="/legal#terms" className="text-primary hover:underline">
               Termos de Uso
             </Link>{" "}
             e a{" "}
-            <Link href="/legal" className="text-primary hover:underline">
+            <Link href="/legal#privacy" className="text-primary hover:underline">
               Politica de Privacidade
             </Link>
             .
