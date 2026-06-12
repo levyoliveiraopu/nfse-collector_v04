@@ -23,6 +23,16 @@ class SignupIn(BaseModel):
 class LoginIn(BaseModel):
     email: EmailStr
     password: str = Field(min_length=1, max_length=256)
+    tenant_slug: str | None = Field(
+        default=None,
+        min_length=2,
+        max_length=60,
+        pattern=r"^[a-z0-9][a-z0-9-]{0,58}[a-z0-9]$",
+        description=(
+            "Slug do tenant. Obrigatorio quando o usuario tem mais de "
+            "uma membership ativa."
+        ),
+    )
 
 
 class RefreshIn(BaseModel):

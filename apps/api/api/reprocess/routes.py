@@ -39,7 +39,11 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from ..deps import get_tenant_db
-from ..executions.routes import _validate_companies, _validate_credentials
+from ..executions.routes import (
+    _find_open_execution,
+    _validate_companies,
+    _validate_credentials,
+)
 from ..queue import QueueError, enqueue_run_execution, ping_redis
 from ..security.jwt import AccessClaims
 from ..security.rbac import require_role
@@ -70,9 +74,7 @@ _REPROCESS_COLUMNS = (
 # ---------------------------------------------------------------------------
 
 
-def _resolve_by_items(
-    db: Session, item_ids: list[UUID]
-) -> list[tuple[UUID, date, date]]:
+def _resolve_by_items(db: Session, item_ids: list[UUID]) -> list[tuple[UUID, date, date]]:
     """Agrupa items pela execution-pai e devolve tuplas distintas.
 
     Items nao encontrados (RLS isola cross-tenant) geram 422 com a
@@ -116,9 +118,7 @@ def _resolve_by_items(
     return tuples
 
 
-def _resolve_by_nsus(
-    db: Session, company_id: UUID, nsus: list[int]
-) -> list[tuple[UUID, date, date]]:
+def _resolve_by_nsus(db: Session, company_id: UUID, nsus: list[int]) -> list[tuple[UUID, date, date]]:
     """Inferir periodo a partir de `MIN/MAX(data_emissao)` dos items.
 
     Fallback quando nenhum item bate: `[today, today]`. Isso cria uma
@@ -148,9 +148,7 @@ def _resolve_by_nsus(
     return [(company_id, start, end)]
 
 
-def _resolve_by_period(
-    company_id: UUID, period_start: date, period_end: date
-) -> list[tuple[UUID, date, date]]:
+def _resolve_by_period(company_id: UUID, period_start: date, period_end: date) -> list[tuple[UUID, date, date]]:
     return [(company_id, period_start, period_end)]
 
 
@@ -166,9 +164,7 @@ def _row_to_out(row, *, scope: Optional[dict] = None) -> ReprocessOut:
         tenant_id=row.tenant_id,
         status=row.status,
         scope=scope_value,
-        result_execution_ids=[
-            UUID(str(x)) for x in (row.result_execution_ids or [])
-        ],
+        result_execution_ids=[UUID(str(x)) for x in (row.result_execution_ids or [])],
         error_summary=row.error_summary,
         created_by_user_id=row.created_by_user_id,
         started_at=row.started_at,
@@ -262,9 +258,7 @@ def create_reprocess(
         tuples = _resolve_by_nsus(db, payload.company_id, payload.nsus)
     else:
         assert payload.company_id is not None and payload.period is not None
-        tuples = _resolve_by_period(
-            payload.company_id, payload.period.start, payload.period.end
-        )
+        tuples = _resolve_by_period(payload.company_id, payload.period.start, payload.period.end)
 
     if not tuples:
         # Defensivo — os resolvers sempre devolvem >=1 tupla hoje.
@@ -331,8 +325,19 @@ def create_reprocess(
     ).one()
     reprocess_job_id = UUID(str(job_row.id))
 
-    created_children: list[tuple[UUID, UUID, date, date]] = []
+    created_children: list[tuple[UUID, UUID, date, date, bool]] = []
     for company_id, period_start, period_end in tuples:
+        existing_execution_id = _find_open_execution(
+            db,
+            company_id=company_id,
+            trigger="reprocess",
+            period_start=period_start,
+            period_end=period_end,
+        )
+        if existing_execution_id is not None:
+            created_children.append((existing_execution_id, company_id, period_start, period_end, False))
+            continue
+
         row = db.execute(
             text(
                 """
@@ -354,9 +359,7 @@ def create_reprocess(
                 "pend": period_end,
             },
         ).one()
-        created_children.append(
-            (UUID(str(row.id)), company_id, period_start, period_end)
-        )
+        created_children.append((UUID(str(row.id)), company_id, period_start, period_end, True))
 
     # 5. Persiste result_execution_ids.
     db.execute(
@@ -370,7 +373,7 @@ def create_reprocess(
         ),
         {
             "rid": str(reprocess_job_id),
-            "ids": [str(eid) for eid, _, _, _ in created_children],
+            "ids": [str(eid) for eid, _, _, _, _ in created_children],
         },
     )
 
@@ -378,7 +381,21 @@ def create_reprocess(
     # `failed`. Se todas falharem, registra `error_summary` no job-pai.
     results: list[ReprocessChildExecution] = []
     enqueue_failures = 0
-    for execution_id, company_id, period_start, period_end in created_children:
+    for execution_id, company_id, period_start, period_end, should_enqueue in created_children:
+        if not should_enqueue:
+            results.append(
+                ReprocessChildExecution(
+                    execution_id=execution_id,
+                    company_id=company_id,
+                    period_start=period_start,
+                    period_end=period_end,
+                    status="queued",
+                    job_id=None,
+                    enqueue_error=None,
+                )
+            )
+            continue
+
         try:
             job_id = enqueue_run_execution(
                 execution_id,
@@ -473,9 +490,7 @@ def create_reprocess(
 
     # 8. Devolve a leitura atualizada do job + metadados fresh.
     row = db.execute(
-        text(
-            f"SELECT {_REPROCESS_COLUMNS} FROM reprocess_jobs WHERE id = :rid"
-        ),
+        text(f"SELECT {_REPROCESS_COLUMNS} FROM reprocess_jobs WHERE id = :rid"),
         {"rid": str(reprocess_job_id)},
     ).one()
     out = _row_to_out(row, scope=scope_json)
@@ -499,9 +514,7 @@ def get_reprocess(
     db: Session = Depends(get_tenant_db),
 ) -> ReprocessOut:
     row = db.execute(
-        text(
-            f"SELECT {_REPROCESS_COLUMNS} FROM reprocess_jobs WHERE id = :rid"
-        ),
+        text(f"SELECT {_REPROCESS_COLUMNS} FROM reprocess_jobs WHERE id = :rid"),
         {"rid": str(reprocess_job_id)},
     ).one_or_none()
     if row is None:
