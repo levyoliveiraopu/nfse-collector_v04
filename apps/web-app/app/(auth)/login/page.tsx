@@ -26,13 +26,17 @@ export default function LoginPage() {
     formState: { errors },
   } = useForm<LoginInput>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: "", password: "" },
+    defaultValues: { email: "", password: "", tenant_slug: "" },
   });
 
   async function onSubmit(values: LoginInput) {
     setSubmitting(true);
     try {
-      await login(values);
+      await login({
+        email: values.email,
+        password: values.password,
+        ...(values.tenant_slug ? { tenant_slug: values.tenant_slug } : {}),
+      });
       router.replace(redirectTo);
     } catch (err) {
       const detail =
@@ -77,6 +81,14 @@ export default function LoginPage() {
           autoComplete="current-password"
           error={errors.password?.message}
           {...register("password")}
+        />
+        <FormField
+          label="Slug do tenant (opcional)"
+          type="text"
+          autoComplete="organization"
+          placeholder="acme-contabil"
+          error={errors.tenant_slug?.message}
+          {...register("tenant_slug")}
         />
         <div className="flex justify-end -mt-2">
           <Link

@@ -53,6 +53,52 @@ def test_enqueue_cria_job_na_fila(fake_queue) -> None:
     assert job.meta == {"tenant_id": str(tid), "dry_run": True}
 
 
+def test_smoke_api_redis_worker_contract_com_storage_db_fake(monkeypatch) -> None:
+    """Smoke do contrato API -> Redis/RQ -> worker.
+
+    Usa RQ sincrono sobre fakeredis e substitui o job real por um fake que
+    representa as camadas Postgres/S3, evitando dependencia de servicos externos
+    no gate de CI.
+    """
+    from api import queue as queue_mod
+    from api.queue import enqueue_run_execution
+    from worker_core import jobs as jobs_module
+
+    calls: list[str] = []
+
+    def _fake_run_execution(execution_id: str) -> dict:
+        calls.append(execution_id)
+        return {
+            "execution_id": execution_id,
+            "status": "succeeded",
+            "postgres": "fake",
+            "s3": "fake",
+        }
+
+    monkeypatch.setattr(jobs_module, "run_execution", _fake_run_execution)
+    fake = fakeredis.FakeStrictRedis()
+    q = rq.Queue(name="nfse-executions-smoke", connection=fake, is_async=False)
+    queue_mod.set_queue_client_for_tests(fake, q)
+    try:
+        eid = uuid4()
+        tid = uuid4()
+        job_id = enqueue_run_execution(eid, tenant_id=tid, dry_run=True)
+        job = q.fetch_job(job_id)
+
+        assert calls == [str(eid)]
+        assert job is not None
+        assert job.is_finished
+        assert job.return_value() == {
+            "execution_id": str(eid),
+            "status": "succeeded",
+            "postgres": "fake",
+            "s3": "fake",
+        }
+        assert job.meta == {"tenant_id": str(tid), "dry_run": True}
+    finally:
+        queue_mod.reset_queue_client_for_tests()
+
+
 def test_enqueue_dry_run_false_por_default(fake_queue) -> None:
     from api.queue import enqueue_run_execution
 

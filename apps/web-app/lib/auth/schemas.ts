@@ -13,6 +13,15 @@ const password = z
 export const loginSchema = z.object({
   email: z.string().email("Informe um email valido."),
   password: z.string().min(1, "Informe sua senha.").max(256),
+  tenant_slug: z
+    .string()
+    .trim()
+    .regex(
+      /^[a-z0-9][a-z0-9-]{0,58}[a-z0-9]$/,
+      "Slug deve conter apenas letras minusculas, numeros e hifens.",
+    )
+    .optional()
+    .or(z.literal("")),
 });
 export type LoginInput = z.infer<typeof loginSchema>;
 

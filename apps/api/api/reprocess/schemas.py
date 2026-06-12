@@ -83,7 +83,7 @@ class ReprocessIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     # Escopo 1.
-    execution_item_ids: Optional[list[UUID]] = Field(default=None)
+    execution_item_ids: Optional[list[UUID]] = Field(default=None, min_length=1, max_length=2_000)
 
     # Escopo 2/3 compartilham company_id.
     company_id: Optional[UUID] = Field(default=None)
@@ -93,13 +93,25 @@ class ReprocessIn(BaseModel):
 
     # Escopo 3.
     period: Optional[ReprocessPeriod] = Field(default=None)
-    statuses: Optional[list[ReprocessItemStatus]] = Field(
-        default=None, min_length=1, max_length=10
-    )
+    statuses: Optional[list[ReprocessItemStatus]] = Field(default=None, min_length=1, max_length=10)
 
     # Comum aos 3 escopos. Propagado no meta do job RQ (mesmo padrao
     # de API-07 — nao persiste no schema).
     dry_run: bool = False
+
+    @field_validator("execution_item_ids")
+    @classmethod
+    def _dedup_execution_item_ids(cls, value: Optional[list[UUID]]) -> Optional[list[UUID]]:
+        if value is None:
+            return value
+        seen: set[UUID] = set()
+        unique: list[UUID] = []
+        for item_id in value:
+            if item_id in seen:
+                continue
+            seen.add(item_id)
+            unique.append(item_id)
+        return unique
 
     @field_validator("nsus")
     @classmethod
@@ -119,9 +131,7 @@ class ReprocessIn(BaseModel):
 
     @field_validator("statuses")
     @classmethod
-    def _dedup_statuses(
-        cls, value: Optional[list[ReprocessItemStatus]]
-    ) -> Optional[list[ReprocessItemStatus]]:
+    def _dedup_statuses(cls, value: Optional[list[ReprocessItemStatus]]) -> Optional[list[ReprocessItemStatus]]:
         if value is None:
             return value
         return list(dict.fromkeys(value))
@@ -132,6 +142,10 @@ class ReprocessIn(BaseModel):
         by_nsus = self.company_id is not None and self.nsus is not None
         by_period = self.company_id is not None and self.period is not None
 
+        # Mensagem especifica esperada para conflito entre os escopos 2 e 3.
+        if by_nsus and (self.period is not None or self.statuses is not None):
+            raise ValueError("escopo por nsus nao aceita period/statuses")
+
         matches = sum([by_items, by_nsus, by_period])
         if matches != 1:
             raise ValueError(
@@ -140,23 +154,10 @@ class ReprocessIn(BaseModel):
                 "(company_id + period[ + statuses])"
             )
 
-        # Combinacoes invalidas entre escopos.
         if by_items and (
-            self.company_id is not None
-            or self.nsus is not None
-            or self.period is not None
-            or self.statuses is not None
+            self.company_id is not None or self.nsus is not None or self.period is not None or self.statuses is not None
         ):
-            raise ValueError(
-                "escopo por execution_item_ids nao aceita "
-                "company_id/nsus/period/statuses"
-            )
-        if by_nsus and (
-            self.period is not None or self.statuses is not None
-        ):
-            raise ValueError(
-                "escopo por nsus nao aceita period/statuses"
-            )
+            raise ValueError("escopo por execution_item_ids nao aceita company_id/nsus/period/statuses")
         if by_period and self.nsus is not None:
             raise ValueError("escopo por period nao aceita nsus")
 
@@ -220,9 +221,7 @@ class ReprocessChildExecution(BaseModel):
     enqueue_error: Optional[str] = None
 
 
-ReprocessJobStatus = Literal[
-    "queued", "running", "succeeded", "failed", "cancelled"
-]
+ReprocessJobStatus = Literal["queued", "running", "succeeded", "failed", "cancelled"]
 
 
 class ReprocessProgress(BaseModel):
@@ -237,9 +236,7 @@ class ReprocessProgress(BaseModel):
     partial: int
     # Status efetivo derivado: `running` se alguma in-flight;
     # `succeeded`/`partial`/`failed`/`cancelled` apos todas terminarem.
-    effective_status: Literal[
-        "queued", "running", "succeeded", "partial", "failed", "cancelled"
-    ]
+    effective_status: Literal["queued", "running", "succeeded", "partial", "failed", "cancelled"]
 
 
 class ReprocessOut(BaseModel):

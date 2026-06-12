@@ -31,12 +31,17 @@ def _resolve_database_url() -> str:
 
     Ordem de precedencia:
     1. `-x url=...` passado na CLI do Alembic (uso pontual em testes).
-    2. `API_DATABASE_URL` via pydantic-settings.
-    3. `DATABASE_URL` cru (fallback conveniente).
+    2. `API_MIGRATION_DATABASE_URL` direto (role admin/migrator).
+    3. `API_DATABASE_URL` via pydantic-settings.
+    4. `DATABASE_URL` cru (fallback conveniente).
     """
     x_args = context.get_x_argument(as_dictionary=True)
     if x_args.get("url"):
         return x_args["url"]
+
+    migration_url = os.getenv("API_MIGRATION_DATABASE_URL", "")
+    if migration_url:
+        return migration_url
 
     settings = get_settings()
     if settings.database_url:
@@ -47,8 +52,7 @@ def _resolve_database_url() -> str:
         return raw
 
     raise RuntimeError(
-        "API_DATABASE_URL nao definida. Exporte a variavel ou passe "
-        "-x url=postgresql+psycopg://... para o Alembic."
+        "API_DATABASE_URL nao definida. Exporte a variavel ou passe -x url=postgresql+psycopg://... para o Alembic."
     )
 
 

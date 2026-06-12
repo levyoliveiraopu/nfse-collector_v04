@@ -110,6 +110,14 @@ class Settings(BaseSettings):
                 "API_JWT_SECRET e obrigatorio em staging/production. "
                 "Defina a variavel de ambiente antes de subir a API."
             )
+        if (
+            self.environment in ("staging", "production")
+            and len(self.jwt_secret.encode("utf-8")) < 32
+        ):
+            raise ValueError(
+                "API_JWT_SECRET deve ter pelo menos 32 bytes em "
+                "staging/production (HS256). Gere com: openssl rand -base64 32"
+            )
         if self.environment in ("staging", "production") and not self.credential_kek_b64:
             raise ValueError(
                 "API_CREDENTIAL_KEK_B64 e obrigatorio em staging/production. "

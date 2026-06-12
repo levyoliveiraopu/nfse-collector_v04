@@ -101,7 +101,8 @@ scheduler:
 ### Variaveis
 
 Reusa as mesmas do worker (`API_REDIS_URL`, `API_QUEUE_NAME`,
-`API_DATABASE_URL`, `LOG_LEVEL`). Nenhuma env nova para o scheduler.
+`API_DATABASE_URL`, `LOG_LEVEL`) e aceita `SCHEDULER_HEALTHZ_PORT`
+(default `8081`) para o healthcheck do processo separado.
 
 ### DoD
 
