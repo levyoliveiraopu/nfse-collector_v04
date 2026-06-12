@@ -43,10 +43,12 @@ from pathlib import Path
 from typing import Callable, Optional
 from uuid import UUID
 
+import requests
 from rq import get_current_job
 from sqlalchemy import text
 
 from worker_core.collector import FetchSummary, NfseItem, fetch_nfse
+from worker_core.fetcher import PortalRequestError
 from worker_core.crypto import CryptoError, decrypt
 from worker_core.db import get_admin_session, get_tenant_session
 from worker_core.db_nsu import DbNsuSource
@@ -535,9 +537,39 @@ def build_export(
 OCC_CRED_INVALID = "CRED_INVALID"
 OCC_CERT_EXPIRED = "CERT_EXPIRED"
 OCC_PORTAL_5XX = "PORTAL_5XX"
+OCC_PORTAL_TIMEOUT = "PORTAL_TIMEOUT"
+OCC_PORTAL_RATE_LIMIT = "PORTAL_RATE_LIMIT"
+OCC_PORTAL_HTTP_ERROR = "PORTAL_HTTP_ERROR"
 OCC_PARSE_ERROR = "PARSE_ERROR"
 OCC_STORAGE_ERROR = "STORAGE_ERROR"
 OCC_UNKNOWN = "UNKNOWN"
+
+
+def _classify_mtls_value_error(exc: ValueError) -> tuple[str, str]:
+    msg = str(exc).lower()
+    if "vencid" in msg or "expir" in msg:
+        return OCC_CERT_EXPIRED, "mtls_cert_expired"
+    if "cnpj" in msg or "cn" in msg or "diverg" in msg:
+        return OCC_CRED_INVALID, "mtls_cert_subject_mismatch"
+    if "senha" in msg or "password" in msg:
+        return OCC_CRED_INVALID, "mtls_pfx_password_invalid"
+    if "pfx" in msg or "pkcs" in msg or "certificado" in msg:
+        return OCC_CRED_INVALID, "mtls_pfx_invalid"
+    return OCC_CRED_INVALID, "mtls_session_failed"
+
+
+def _portal_occurrence_code(exc: BaseException) -> tuple[str, str]:
+    if isinstance(exc, requests.Timeout):
+        return OCC_PORTAL_TIMEOUT, "collector_portal_timeout"
+    if isinstance(exc, requests.ConnectionError):
+        return OCC_PORTAL_HTTP_ERROR, "collector_portal_connection_error"
+    if isinstance(exc, PortalRequestError):
+        if exc.code == "ADN_HTTP_5XX":
+            return OCC_PORTAL_5XX, "collector_portal_5xx"
+        if exc.code == "ADN_RATE_LIMIT":
+            return OCC_PORTAL_RATE_LIMIT, "collector_portal_rate_limit"
+        return OCC_PORTAL_HTTP_ERROR, "collector_portal_http_error"
+    return OCC_UNKNOWN, "collector_error"
 
 
 class JobError(RuntimeError):
@@ -706,8 +738,18 @@ def run_execution(
             nsu_source=nsu_source,
             on_progress=_on_progress,
             on_log=_on_log,
+            persist_nsu=False,
         )
     except ValueError as exc:
+        code, error_summary = _classify_mtls_value_error(exc)
+        _mark_failed(ctx, error_summary=error_summary)
+        _create_occurrence(ctx, code=code, severity="error", title="Falha na sessao mTLS", detail=str(exc))
+        raise JobError(error_summary) from exc
+    except (requests.Timeout, requests.ConnectionError, PortalRequestError) as exc:
+        code, error_summary = _portal_occurrence_code(exc)
+        _mark_failed(ctx, error_summary=error_summary)
+        _create_occurrence(ctx, code=code, severity="error", title="Falha no portal ADN", detail=str(exc))
+        raise JobError(error_summary) from exc
         # mtls_session levanta ValueError para PFX invalido / senha errada /
         # cert vencido. Diferenciamos via mensagem para classificar ocorrencia.
         msg = str(exc).lower()
@@ -730,6 +772,9 @@ def run_execution(
         items_ok=items_ok,
         items_fail=items_fail,
     )
+
+    if final_status == "succeeded" and not dry_run_enabled and summary.nsu_to > summary.nsu_from:
+        db_nsu_source.set(ctx.cnpj, int(summary.nsu_to))
 
     if storage_errors:
         _create_occurrence(

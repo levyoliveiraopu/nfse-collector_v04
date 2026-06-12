@@ -99,6 +99,20 @@ def test_smoke_api_redis_worker_contract_com_storage_db_fake(monkeypatch) -> Non
         queue_mod.reset_queue_client_for_tests()
 
 
+def test_enqueue_usa_job_timeout_parametrizado(fake_queue, monkeypatch) -> None:
+    from api.config import get_settings
+    from api.queue import enqueue_run_execution
+
+    monkeypatch.setenv("API_JOB_TIMEOUT_SECONDS", "7200")
+    get_settings.cache_clear()  # type: ignore[attr-defined]
+    try:
+        _, q = fake_queue
+        enqueue_run_execution(uuid4(), tenant_id=uuid4())
+        assert q.jobs[0].timeout == 7200
+    finally:
+        get_settings.cache_clear()  # type: ignore[attr-defined]
+
+
 def test_enqueue_dry_run_false_por_default(fake_queue) -> None:
     from api.queue import enqueue_run_execution
 

@@ -42,6 +42,9 @@ Usado pelo Uptime Kuma (INFRA-07). Porta configuravel via
 | `S3_*`                      | Bucket + credenciais do storage (INFRA-06 / CORE-05). |
 | `WORKER_HEALTHZ_PORT`       | Porta do `/healthz` (default `8080`).               |
 | `LOG_LEVEL`                 | `INFO` default; `DEBUG` em dev.                     |
+| `NFSE_ADN_*TIMEOUT*`         | Timeouts connect/read das chamadas ADN.             |
+| `NFSE_ADN_RETRY_*`           | Tentativas e backoff das chamadas ADN.              |
+| `API_JOB_TIMEOUT_SECONDS`    | Timeout RQ do job enfileirado pela API.             |
 
 ## Rodar local
 

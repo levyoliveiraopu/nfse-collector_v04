@@ -156,27 +156,42 @@ Arquivo de controle primario: `STATE.md`
 
 ## 3.1 Worker e portal ADN
 
-- [ ] Adicionar timeout explicito nas chamadas HTTP ao ADN.
-- [ ] Parametrizar timeout, numero de tentativas e backoff por env.
-- [ ] Classificar erros de portal com codigos operacionais estaveis.
-- [ ] Evitar jobs presos indefinidamente.
-- [ ] Validar comportamento com certificado vencido, senha errada, PFX invalido e CN divergente.
-- [ ] Validar coleta real em staging com um CNPJ/certificado autorizado.
+- [x] Adicionar timeout explicito nas chamadas HTTP ao ADN.
+  - Evidencia de conclusao: `worker_core.fetcher.buscar_lote_dfe` e `buscar_eventos_nfse` usam `timeout=(connect, read)` em `session.get`; teste `tests/test_nfse_fetcher_config.py::test_buscar_lote_dfe_usa_timeout_parametrizado` valida envs.
+- [x] Parametrizar timeout, numero de tentativas e backoff por env.
+  - Evidencia de conclusao: envs `NFSE_ADN_CONNECT_TIMEOUT_SECONDS`, `NFSE_ADN_READ_TIMEOUT_SECONDS`, `NFSE_ADN_RETRY_ATTEMPTS`, `NFSE_ADN_RETRY_BACKOFF_*` controlam timeout/retry; `infra/compose/.env.example` documenta o contrato.
+- [x] Classificar erros de portal com codigos operacionais estaveis.
+  - Evidencia de conclusao: `PortalRequestError` normaliza falhas HTTP do ADN; worker mapeia para `PORTAL_5XX`, `PORTAL_TIMEOUT`, `PORTAL_RATE_LIMIT` e `PORTAL_HTTP_ERROR`, documentados em `docs/architecture/occurrence-codes.md`.
+- [x] Evitar jobs presos indefinidamente.
+  - Evidencia de conclusao: requests ao ADN tem timeout explicito, retries finitos e `API_JOB_TIMEOUT_SECONDS` parametriza o timeout do RQ em `enqueue_run_execution`.
+- [x] Validar comportamento com certificado vencido, senha errada, PFX invalido e CN divergente.
+  - Evidencia de conclusao: `_classify_mtls_value_error` diferencia certificado expirado, senha/PFX invalido e mismatch de subject/CNPJ; testes de jobs cobrem classificacao de senha/PFX invalida e os testes existentes de auth cobrem certificado/PFX.
+- [!] Validar coleta real em staging com um CNPJ/certificado autorizado.
+  - Bloqueio: requer PFX A1 real, senha e CNPJ autorizado; evidencia versionada: `packages/worker-core/scripts/smoke.py` executa PFX -> ADN -> S3 sem logar senha/XML e deve ser rodado pelo owner em staging.
 
 ## 3.2 Persistencia de resultados
 
-- [ ] Validar idempotencia de `execution_items` por chave NFS-e.
-- [ ] Validar comportamento quando XML sobe no S3, mas insert no DB falha.
-- [ ] Validar comportamento quando insert no DB ocorre, mas upload XML falha.
-- [ ] Criar reconciliador para objetos S3 orfaos ou linhas DB sem objeto, se necessario.
-- [ ] Definir politica para NSU quando ha falha parcial.
+- [x] Validar idempotencia de `execution_items` por chave NFS-e.
+  - Evidencia de conclusao: `_insert_execution_item` usa `ON CONFLICT (tenant_id, chave_nfse) WHERE chave_nfse IS NOT NULL DO NOTHING`; `tests/test_jobs.py::test_run_execution_idempotente_quando_insert_nao_retorna_linha` valida retry idempotente.
+- [x] Validar comportamento quando XML sobe no S3, mas insert no DB falha.
+  - Evidencia de conclusao: excecao no callback incrementa `callback_errors`, o job vira partial/failed e a politica de NSU nao avanca em final diferente de `succeeded`; reconciliador `packages/worker-core/scripts/reconcile_storage.py` detecta divergencias DB/S3.
+- [x] Validar comportamento quando insert no DB ocorre, mas upload XML falha.
+  - Evidencia de conclusao: falha de `upload_xml` incrementa `storage_errors`, persiste item com `xml_object_key=None`, cria occurrence `STORAGE_ERROR`, finaliza partial/failed e nao avanca NSU; teste `test_run_execution_storage_error_cria_occurrence` cobre.
+- [x] Criar reconciliador para objetos S3 orfaos ou linhas DB sem objeto, se necessario.
+  - Evidencia de conclusao: `packages/worker-core/scripts/reconcile_storage.py` roda em dry-run e lista `execution_items` ok sem `xml_object_key` ou com objeto ausente no S3.
+- [x] Definir politica para NSU quando ha falha parcial.
+  - Evidencia de conclusao: worker chama `fetch_nfse(..., persist_nsu=False)` e so executa `DbNsuSource.set` quando `final_status == succeeded` e nao e dry-run; testes validam que partial/storage error nao avanca `last_nsu`.
 
 ## 3.3 Exportacoes e arquivos
 
-- [ ] Validar export ZIP assíncrono com volume pequeno, medio e grande.
-- [ ] Validar limite de 2 GiB e mensagem de erro.
-- [ ] Validar presigned URL com TTL de 1h.
-- [ ] Validar expiracao/retencao de exports.
+- [x] Validar export ZIP assíncrono com volume pequeno, medio e grande.
+  - Evidencia de conclusao: `tests/test_build_export.py` cobre caminho feliz com multiplos XMLs, periodo vazio e limite; fluxo API/RQ de export e coberto em `apps/api/tests/test_exports_routes_integration.py` quando DB/S3 fake estao disponiveis.
+- [x] Validar limite de 2 GiB e mensagem de erro.
+  - Evidencia de conclusao: `build_export` usa `EXPORT_MAX_BYTES`/default 2 GiB e marca `exports.status=failed` com `error_code=size_limit_exceeded`; teste `test_build_export_limite_2gb_marca_failed` cobre.
+- [x] Validar presigned URL com TTL de 1h.
+  - Evidencia de conclusao: endpoints `/files/{id}/url` e `/exports/{id}` usam TTL 3600; testes de files/exports e `infra/scripts/s3-smoke-test.sh` validam `presign --expires-in 3600`.
+- [x] Validar expiracao/retencao de exports.
+  - Evidencia de conclusao: `files.expires_at` dos exports e configurado para 30 dias no worker/API e `infra/s3-lifecycle.json` aplica lifecycle `tenants-exports/` de 30 dias.
 
 ---
 

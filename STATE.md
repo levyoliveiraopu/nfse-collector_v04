@@ -84,6 +84,26 @@
     infra/s3-lifecycle.json` e `bash -n infra/deploy/deploy.sh
     infra/scripts/s3-smoke-test.sh`.
 
+  - **2026-06-12 — PROD-READY 3 / robustez do fluxo de coleta:**
+    finalizados os itens versionaveis do bloco 3. Chamadas HTTP ao ADN agora
+    tem timeout explicito e retry/backoff parametrizados por `NFSE_ADN_*`;
+    falhas do portal passam por `PortalRequestError` e sao mapeadas para
+    codigos operacionais estaveis (`PORTAL_5XX`, `PORTAL_TIMEOUT`,
+    `PORTAL_RATE_LIMIT`, `PORTAL_HTTP_ERROR`); `API_JOB_TIMEOUT_SECONDS`
+    parametriza o timeout RQ para evitar jobs presos; o worker so avanca
+    `last_nsu` quando a execution termina `succeeded`; falhas parciais de
+    storage/DB ficam reconciliaveis por `packages/worker-core/scripts/reconcile_storage.py`;
+    e o checklist registra as evidencias existentes de export ZIP, limite 2 GiB,
+    presigned URL 1h e retencao de exports. Permanece bloqueada apenas a
+    coleta real em staging com CNPJ/PFX autorizado, por depender de certificado
+    e senha reais do owner. Evidencias locais: `python -m pytest
+    tests/test_nfse_fetcher_config.py tests/test_jobs.py apps/api/tests/test_queue_unit.py -q`,
+    `ruff check packages/worker-core/worker_core/fetcher.py
+    packages/worker-core/worker_core/collector.py packages/worker-core/worker_core/jobs.py
+    apps/api/api/queue.py apps/api/api/config.py tests/test_nfse_fetcher_config.py
+    tests/test_jobs.py apps/api/tests/test_queue_unit.py`, e `python -m py_compile
+    packages/worker-core/scripts/reconcile_storage.py`.
+
 Trabalhos em aberto tambem seguem referenciados em
 `docs/auditoria-tecnica-2026-04-22.md` (correcoes pendentes de
 seguranca/CI/scheduler) e nas decisoes do final do arquivo (nome
