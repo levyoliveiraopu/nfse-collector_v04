@@ -98,6 +98,13 @@ class _FakeSession:
         needle = contains.lower()
         return sum(1 for sql, _ in self.calls if needle in sql)
 
+    def call_index(self, contains: str) -> int:
+        needle = contains.lower()
+        for index, (sql, _params) in enumerate(self.calls):
+            if needle in sql:
+                return index
+        raise AssertionError(f"call not found: {contains}")
+
 
 @pytest.fixture
 def tenant_id() -> UUID:
@@ -152,9 +159,7 @@ def test_run_tick_sem_schedules_devidos(fake_sessions) -> None:
     assert summary == _TickSummary()
 
 
-def test_run_tick_cria_execution_e_enqueue(
-    fake_sessions, tenant_id, schedule_id, company_id
-) -> None:
+def test_run_tick_cria_execution_e_enqueue(fake_sessions, tenant_id, schedule_id, company_id) -> None:
     admin, tenant = fake_sessions
     admin.set_answer(
         "from schedules",
@@ -193,21 +198,44 @@ def test_run_tick_cria_execution_e_enqueue(
     assert calls == [(new_execution_id, tenant_id)]
     # UPDATE com last_run_at setado.
     assert tenant.has_call("update schedules")
-    update_calls = [
-        params for sql, params in tenant.calls if "update schedules" in sql
-    ]
+    update_calls = [params for sql, params in tenant.calls if "update schedules" in sql]
     assert update_calls
     # Procura o UPDATE com `last_run_at = now()` (branch touched_last_run).
-    assert any(
-        "last_run_at = now()" in sql
-        for sql, _ in tenant.calls
-        if "update schedules" in sql
+    assert any("last_run_at = now()" in sql for sql, _ in tenant.calls if "update schedules" in sql)
+
+
+def test_run_tick_serializa_check_insert_com_advisory_lock(fake_sessions, tenant_id, schedule_id, company_id) -> None:
+    admin, tenant = fake_sessions
+    admin.set_answer(
+        "from schedules",
+        [
+            _Row(
+                id=schedule_id,
+                tenant_id=tenant_id,
+                company_id=company_id,
+                cron_expr="* * * * *",
+                timezone="UTC",
+            )
+        ],
+    )
+    tenant.set_answer("from companies\n                 where id =", _Row(id=company_id))
+    tenant.set_answer("from executions\n             where company_id", None)
+    tenant.set_answer("insert into executions", _Row(id=uuid4()))
+
+    summary = run_tick(
+        now=datetime(2026, 4, 17, 12, 0, tzinfo=timezone.utc),
+        enqueue=lambda _eid, _tid: "job-123",
     )
 
+    assert summary.executions_created == 1
+    assert tenant.count_calls("pg_advisory_xact_lock") == 1
+    assert tenant.call_index("pg_advisory_xact_lock") < tenant.call_index("from executions")
+    assert tenant.call_index("pg_advisory_xact_lock") < tenant.call_index("insert into executions")
+    lock_params = [params for sql, params in tenant.calls if "pg_advisory_xact_lock" in sql][0]
+    assert lock_params["lock_key"] == f"scheduler:{tenant_id}:{company_id}"
 
-def test_run_tick_overlap_cria_occurrence_sem_duplicar(
-    fake_sessions, tenant_id, schedule_id, company_id
-) -> None:
+
+def test_run_tick_overlap_cria_occurrence_sem_duplicar(fake_sessions, tenant_id, schedule_id, company_id) -> None:
     admin, tenant = fake_sessions
     admin.set_answer(
         "from schedules",
@@ -237,9 +265,7 @@ def test_run_tick_overlap_cria_occurrence_sem_duplicar(
     # Enqueue nao chamado.
     enqueue.assert_not_called()
     # INSERT em occurrences feito (SCHEDULE_OVERLAP).
-    occurrence_calls = [
-        params for sql, params in tenant.calls if "insert into occurrences" in sql
-    ]
+    occurrence_calls = [params for sql, params in tenant.calls if "insert into occurrences" in sql]
     assert len(occurrence_calls) == 1
     # INSERT em executions NAO foi feito.
     assert not tenant.has_call("insert into executions")
@@ -250,9 +276,7 @@ def test_run_tick_overlap_cria_occurrence_sem_duplicar(
     assert "last_run_at = now()" not in update_sqls[0]
 
 
-def test_run_tick_tenant_wide_itera_companies(
-    fake_sessions, tenant_id, schedule_id
-) -> None:
+def test_run_tick_tenant_wide_itera_companies(fake_sessions, tenant_id, schedule_id) -> None:
     admin, tenant = fake_sessions
     admin.set_answer(
         "from schedules",
@@ -296,9 +320,7 @@ def test_run_tick_tenant_wide_itera_companies(
     assert len(calls) == 3
 
 
-def test_run_tick_enqueue_falha_marca_execution_failed(
-    fake_sessions, tenant_id, schedule_id, company_id
-) -> None:
+def test_run_tick_enqueue_falha_marca_execution_failed(fake_sessions, tenant_id, schedule_id, company_id) -> None:
     admin, tenant = fake_sessions
     admin.set_answer(
         "from schedules",
@@ -329,10 +351,7 @@ def test_run_tick_enqueue_falha_marca_execution_failed(
     assert summary.executions_created == 0
     assert summary.enqueue_failed == 1
     # UPDATE marcando execution como failed com error_summary='enqueue_failed'.
-    failed_updates = [
-        sql for sql, _ in tenant.calls
-        if "update executions" in sql and "enqueue_failed" in sql
-    ]
+    failed_updates = [sql for sql, _ in tenant.calls if "update executions" in sql and "enqueue_failed" in sql]
     assert len(failed_updates) == 1
     # Schedule UPDATE sem last_run_at (nenhuma execucao efetiva criada).
     update_sqls = [sql for sql, _ in tenant.calls if "update schedules" in sql]
@@ -340,9 +359,7 @@ def test_run_tick_enqueue_falha_marca_execution_failed(
     assert "last_run_at = now()" not in update_sqls[0]
 
 
-def test_run_tick_cron_invalido_pula_sem_atualizar(
-    fake_sessions, tenant_id, schedule_id, company_id
-) -> None:
+def test_run_tick_cron_invalido_pula_sem_atualizar(fake_sessions, tenant_id, schedule_id, company_id) -> None:
     admin, tenant = fake_sessions
     admin.set_answer(
         "from schedules",
@@ -370,9 +387,7 @@ def test_run_tick_cron_invalido_pula_sem_atualizar(
     assert not tenant.has_call("from companies")
 
 
-def test_run_tick_company_inexistente_pula_sem_erro(
-    fake_sessions, tenant_id, schedule_id, company_id
-) -> None:
+def test_run_tick_company_inexistente_pula_sem_erro(fake_sessions, tenant_id, schedule_id, company_id) -> None:
     admin, tenant = fake_sessions
     admin.set_answer(
         "from schedules",
@@ -460,3 +475,14 @@ def test_due_schedule_dataclass_imutavel() -> None:
     )
     with pytest.raises(Exception):
         sched.cron_expr = "0 3 * * *"  # type: ignore[misc]
+
+
+def test_resolve_scheduler_healthz_port_default(monkeypatch) -> None:
+    monkeypatch.delenv("SCHEDULER_HEALTHZ_PORT", raising=False)
+    assert scheduler_module._resolve_scheduler_healthz_port() == 8081
+
+
+def test_resolve_scheduler_healthz_port_invalida(monkeypatch) -> None:
+    monkeypatch.setenv("SCHEDULER_HEALTHZ_PORT", "99999")
+    with pytest.raises(RuntimeError, match="SCHEDULER_HEALTHZ_PORT"):
+        scheduler_module._resolve_scheduler_healthz_port()

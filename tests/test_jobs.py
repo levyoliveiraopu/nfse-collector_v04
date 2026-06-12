@@ -35,6 +35,7 @@ import pytest
 from worker_core import jobs as jobs_module
 from worker_core.collector import FetchSummary, NfseItem
 from worker_core.crypto import CryptoError
+from worker_core.fetcher import PortalRequestError
 from worker_core.jobs import JobError, _decide_final_status, run_execution
 from worker_core.storage import StorageError, UploadResult
 
@@ -240,11 +241,37 @@ def test_run_execution_sucesso(
     assert result["items_fail"] == 0
     assert len(fake_storage.uploads) == 2
     # Verifica que um UPDATE final marcou finished + contadores.
-    finished_updates = [
-        c for c in patched_db.calls
-        if "update executions" in c[0] and ":st" in str(c[0])
-    ]
+    finished_updates = [c for c in patched_db.calls if "update executions" in c[0] and ":st" in str(c[0])]
     assert finished_updates
+    nsu_updates = [c for c in patched_db.calls if "update companies" in c[0] and "last_nsu" in c[0]]
+    assert nsu_updates
+
+
+def test_run_execution_dry_run_nao_grava_items_nem_upload(
+    monkeypatch, patched_db, patched_decrypt, fake_storage, fake_read_blob, execution_id
+) -> None:
+    items = [_item(1), _item(2, status="parse_error", chave=None)]
+
+    def _fake_fetch(**kwargs):
+        for it in items:
+            kwargs["on_progress"](it)
+        return _summary(nsu_to=2, total_erro=1)
+
+    monkeypatch.setattr(jobs_module, "fetch_nfse", _fake_fetch)
+
+    result = run_execution(
+        str(execution_id),
+        storage_client=fake_storage,
+        read_credential_blob=fake_read_blob,
+        dry_run=True,
+    )
+
+    assert result["dry_run"] is True
+    assert result["status"] == "partial"
+    assert result["items_ok"] == 1
+    assert result["items_fail"] == 1
+    assert fake_storage.uploads == []
+    assert not any("insert into execution_items" in sql for sql, _ in patched_db.calls)
 
 
 # ---------------------------------------------------------------------------
@@ -277,6 +304,7 @@ def test_run_execution_partial_com_parse_error(
     occ_inserts = [c for c in patched_db.calls if "insert into occurrences" in c[0]]
     codes = [c[1].get("code") for c in occ_inserts]
     assert "PARSE_ERROR" in codes
+    assert not any("update companies" in sql and "last_nsu" in sql for sql, _ in patched_db.calls)
 
 
 # ---------------------------------------------------------------------------
@@ -304,6 +332,44 @@ def test_run_execution_credential_decrypt_failed(
     assert any(c[1].get("code") == "CRED_INVALID" for c in occ)
     failed = [c for c in patched_db.calls if "update executions" in c[0] and "'failed'" in c[0]]
     assert failed
+
+
+def test_run_execution_senha_pfx_invalida_classifica_cred_invalid(
+    monkeypatch, patched_db, patched_decrypt, fake_storage, fake_read_blob, execution_id
+) -> None:
+    def _fake_fetch(**kwargs):
+        raise ValueError("senha do PFX invalida")
+
+    monkeypatch.setattr(jobs_module, "fetch_nfse", _fake_fetch)
+
+    with pytest.raises(JobError, match="mtls_pfx_password_invalid"):
+        run_execution(
+            str(execution_id),
+            storage_client=fake_storage,
+            read_credential_blob=fake_read_blob,
+        )
+
+    occ = [c for c in patched_db.calls if "insert into occurrences" in c[0]]
+    assert any(c[1].get("code") == "CRED_INVALID" for c in occ)
+
+
+def test_run_execution_portal_5xx_classifica_codigo_operacional(
+    monkeypatch, patched_db, patched_decrypt, fake_storage, fake_read_blob, execution_id
+) -> None:
+    def _fake_fetch(**kwargs):
+        raise PortalRequestError("ADN_HTTP_5XX", "ADN retornou HTTP 503", status_code=503)
+
+    monkeypatch.setattr(jobs_module, "fetch_nfse", _fake_fetch)
+
+    with pytest.raises(JobError, match="collector_portal_5xx"):
+        run_execution(
+            str(execution_id),
+            storage_client=fake_storage,
+            read_credential_blob=fake_read_blob,
+        )
+
+    occ = [c for c in patched_db.calls if "insert into occurrences" in c[0]]
+    assert any(c[1].get("code") == "PORTAL_5XX" for c in occ)
 
 
 # ---------------------------------------------------------------------------
@@ -392,6 +458,7 @@ def test_run_execution_storage_error_cria_occurrence(
     assert result["storage_errors"] == 1
     occ = [c for c in patched_db.calls if "insert into occurrences" in c[0]]
     assert any(c[1].get("code") == "STORAGE_ERROR" for c in occ)
+    assert not any("update companies" in sql and "last_nsu" in sql for sql, _ in patched_db.calls)
 
 
 # ---------------------------------------------------------------------------
@@ -433,9 +500,14 @@ def test_run_execution_inexistente_retorna_not_found(monkeypatch, execution_id) 
 def test_decide_final_status(ok, fail, storage_err, fatal, expected) -> None:
     summary = FetchSummary(
         cnpj="12345678000199",
-        nsu_from=0, nsu_to=1,
-        total_documentos=ok + fail, total_nfse=ok + fail,
-        total_sucesso=ok, total_cancelada=0, total_erro=fail,
-        callback_errors=0, fatal_rejected=fatal,
+        nsu_from=0,
+        nsu_to=1,
+        total_documentos=ok + fail,
+        total_nfse=ok + fail,
+        total_sucesso=ok,
+        total_cancelada=0,
+        total_erro=fail,
+        callback_errors=0,
+        fatal_rejected=fatal,
     )
     assert _decide_final_status(summary, ok, fail, storage_err) == expected

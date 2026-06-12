@@ -44,6 +44,7 @@ from typing import Callable, Optional
 
 from worker_core.auth import mtls_session
 from worker_core.fetcher import (
+    PortalRequestError,
     buscar_todos_dfe_novos,
     extrair_dados_nfse,
     extrair_xml_do_doc,
@@ -143,6 +144,7 @@ def fetch_nfse(
     *,
     max_documentos: int | None = None,
     rate_limit_delay: int = 0,
+    persist_nsu: bool = True,
 ) -> FetchSummary:
     """Coleta NFS-e da API ADN para um CNPJ e emite callback por nota.
 
@@ -160,6 +162,9 @@ def fetch_nfse(
                          ``None`` equivale a descartar.
         max_documentos:  Limite opcional por execucao (passado ao fetcher).
         rate_limit_delay: Segundos entre chamadas de paginacao.
+        persist_nsu:     Quando False, nao persiste `nsu_source.set()` dentro
+                         do fetcher; o worker decide apos saber se o job
+                         terminou `succeeded` ou `partial/failed`.
 
     Returns:
         ``FetchSummary`` com contadores e ``nsu_from``/``nsu_to``.
@@ -198,13 +203,17 @@ def fetch_nfse(
             documentos, maior_nsu = buscar_todos_dfe_novos(
                 session=session,
                 cnpj=cnpj,
+                ultimo_nsu_salvo=nsu_inicial,
                 rate_limit_delay=rate_limit_delay,
                 max_documentos=max_documentos,
-                nsu_source=nsu_source,
+                nsu_source=nsu_source if persist_nsu else None,
             )
     except ValueError:
         # Falhas fatais da camada mTLS (senha, PFX, cert vencido) — proprago.
         log("fatal_error", {"cnpj": cnpj, "stage": "mtls"})
+        raise
+    except PortalRequestError as exc:
+        log("fatal_error", {"cnpj": cnpj, "stage": "adn", "code": exc.code})
         raise
 
     total_documentos = len(documentos)

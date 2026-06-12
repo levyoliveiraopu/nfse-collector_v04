@@ -1,19 +1,5 @@
 name: deploy-prod
 
-# INFRA-09 — deploy prod acionado por push de tag `v*`.
-#
-# Para promover uma release:
-#   git tag v0.0.1 && git push origin v0.0.1
-#
-# Fluxo:
-#   1. `build-push`: build do `apps/api/Dockerfile` e push para GHCR com
-#      as tags `<git-tag>` (ex: `v0.0.1`) e `latest-prod`.
-#   2. `deploy`: conecta via SSH no VPS, exporta `DEPLOY_TAG=<git-tag>`
-#      e roda `/srv/nfse/deploy.sh` (env=prod) — pull/up/health/rollback.
-#
-# Secrets iguais ao deploy-staging (SSH_HOST/SSH_USER/SSH_KEY; GHCR_TOKEN
-# opcional na VPS para `docker login`).
-
 on:
   push:
     tags:
@@ -34,11 +20,10 @@ concurrency:
 
 env:
   IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
-  IMAGE_NAME: nfse-api
 
 jobs:
   build-push:
-    name: Build e push da imagem da API (GHCR)
+    name: Build e push das imagens (GHCR)
     runs-on: ubuntu-latest
     outputs:
       deploy_tag: ${{ steps.meta.outputs.deploy_tag }}
@@ -46,15 +31,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # Em push de tag, garante o checkout na ref da tag (default ok,
-          # mas explicitamos para o workflow_dispatch manual tambem).
           ref: ${{ github.event.inputs.tag || github.ref }}
 
-      - name: Metadata da imagem
+      - name: Metadata da release
         id: meta
         run: |
-          # Em push de tag, github.ref = refs/tags/v0.0.1 -> strip para v0.0.1.
-          # Em dispatch manual, pega o input.
           if [[ -n "${{ github.event.inputs.tag }}" ]]; then
             deploy_tag="${{ github.event.inputs.tag }}"
           else
@@ -84,19 +65,45 @@ jobs:
           file: apps/api/Dockerfile
           push: true
           tags: |
-            ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.deploy_tag }}
-            ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:latest-prod
+            ${{ env.IMAGE_REGISTRY }}/nfse-api:${{ steps.meta.outputs.deploy_tag }}
+            ${{ env.IMAGE_REGISTRY }}/nfse-api:latest-prod
           build-args: |
             GIT_COMMIT=${{ github.sha }}
           cache-from: type=gha,scope=nfse-api-prod
           cache-to: type=gha,scope=nfse-api-prod,mode=max
 
+      - name: Build e push (nfse-worker)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/worker/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_REGISTRY }}/nfse-worker:${{ steps.meta.outputs.deploy_tag }}
+            ${{ env.IMAGE_REGISTRY }}/nfse-worker:latest-prod
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}
+          cache-from: type=gha,scope=nfse-worker-prod
+          cache-to: type=gha,scope=nfse-worker-prod,mode=max
+
+      - name: Build e push (nfse-web-app)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web-app/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_REGISTRY }}/nfse-web-app:${{ steps.meta.outputs.deploy_tag }}
+            ${{ env.IMAGE_REGISTRY }}/nfse-web-app:latest-prod
+          build-args: |
+            NEXT_PUBLIC_API_BASE_URL=${{ vars.NEXT_PUBLIC_API_BASE_URL || '/api' }}
+          cache-from: type=gha,scope=nfse-web-app-prod
+          cache-to: type=gha,scope=nfse-web-app-prod,mode=max
+
   deploy:
     name: Deploy no VPS (prod)
     needs: build-push
     runs-on: ubuntu-latest
-    # Environment `prod` permite ao owner exigir approval manual no GitHub
-    # antes do SSH rodar — configurado em Settings > Environments.
     environment:
       name: prod
     steps:

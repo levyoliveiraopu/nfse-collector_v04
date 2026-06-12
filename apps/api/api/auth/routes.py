@@ -187,42 +187,74 @@ def login(
     )
 
     with get_admin_session() as session:
-        row = session.execute(
+        rows = session.execute(
             text(
                 """
                 SELECT u.id AS user_id,
                        u.password_hash,
-                       u.status,
+                       u.status AS user_status,
                        tu.tenant_id,
-                       tu.role
+                       tu.role,
+                       t.slug AS tenant_slug,
+                       t.status AS tenant_status
                   FROM users u
                   JOIN tenant_users tu ON tu.user_id = u.id
+                  JOIN tenants t ON t.id = tu.tenant_id
                  WHERE LOWER(u.email) = LOWER(:email)
-                 ORDER BY tu.accepted_at NULLS LAST
-                 LIMIT 1
+                   AND (:tenant_slug IS NULL OR t.slug = :tenant_slug)
+                 ORDER BY tu.accepted_at NULLS LAST, t.created_at ASC
                 """
             ),
-            {"email": payload.email},
-        ).one_or_none()
+            {"email": payload.email, "tenant_slug": payload.tenant_slug},
+        ).all()
 
-        if row is None:
-            logger.info("auth.login.unknown_email")
+        if not rows:
+            logger.info("auth.login.unknown_email_or_tenant")
             raise invalid_credentials
 
-        if row.status != "active":
+        first = rows[0]
+        if first.user_status != "active":
             logger.info(
                 "auth.login.inactive",
-                extra={"user_id": str(row.user_id), "status": row.status},
+                extra={"user_id": str(first.user_id), "status": first.user_status},
             )
             raise invalid_credentials
 
-        if not verify_password(payload.password, row.password_hash):
+        if not verify_password(payload.password, first.password_hash):
             logger.info(
                 "auth.login.bad_password",
-                extra={"user_id": str(row.user_id)},
+                extra={"user_id": str(first.user_id)},
             )
             raise invalid_credentials
 
+        active_memberships = [
+            r for r in rows if r.tenant_status not in {"suspended", "canceled"}
+        ]
+        if not active_memberships:
+            logger.info(
+                "auth.login.no_active_tenant",
+                extra={"user_id": str(first.user_id)},
+            )
+            raise invalid_credentials
+
+        if payload.tenant_slug is None and len(active_memberships) > 1:
+            logger.info(
+                "auth.login.tenant_required",
+                extra={"user_id": str(first.user_id), "count": len(active_memberships)},
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "error": "tenant_slug_required",
+                    "message": "informe o tenant_slug para selecionar o tenant",
+                    "tenants": [
+                        {"slug": r.tenant_slug, "role": r.role}
+                        for r in active_memberships
+                    ],
+                },
+            )
+
+        row = active_memberships[0]
         session.execute(
             text("UPDATE users SET last_login_at = now() WHERE id = :uid"),
             {"uid": str(row.user_id)},

@@ -56,15 +56,70 @@ def _get_base_url() -> str:
     ambiente = os.getenv("NFSE_AMBIENTE", "PRODUCAO").upper()
     url = _URLS_BASE.get(ambiente)
     if url is None:
-        raise ValueError(
-            f"NFSE_AMBIENTE inválido: '{ambiente}'. "
-            f"Valores aceitos: {', '.join(_URLS_BASE.keys())}"
-        )
+        raise ValueError(f"NFSE_AMBIENTE inválido: '{ambiente}'. Valores aceitos: {', '.join(_URLS_BASE.keys())}")
     return url
 
 
-class _RateLimitError(Exception):
+def _env_int(name: str, default: int, *, minimum: int = 1) -> int:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return value if value >= minimum else default
+
+
+def _env_float(name: str, default: float, *, minimum: float = 0.1) -> float:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        return default
+    return value if value >= minimum else default
+
+
+def _request_timeout() -> tuple[float, float]:
+    return (
+        _env_float("NFSE_ADN_CONNECT_TIMEOUT_SECONDS", 10.0),
+        _env_float("NFSE_ADN_READ_TIMEOUT_SECONDS", 60.0),
+    )
+
+
+def _retry_attempts() -> int:
+    return _env_int("NFSE_ADN_RETRY_ATTEMPTS", 5, minimum=1)
+
+
+def _backoff_multiplier() -> float:
+    return _env_float("NFSE_ADN_RETRY_BACKOFF_MULTIPLIER", 2.0)
+
+
+def _backoff_min() -> float:
+    return _env_float("NFSE_ADN_RETRY_BACKOFF_MIN_SECONDS", 4.0)
+
+
+def _backoff_max() -> float:
+    return _env_float("NFSE_ADN_RETRY_BACKOFF_MAX_SECONDS", 60.0)
+
+
+class PortalRequestError(RuntimeError):
+    """Erro operacional estavel para falhas HTTP do portal ADN."""
+
+    def __init__(self, code: str, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.code = code
+        self.status_code = status_code
+
+
+class _RateLimitError(PortalRequestError):
     """Exceção interna para sinalizar HTTP 429 ao tenacity."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__("ADN_RATE_LIMIT", message, status_code=429)
+
 
 # Namespaces conhecidos da NFS-e Nacional (tentados em ordem)
 _NAMESPACES_NFSE = [
@@ -81,6 +136,7 @@ _CAMPOS_DATA_EMISSAO = ["dhEmi", "dtEmissao", "dEmi", "DataEmissao", "dataEmissa
 # ---------------------------------------------------------------------------
 # Função 1: buscar_lote_dfe
 # ---------------------------------------------------------------------------
+
 
 def buscar_lote_dfe(session: requests.Session, ultimo_nsu: int, cnpj: str) -> dict:
     """Consulta um lote de DFe a partir do NSU informado.
@@ -109,17 +165,25 @@ def buscar_lote_dfe(session: requests.Session, ultimo_nsu: int, cnpj: str) -> di
     params = {"cnpjConsulta": cnpj, "lote": "true"}
 
     @retry(
-        stop=stop_after_attempt(5),
-        wait=wait_exponential(multiplier=2, min=4, max=60),
-        retry=retry_if_exception_type(
-            (requests.Timeout, requests.ConnectionError, _RateLimitError)
+        stop=stop_after_attempt(_retry_attempts()),
+        wait=wait_exponential(
+            multiplier=_backoff_multiplier(),
+            min=_backoff_min(),
+            max=_backoff_max(),
         ),
+        retry=retry_if_exception_type(
+            (
+                requests.Timeout,
+                requests.ConnectionError,
+                _RateLimitError,
+                PortalRequestError,
+            )
+        ),
+        reraise=True,
     )
     def _executar_requisicao() -> dict:
-        logger.debug(
-            "GET %s | CNPJ=%s | NSU=%d", url, cnpj, ultimo_nsu
-        )
-        resposta = session.get(url, params=params)
+        logger.debug("GET %s | CNPJ=%s | NSU=%d", url, cnpj, ultimo_nsu)
+        resposta = session.get(url, params=params, timeout=_request_timeout())
 
         if resposta.status_code == 429:
             logger.warning(
@@ -127,9 +191,7 @@ def buscar_lote_dfe(session: requests.Session, ultimo_nsu: int, cnpj: str) -> di
                 cnpj,
                 ultimo_nsu,
             )
-            raise _RateLimitError(
-                f"HTTP 429 para CNPJ={cnpj} NSU={ultimo_nsu}"
-            )
+            raise _RateLimitError(f"HTTP 429 para CNPJ={cnpj} NSU={ultimo_nsu}")
 
         if resposta.status_code == 200:
             dados = resposta.json()
@@ -162,7 +224,21 @@ def buscar_lote_dfe(session: requests.Session, ultimo_nsu: int, cnpj: str) -> di
             )
             return dados
 
-        resposta.raise_for_status()
+        if 500 <= resposta.status_code <= 599:
+            raise PortalRequestError(
+                "ADN_HTTP_5XX",
+                f"ADN retornou HTTP {resposta.status_code}",
+                status_code=resposta.status_code,
+            )
+
+        try:
+            resposta.raise_for_status()
+        except requests.HTTPError as exc:
+            raise PortalRequestError(
+                "ADN_HTTP_ERROR",
+                f"ADN retornou HTTP {resposta.status_code}",
+                status_code=resposta.status_code,
+            ) from exc
         return resposta.json()
 
     return _executar_requisicao()
@@ -171,6 +247,7 @@ def buscar_lote_dfe(session: requests.Session, ultimo_nsu: int, cnpj: str) -> di
 # ---------------------------------------------------------------------------
 # Função 2: buscar_todos_dfe_novos
 # ---------------------------------------------------------------------------
+
 
 def buscar_todos_dfe_novos(
     session: requests.Session,
@@ -245,8 +322,7 @@ def buscar_todos_dfe_novos(
 
         if status == "NENHUM_DOCUMENTO_LOCALIZADO" or not documentos:
             logger.debug(
-                "Paginação concluída — StatusProcessamento=%s | NSU=%d | "
-                "Sem novos documentos.",
+                "Paginação concluída — StatusProcessamento=%s | NSU=%d | Sem novos documentos.",
                 status,
                 nsu_atual,
             )
@@ -316,9 +392,8 @@ def buscar_todos_dfe_novos(
 # Função 3: filtrar_por_competencia
 # ---------------------------------------------------------------------------
 
-def filtrar_por_competencia(
-    lista_dfe: list[dict], ano: int, mes: int
-) -> list[dict]:
+
+def filtrar_por_competencia(lista_dfe: list[dict], ano: int, mes: int) -> list[dict]:
     """Filtra documentos DFe pelo ano e mês de emissão.
 
     Como a API ADN não oferece filtro por período, a filtragem é feita
@@ -372,9 +447,7 @@ def filtrar_por_competencia(
     return resultado
 
 
-def filtrar_por_tipo_documento(
-    lista_dfe: list[dict], tipos: tuple[str, ...] = ("NFSE",)
-) -> list[dict]:
+def filtrar_por_tipo_documento(lista_dfe: list[dict], tipos: tuple[str, ...] = ("NFSE",)) -> list[dict]:
     """Filtra documentos DFe pelo campo TipoDocumento.
 
     Por padrão, mantém apenas documentos do tipo NFSE, descartando DPS,
@@ -387,15 +460,15 @@ def filtrar_por_tipo_documento(
     Returns:
         Subconjunto de ``lista_dfe`` cujo ``TipoDocumento`` está em ``tipos``.
     """
-    resultado = [
-        doc for doc in lista_dfe
-        if doc.get("TipoDocumento") in tipos
-    ]
+    resultado = [doc for doc in lista_dfe if doc.get("TipoDocumento") in tipos]
     descartados = len(lista_dfe) - len(resultado)
     if descartados:
         logger.debug(
             "Filtro TipoDocumento %s: %d/%d mantidos, %d descartados.",
-            tipos, len(resultado), len(lista_dfe), descartados,
+            tipos,
+            len(resultado),
+            len(lista_dfe),
+            descartados,
         )
     return resultado
 
@@ -403,6 +476,7 @@ def filtrar_por_tipo_documento(
 # ---------------------------------------------------------------------------
 # Função 4: extrair_data_emissao
 # ---------------------------------------------------------------------------
+
 
 def extrair_data_emissao(xml_content: str) -> datetime | None:
     """Extrai a data de emissão da NFS-e a partir do XML.
@@ -440,6 +514,7 @@ def extrair_data_emissao(xml_content: str) -> datetime | None:
 # ---------------------------------------------------------------------------
 # Função 5: extrair_dados_nfse
 # ---------------------------------------------------------------------------
+
 
 def extrair_dados_nfse(xml_content: str) -> dict:
     """Extrai campos estruturados de uma NFS-e Nacional a partir do XML.
@@ -566,6 +641,7 @@ def extrair_dados_nfse(xml_content: str) -> dict:
 # Funções auxiliares privadas
 # ---------------------------------------------------------------------------
 
+
 def extrair_xml_do_doc(doc: dict) -> str | None:
     """Retorna o conteúdo XML de um documento DFe retornado pela API ADN.
 
@@ -596,8 +672,7 @@ def extrair_xml_do_doc(doc: dict) -> str | None:
             return valor
 
     logger.warning(
-        "XML não encontrado no documento — campos tentados: ArquivoXml, docZip + %s | "
-        "campos presentes: %s | NSU=%s",
+        "XML não encontrado no documento — campos tentados: ArquivoXml, docZip + %s | campos presentes: %s | NSU=%s",
         ("xmlNfse", "xml", "xmlNFSe", "nfseXml", "documento"),
         list(doc.keys()),
         doc.get("NSU", doc.get("nsu", "?")),
@@ -647,24 +722,32 @@ def buscar_eventos_nfse(session: requests.Session, chave_acesso: str) -> dict:
     url = f"{_get_base_url()}/NFSe/{chave_acesso}/Eventos"
 
     @retry(
-        stop=stop_after_attempt(5),
-        wait=wait_exponential(multiplier=2, min=4, max=60),
-        retry=retry_if_exception_type(
-            (requests.Timeout, requests.ConnectionError, _RateLimitError)
+        stop=stop_after_attempt(_retry_attempts()),
+        wait=wait_exponential(
+            multiplier=_backoff_multiplier(),
+            min=_backoff_min(),
+            max=_backoff_max(),
         ),
+        retry=retry_if_exception_type(
+            (
+                requests.Timeout,
+                requests.ConnectionError,
+                _RateLimitError,
+                PortalRequestError,
+            )
+        ),
+        reraise=True,
     )
     def _executar_requisicao() -> dict:
         logger.debug("GET %s", url)
-        resposta = session.get(url)
+        resposta = session.get(url, timeout=_request_timeout())
 
         if resposta.status_code == 429:
             logger.warning(
                 "HTTP 429 (rate limit) para eventos ChaveAcesso=%s.",
                 chave_acesso,
             )
-            raise _RateLimitError(
-                f"HTTP 429 para eventos ChaveAcesso={chave_acesso}"
-            )
+            raise _RateLimitError(f"HTTP 429 para eventos ChaveAcesso={chave_acesso}")
 
         if resposta.status_code == 200:
             return resposta.json()
@@ -679,7 +762,21 @@ def buscar_eventos_nfse(session: requests.Session, chave_acesso: str) -> dict:
                 "LoteDFe": [],
             }
 
-        resposta.raise_for_status()
+        if 500 <= resposta.status_code <= 599:
+            raise PortalRequestError(
+                "ADN_HTTP_5XX",
+                f"ADN retornou HTTP {resposta.status_code}",
+                status_code=resposta.status_code,
+            )
+
+        try:
+            resposta.raise_for_status()
+        except requests.HTTPError as exc:
+            raise PortalRequestError(
+                "ADN_HTTP_ERROR",
+                f"ADN retornou HTTP {resposta.status_code}",
+                status_code=resposta.status_code,
+            ) from exc
         return resposta.json()
 
     return _executar_requisicao()
@@ -765,10 +862,7 @@ def _extrair_situacao(raiz: ET.Element) -> str | None:
             return "Ativa"
 
     # Verificar código de situação numérico (ADN padrão nacional)
-    c_sit = (
-        _buscar_campo_xml(raiz, "cSitNFSe")
-        or _buscar_campo_xml(raiz, "CodigoSituacao")
-    )
+    c_sit = _buscar_campo_xml(raiz, "cSitNFSe") or _buscar_campo_xml(raiz, "CodigoSituacao")
     if c_sit:
         if c_sit.strip() == "4":
             return "Cancelada"

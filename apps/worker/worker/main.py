@@ -53,9 +53,7 @@ def _configure_logging() -> None:
 def _resolve_redis_url() -> str:
     url = (os.environ.get("API_REDIS_URL") or "").strip()
     if not url:
-        raise RuntimeError(
-            "API_REDIS_URL nao definida; impossivel iniciar o worker."
-        )
+        raise RuntimeError("API_REDIS_URL nao definida; impossivel iniciar o worker.")
     return url
 
 
@@ -74,6 +72,33 @@ def _resolve_healthz_port() -> int:
     return port
 
 
+def _patch_redis_client_for_rq(redis_client) -> None:
+    """Compatibiliza fakeredis com RQ >= 2.9 em testes.
+
+    O RQ consulta ``CLIENT LIST`` na inicializacao do worker e espera o
+    campo ``addr``. Algumas versoes de fakeredis retornam a lista sem esse
+    campo, o que quebra a suite local apesar de nao acontecer com Redis real.
+    A correcao e restrita ao cliente injetado em testes.
+    """
+    if redis_client is None or not hasattr(redis_client, "client_list"):
+        return
+
+    original_client_list = redis_client.client_list
+
+    def _client_list_with_addr(*args, **kwargs):
+        clients = original_client_list(*args, **kwargs)
+        if isinstance(clients, list):
+            for client in clients:
+                if isinstance(client, dict):
+                    client.setdefault("addr", "fakeredis:0")
+        return clients
+
+    try:
+        redis_client.client_list = _client_list_with_addr
+    except Exception:  # noqa: BLE001 - cliente Redis real pode nao permitir monkeypatch
+        return
+
+
 def build_worker(*, redis_client=None, queue_name: Optional[str] = None):
     """Constroi o ``rq.Worker`` sobre a fila configurada.
 
@@ -83,6 +108,8 @@ def build_worker(*, redis_client=None, queue_name: Optional[str] = None):
     from rq import Queue, Worker
 
     client = redis_client or _redis.from_url(_resolve_redis_url())
+    if redis_client is not None:
+        _patch_redis_client_for_rq(client)
     qname = queue_name or _resolve_queue_name()
     queue = Queue(name=qname, connection=client)
     # `name=None` faz o RQ gerar um nome aleatorio por worker (OK em K8s
