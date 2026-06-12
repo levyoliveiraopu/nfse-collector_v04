@@ -750,6 +750,13 @@ def run_execution(
         _mark_failed(ctx, error_summary=error_summary)
         _create_occurrence(ctx, code=code, severity="error", title="Falha no portal ADN", detail=str(exc))
         raise JobError(error_summary) from exc
+        # mtls_session levanta ValueError para PFX invalido / senha errada /
+        # cert vencido. Diferenciamos via mensagem para classificar ocorrencia.
+        msg = str(exc).lower()
+        code = OCC_CERT_EXPIRED if "vencid" in msg or "expir" in msg else OCC_CRED_INVALID
+        _mark_failed(ctx, error_summary="mtls_session_failed")
+        _create_occurrence(ctx, code=code, severity="error", title="Falha na sessao mTLS", detail=str(exc))
+        raise JobError("mtls_session_failed") from exc
     except Exception as exc:  # noqa: BLE001 — erro inesperado do coletor
         _mark_failed(ctx, error_summary="collector_error")
         _create_occurrence(

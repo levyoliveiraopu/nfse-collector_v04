@@ -113,6 +113,10 @@ class Settings(BaseSettings):
                 "Defina a variavel de ambiente antes de subir a API."
             )
         if self.environment in ("staging", "production") and len(self.jwt_secret.encode("utf-8")) < 32:
+        if (
+            self.environment in ("staging", "production")
+            and len(self.jwt_secret.encode("utf-8")) < 32
+        ):
             raise ValueError(
                 "API_JWT_SECRET deve ter pelo menos 32 bytes em "
                 "staging/production (HS256). Gere com: openssl rand -base64 32"
