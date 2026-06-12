@@ -27,9 +27,9 @@ Arquivo de controle primario: `STATE.md`
 
 ## 1.1 Seguranca de sessao e autenticacao
 
-- [ ] Corrigir revogacao em cadeia de refresh tokens em `apps/api/api/security/tokens.py`.
+- [x] Corrigir revogacao em cadeia de refresh tokens em `apps/api/api/security/tokens.py`.
   - Motivo: replay de refresh token antigo deve invalidar todos os descendentes.
-  - Evidencia de conclusao: teste unitario com cadeia A -> B -> C e teste de integracao via `/auth/refresh`.
+  - Evidencia de conclusao: CTE corrigida para caminhar de `id` para `replaced_by`; teste unitario valida o sentido da recursao e `test_refresh_reuse_detection_invalidates_chain` cobre o fluxo via `/auth/refresh`.
 - [ ] Implementar login multi-tenant explicito.
   - Motivo: usuario com multiplos tenants nao pode cair em um tenant escolhido por `ORDER BY ... LIMIT 1`.
   - Resultado esperado: login retorna selecao de tenants ou exige `tenant_slug` quando houver mais de uma membership.
