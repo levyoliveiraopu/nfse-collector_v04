@@ -12,6 +12,13 @@ Segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 ## [Unreleased]
 
 ### Docs
+- PROD-READY: adiciona `docs/production-readiness-checklist.md` como backlog
+  mestre de prontidao para producao (seguranca, concorrencia, CI, deploy,
+  storage, banco/Redis, robustez do worker/coleta, observabilidade,
+  operacao, produto/LGPD e plano por fases) e atualiza `STATE.md` para
+  definir a regra de controle: cada PR rumo a producao deve atualizar o
+  checklist, registrar evidencia no `STATE.md` e atualizar este
+  `CHANGELOG.md` quando houver mudanca relevante.
 - Revisao geral da documentacao do monorepo (branch
   `claude/review-project-docs-2og85`): `STATE.md` esvaziou "Em Andamento"
   movendo as 26 entregas merged para "Concluidos (entregas recentes)";
