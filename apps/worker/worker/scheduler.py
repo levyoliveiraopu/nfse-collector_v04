@@ -73,6 +73,8 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 from uuid import UUID
 
+from worker_core.logging import configure_json_logging
+
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -115,9 +117,7 @@ class _TickSummary:
 def _resolve_redis_url() -> str:
     url = (os.environ.get("API_REDIS_URL") or "").strip()
     if not url:
-        raise RuntimeError(
-            "API_REDIS_URL nao definida; scheduler nao consegue enfileirar jobs."
-        )
+        raise RuntimeError("API_REDIS_URL nao definida; scheduler nao consegue enfileirar jobs.")
     return url
 
 
@@ -143,9 +143,7 @@ def _build_queue(client: Any, name: str) -> Any:
     return Queue(name=name, connection=client)
 
 
-def _enqueue_run_execution(
-    queue: Any, *, execution_id: UUID, tenant_id: UUID
-) -> str:
+def _enqueue_run_execution(queue: Any, *, execution_id: UUID, tenant_id: UUID) -> str:
     """Enfileira `worker_core.jobs.run_execution` — mesmo contrato de API-07."""
     job = queue.enqueue(
         "worker_core.jobs.run_execution",
@@ -192,9 +190,7 @@ def _select_due_schedules(session: Session, *, now: datetime) -> list[_DueSchedu
     ]
 
 
-def _resolve_target_companies(
-    session: Session, *, schedule: _DueSchedule
-) -> list[UUID]:
+def _resolve_target_companies(session: Session, *, schedule: _DueSchedule) -> list[UUID]:
     """Lista as companies alvo do schedule (RLS ativa na session)."""
     if schedule.company_id is not None:
         row = session.execute(
@@ -218,6 +214,20 @@ def _resolve_target_companies(
         )
     ).all()
     return [UUID(str(r.id)) for r in rows]
+
+
+def _lock_company_execution_slot(session: Session, *, tenant_id: UUID, company_id: UUID) -> None:
+    """Serializa check+insert de execution aberta por tenant/company.
+
+    Dois processos de scheduler podem pegar o mesmo schedule no mesmo minuto.
+    O advisory lock transacional usa uma chave deterministica e vale ate o fim
+    da transacao da sessao tenant, impedindo que ambos passem simultaneamente
+    pelo par `_has_inflight_execution` + `_insert_execution`.
+    """
+    session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
+        {"lock_key": f"scheduler:{tenant_id}:{company_id}"},
+    )
 
 
 def _has_inflight_execution(session: Session, *, company_id: UUID) -> bool:
@@ -255,9 +265,7 @@ def _insert_execution(session: Session, *, company_id: UUID) -> UUID:
     return UUID(str(row.id))
 
 
-def _mark_execution_enqueue_failed(
-    session: Session, *, execution_id: UUID
-) -> None:
+def _mark_execution_enqueue_failed(session: Session, *, execution_id: UUID) -> None:
     session.execute(
         text(
             """
@@ -273,9 +281,7 @@ def _mark_execution_enqueue_failed(
     )
 
 
-def _insert_overlap_occurrence(
-    session: Session, *, schedule: _DueSchedule, company_id: UUID
-) -> None:
+def _insert_overlap_occurrence(session: Session, *, schedule: _DueSchedule, company_id: UUID) -> None:
     session.execute(
         text(
             """
@@ -405,10 +411,9 @@ def run_tick(
 
             created_for_schedule = 0
             for company_id in companies:
+                _lock_company_execution_slot(session, tenant_id=sched.tenant_id, company_id=company_id)
                 if _has_inflight_execution(session, company_id=company_id):
-                    _insert_overlap_occurrence(
-                        session, schedule=sched, company_id=company_id
-                    )
+                    _insert_overlap_occurrence(session, schedule=sched, company_id=company_id)
                     overlaps += 1
                     logger.info(
                         "scheduler.tick.overlap",
@@ -466,7 +471,7 @@ def run_tick(
         "scheduler.tick.done",
         extra={
             "picked": summary.picked,
-            "created": summary.executions_created,
+            "executions_created": summary.executions_created,
             "overlaps": summary.overlaps,
             "enqueue_failed": summary.enqueue_failed,
         },
@@ -482,23 +487,7 @@ def run_tick(
 def _configure_logging() -> None:
     level_name = (os.environ.get("LOG_LEVEL") or "INFO").upper()
     level = getattr(logging, level_name, logging.INFO)
-    try:
-        from pythonjsonlogger import jsonlogger  # type: ignore[import-untyped]
-
-        handler = logging.StreamHandler(sys.stdout)
-        handler.setFormatter(
-            jsonlogger.JsonFormatter(
-                "%(asctime)s %(name)s %(levelname)s %(message)s",
-                rename_fields={"asctime": "ts", "levelname": "level"},
-            )
-        )
-        logging.basicConfig(level=level, handlers=[handler], force=True)
-    except ImportError:
-        logging.basicConfig(
-            level=level,
-            format="%(asctime)s %(levelname)s %(name)s - %(message)s",
-            force=True,
-        )
+    configure_json_logging(level)
 
 
 def build_scheduler(*, tick: Optional[Callable[[], Any]] = None) -> Any:
@@ -523,10 +512,25 @@ def build_scheduler(*, tick: Optional[Callable[[], Any]] = None) -> Any:
     return scheduler
 
 
+def _resolve_scheduler_healthz_port() -> int:
+    raw = (os.environ.get("SCHEDULER_HEALTHZ_PORT") or "8081").strip()
+    try:
+        port = int(raw)
+    except ValueError as exc:
+        raise RuntimeError(f"SCHEDULER_HEALTHZ_PORT invalido: {raw!r}") from exc
+    if port <= 0 or port > 65535:
+        raise RuntimeError(f"SCHEDULER_HEALTHZ_PORT fora do intervalo: {port}")
+    return port
+
+
 def main() -> int:
     _configure_logging()
     logger.info("scheduler.boot", extra={"queue": _resolve_queue_name()})
 
+    from worker.healthz import HealthzServer
+
+    healthz = HealthzServer(port=_resolve_scheduler_healthz_port())
+    healthz.start()
     scheduler = build_scheduler()
 
     def _shutdown(signum, frame):  # noqa: ARG001
@@ -539,16 +543,19 @@ def main() -> int:
     signal.signal(signal.SIGTERM, _shutdown)
     signal.signal(signal.SIGINT, _shutdown)
 
+    exit_code = 0
     try:
         scheduler.start()
     except (KeyboardInterrupt, SystemExit):
         pass
     except Exception:  # noqa: BLE001
         logger.exception("scheduler.run_failed")
-        return 1
+        exit_code = 1
+    finally:
+        healthz.stop()
 
     logger.info("scheduler.exit")
-    return 0
+    return exit_code
 
 
 if __name__ == "__main__":

@@ -18,9 +18,9 @@
 #   - `docker login ghcr.io` ja efetuado no host (via `GHCR_TOKEN` / PAT
 #     read:packages, tambem documentado no README).
 #
-# Health check: bate em http://127.0.0.1:8000/health (API FastAPI,
-# conforme API-01). Worker ainda nao expoe HTTP — quando CORE-05 chegar,
-# incluir checagem adicional aqui.
+# Release: `docker compose up` executa o servico one-shot `migrate`
+# (`alembic upgrade head`) antes de liberar API/worker/web-app. O health de
+# deploy bate em /ready, nao em /health, para validar DB/Redis/config.
 #
 # Rollback: antes de pull/up, grava a tag corrente em
 # `config/.last_deploy_tag`. Em falha do health, restaura a tag anterior
@@ -46,7 +46,7 @@ readonly COMPOSE_FILES=(
   "-f" "${STACK_DIR}/docker-compose.base.yml"
   "-f" "${STACK_DIR}/docker-compose.deploy.yml"
 )
-readonly HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8000/health}"
+readonly HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8000/ready}"
 readonly HEALTH_RETRIES="${HEALTH_RETRIES:-30}"
 readonly HEALTH_INTERVAL="${HEALTH_INTERVAL:-2}"
 
@@ -92,7 +92,7 @@ log "docker login ghcr.io (assume que ja foi feito — pulando)"
 log "pull das imagens"
 compose pull
 
-log "up -d --remove-orphans"
+log "up -d --remove-orphans (inclui migrate/alembic upgrade head)"
 compose up -d --remove-orphans
 
 log "aguardando health em ${HEALTH_URL} (${HEALTH_RETRIES}x${HEALTH_INTERVAL}s)"

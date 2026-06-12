@@ -93,3 +93,8 @@ def test_decode_rejects_wrong_audience() -> None:
 def test_prod_requires_secret() -> None:
     with pytest.raises(ValueError):
         Settings(environment="production", jwt_secret="")
+
+
+def test_prod_rejects_short_secret() -> None:
+    with pytest.raises(ValueError, match="pelo menos 32 bytes"):
+        Settings(environment="production", jwt_secret="short-secret")

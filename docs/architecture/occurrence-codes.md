@@ -30,7 +30,9 @@ operacao. Adicione um codigo novo aqui antes de comecar a emiti-lo.
 | `CRED_INVALID`       | `error`          | Senha do PFX nao confere, ou CN nao bate com CNPJ da company.             | `docs/runbooks/credencial-invalida.md` |
 | `PORTAL_5XX`         | `error`          | Portal da prefeitura devolveu 5xx persistente apos retries.               | `docs/runbooks/portal-indisponivel.md` |
 | `PORTAL_TIMEOUT`     | `warning`        | Timeout de conexao/leitura no portal (sem 5xx explicito).                 | `docs/runbooks/portal-indisponivel.md` |
-| `RATE_LIMIT`         | `warning`        | Portal limitou a taxa (HTTP 429 ou throttling do servico SOAP).           | `docs/runbooks/portal-indisponivel.md` |
+| `PORTAL_RATE_LIMIT`  | `warning`        | Portal limitou a taxa (HTTP 429 ou throttling).                           | `docs/runbooks/portal-indisponivel.md` |
+| `PORTAL_HTTP_ERROR`  | `error`          | Erro HTTP nao-5xx persistente ou falha de conexao com o portal.           | `docs/runbooks/portal-indisponivel.md` |
+| `RATE_LIMIT`         | `warning`        | Codigo legado para rate limit; emissores novos devem usar `PORTAL_RATE_LIMIT`. | `docs/runbooks/portal-indisponivel.md` |
 | `REPROCESS_NEEDED`   | `info`           | Item reprocessavel detectado — operador pode disparar reprocess.          | `docs/runbooks/reprocessamento.md` |
 | `PARSE_ERROR`        | `error`          | Resposta do portal nao casa com o XSD/contrato esperado.                  | `docs/runbooks/parse-error.md` |
 | `STORAGE_ERROR`      | `critical`       | Falha ao gravar XML/anexo no storage S3 apos tentativas.                  | `docs/runbooks/storage-error.md` |

@@ -53,6 +53,7 @@ jobs:
           cache-dependency-path: |
             requirements.txt
             apps/api/pyproject.toml
+            apps/worker/pyproject.toml
             packages/worker-core/pyproject.toml
 
       - name: Install dependencies
@@ -61,9 +62,10 @@ jobs:
           pip install -r requirements.txt
           pip install -e packages/worker-core
           pip install -e "apps/api[dev]"
+          pip install -e "apps/worker[dev]"
 
       - name: Run pytest
-        run: pytest tests/ -v
+        run: pytest tests apps/api/tests apps/worker/tests -v
 
   lint-ts:
     name: Lint TS (eslint + typecheck)
@@ -92,8 +94,8 @@ jobs:
       - name: Typecheck (web-app)
         run: pnpm --filter web-app typecheck
 
-  # test-ts: placeholder — apps/web-app ainda nao tem vitest configurado.
-  # Sera habilitado quando o primeiro spec chegar (ticket futuro).
+      - name: Vitest (web-app)
+        run: pnpm --filter web-app test
 
   test-rls:
     name: Test RLS isolation (DATA-06)
@@ -127,6 +129,7 @@ jobs:
           cache-dependency-path: |
             requirements.txt
             apps/api/pyproject.toml
+            apps/worker/pyproject.toml
             packages/worker-core/pyproject.toml
 
       - name: Install dependencies

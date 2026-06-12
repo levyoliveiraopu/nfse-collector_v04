@@ -15,11 +15,117 @@
 
 ## Em Andamento
 
-_Nenhuma tarefa ativa em 29/04/2026._ Todas as entregas que estavam nesta
-secao foram mergeadas em `main` e movidas para "Concluidos (entregas recentes)"
-abaixo. Trabalhos em aberto agora vivem em `docs/auditoria-tecnica-2026-04-22.md`
-(correcoes pendentes de seguranca/CI/scheduler) e nas decisoes do final do
-arquivo (nome comercial e gateway de pagamento).
+- **PROD-READY** — Checklist de prontidao para producao criado em
+  `docs/production-readiness-checklist.md`. Este passa a ser o backlog
+  mestre de producao, enquanto este `STATE.md` segue como arquivo de
+  atualizacao do andamento. A cada alteracao concluida rumo a producao,
+  atualizar o item correspondente no checklist, registrar a evidencia
+  neste arquivo e atualizar o `CHANGELOG.md` quando houver mudanca de
+  comportamento, seguranca, deploy, API, worker ou UI.
+  - **2026-06-12 — PROD-READY 1.1 / refresh token chain revoke:**
+    corrigida a CTE recursiva de `apps/api/api/security/tokens.py` para
+    caminhar do token reutilizado para seus descendentes via `replaced_by`
+    (`rt.id = c.replaced_by`). Evidencia local: `python -m pytest
+    apps/api/tests/test_auth_tokens_unit.py -q` verde; a suite de
+    integracao existente `test_refresh_reuse_detection_invalidates_chain`
+    cobre o fluxo `/auth/refresh` com cadeia A -> B -> C quando
+    `TEST_DATABASE_URL` estiver disponivel.
+  - **2026-06-12 — PROD-READY 1.1 / auth hardening completo:**
+    concluidos os demais itens de seguranca/autenticacao do bloco 1.1:
+    login multi-tenant agora exige `tenant_slug` quando o usuario possui
+    mais de uma membership ativa; `API_JWT_SECRET` passa a exigir pelo
+    menos 32 bytes em staging/production; e o painel Next.js ganhou
+    `middleware.ts` server-side para redirecionar rotas autenticadas sem
+    cookie httpOnly de refresh para `/login?next=...`. Evidencias locais:
+    `python -m pytest apps/api/tests/test_auth_jwt.py
+    apps/api/tests/test_auth_tokens_unit.py -q`, `ruff check
+    apps/api/api/auth apps/api/api/config.py apps/api/api/security/jwt.py
+    apps/api/api/security/tokens.py apps/api/tests/test_auth_jwt.py
+    apps/api/tests/test_auth_tokens_unit.py apps/api/tests/test_auth_routes_integration.py`,
+    `pnpm --filter web-app typecheck`, e a suite de integracao de auth
+    segue gated por `TEST_DATABASE_URL`.
+
+  - **2026-06-12 — PROD-READY 1.2 e 1.3 / bloqueadores criticos do item 1 concluidos:**
+    finalizados os itens restantes do bloco 1 do checklist de producao.
+    Scheduler agora usa advisory lock transacional por tenant/company antes
+    de verificar overlap e criar execution; `POST /executions` e
+    `POST /reprocess` reaproveitam execution aberta equivalente para evitar
+    duplicidade por retry; `worker_core.jobs.run_execution` respeita
+    `dry_run` vindo do argumento/RQ meta sem upload XML, sem insert de
+    `execution_items` e sem persistencia de NSU. O CI Python passa a rodar
+    `pytest tests apps/api/tests apps/worker/tests -v`, o CI frontend passa
+    a rodar `pnpm --filter web-app test`, e foram adicionados/corrigidos os
+    testes de schema de reprocessamento, RQ/fakeredis, concorrencia do
+    scheduler, smoke API->Redis/RQ->worker fake e idempotencia de execution.
+    Evidencias locais: `python -m pytest apps/api/tests/test_reprocess_schemas.py -q`,
+    `python -m pytest apps/api/tests/test_executions_idempotency_unit.py
+    apps/api/tests/test_queue_unit.py -q`, `python -m pytest
+    apps/worker/tests/test_main.py apps/worker/tests/test_scheduler.py -q`,
+    `python -m pytest tests/test_jobs.py -q` e `ruff check` nos arquivos
+    Python alterados.
+
+  - **2026-06-12 — PROD-READY 2 / deploy e infraestrutura minima:**
+    finalizados os itens versionaveis do bloco 2 do checklist de producao.
+    Workflows de staging/prod agora publicam tres imagens (`nfse-api`,
+    `nfse-worker`, `nfse-web-app`); o Compose de deploy ativa `migrate`,
+    API, worker, scheduler e web-app com healthchecks; a API separa
+    `/health` de `/ready`; `deploy.sh` valida `/ready` e documenta que o
+    release executa `alembic upgrade head`; o rollback com migrations ficou
+    formalizado em `infra/deploy/rollback.md`; Nginx de app/API agora aponta
+    para `127.0.0.1:3000/8000`; o smoke S3 valida presigned URL; e Alembic
+    prioriza `API_MIGRATION_DATABASE_URL` para separar conexao de migration.
+    Permanecem bloqueios manuais inevitaveis no checklist (`[!]`): criar VPS,
+    secrets GitHub, DNS/TLS e bucket/credenciais S3 reais. Evidencias locais:
+    `ruff check apps/api/api/main.py apps/api/alembic/env.py
+    apps/api/tests/test_observability_ready.py apps/worker/worker/scheduler.py
+    apps/worker/tests/test_scheduler.py`, `python -m pytest
+    apps/api/tests/test_observability_ready.py apps/worker/tests/test_scheduler.py -q`,
+    `pnpm --filter web-app typecheck`, `python -m json.tool
+    infra/s3-lifecycle.json` e `bash -n infra/deploy/deploy.sh
+    infra/scripts/s3-smoke-test.sh`.
+
+  - **2026-06-12 — PROD-READY 3 / robustez do fluxo de coleta:**
+    finalizados os itens versionaveis do bloco 3. Chamadas HTTP ao ADN agora
+    tem timeout explicito e retry/backoff parametrizados por `NFSE_ADN_*`;
+    falhas do portal passam por `PortalRequestError` e sao mapeadas para
+    codigos operacionais estaveis (`PORTAL_5XX`, `PORTAL_TIMEOUT`,
+    `PORTAL_RATE_LIMIT`, `PORTAL_HTTP_ERROR`); `API_JOB_TIMEOUT_SECONDS`
+    parametriza o timeout RQ para evitar jobs presos; o worker so avanca
+    `last_nsu` quando a execution termina `succeeded`; falhas parciais de
+    storage/DB ficam reconciliaveis por `packages/worker-core/scripts/reconcile_storage.py`;
+    e o checklist registra as evidencias existentes de export ZIP, limite 2 GiB,
+    presigned URL 1h e retencao de exports. Permanece bloqueada apenas a
+    coleta real em staging com CNPJ/PFX autorizado, por depender de certificado
+    e senha reais do owner. Evidencias locais: `python -m pytest
+    tests/test_nfse_fetcher_config.py tests/test_jobs.py apps/api/tests/test_queue_unit.py -q`,
+    `ruff check packages/worker-core/worker_core/fetcher.py
+    packages/worker-core/worker_core/collector.py packages/worker-core/worker_core/jobs.py
+    apps/api/api/queue.py apps/api/api/config.py tests/test_nfse_fetcher_config.py
+    tests/test_jobs.py apps/api/tests/test_queue_unit.py`, e `python -m py_compile
+    packages/worker-core/scripts/reconcile_storage.py`.
+
+  - **2026-06-12 — PROD-READY 4 / observabilidade e operacao:**
+    finalizados os itens versionaveis do bloco 4. API, worker e scheduler
+    emitem JSON Lines com filtro de redacao para tokens, PFX, senhas,
+    ciphertext e presigned URLs; o dashboard Grafana versionado agora cobre
+    logs, fila RQ, scheduler, execucoes, codigos de ocorrencia e backup; o
+    contrato de alertas (`infra/observability-alerts.md`) define sinais,
+    janelas, severidades e runbooks; e foram adicionados runbooks/checklists
+    para sessoes/refresh tokens, migrations com falha, restore completo,
+    credencial invalida e simulacoes pre go-live. Permanece como etapa
+    operacional a validacao real da stack Uptime Kuma/Grafana/Loki/Promtail
+    na VPS por depender de DNS, acesso e segredos reais. Evidencias locais:
+    `python -m pytest apps/api/tests/test_logging_redaction.py
+    tests/test_worker_logging_redaction.py -q`, `python -m json.tool
+    infra/compose/grafana/dashboards/api-worker-logs.json >/dev/null`, e
+    `ruff check apps/api/api/logging.py apps/worker/worker/main.py
+    apps/worker/worker/scheduler.py packages/worker-core/worker_core/logging.py
+    apps/api/tests/test_logging_redaction.py tests/test_worker_logging_redaction.py`.
+
+Trabalhos em aberto tambem seguem referenciados em
+`docs/auditoria-tecnica-2026-04-22.md` (correcoes pendentes de
+seguranca/CI/scheduler) e nas decisoes do final do arquivo (nome
+comercial e gateway de pagamento).
 
 ## Concluidos (entregas recentes)
 

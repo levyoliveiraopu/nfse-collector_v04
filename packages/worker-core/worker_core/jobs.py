@@ -43,9 +43,12 @@ from pathlib import Path
 from typing import Callable, Optional
 from uuid import UUID
 
+import requests
+from rq import get_current_job
 from sqlalchemy import text
 
 from worker_core.collector import FetchSummary, NfseItem, fetch_nfse
+from worker_core.fetcher import PortalRequestError
 from worker_core.crypto import CryptoError, decrypt
 from worker_core.db import get_admin_session, get_tenant_session
 from worker_core.db_nsu import DbNsuSource
@@ -55,6 +58,28 @@ logger = logging.getLogger("worker_core.jobs")
 
 # Hard cap do export (DoD do ticket API-15: "aborta export > 2GB").
 DEFAULT_MAX_EXPORT_BYTES = 2 * 1024**3  # 2 GiB
+
+
+def _resolve_job_dry_run(explicit: Optional[bool]) -> bool:
+    """Resolve dry_run do argumento explicito ou do meta do job RQ atual."""
+    if explicit is not None:
+        return bool(explicit)
+    job = get_current_job()
+    meta = getattr(job, "meta", None) if job is not None else None
+    return bool(meta.get("dry_run")) if isinstance(meta, dict) else False
+
+
+class _DryRunNsuSource:
+    """Proxy que permite leitura de NSU, mas bloqueia persistencia em dry-run."""
+
+    def __init__(self, inner: DbNsuSource) -> None:
+        self._inner = inner
+
+    def get(self, cnpj: str) -> int:
+        return self._inner.get(cnpj)
+
+    def set(self, cnpj: str, nsu: int) -> None:  # noqa: ARG002
+        logger.info("jobs.run_execution.dry_run_skip_nsu_update", extra={"cnpj": cnpj})
 
 
 class ExportError(RuntimeError):
@@ -71,11 +96,7 @@ def _normalize_dsn(url: str) -> str:
 
 
 def _db_url() -> str:
-    url = (
-        os.environ.get("WORKER_DATABASE_URL")
-        or os.environ.get("API_DATABASE_URL")
-        or ""
-    ).strip()
+    url = (os.environ.get("WORKER_DATABASE_URL") or os.environ.get("API_DATABASE_URL") or "").strip()
     if not url:
         raise ExportError(
             "config_missing",
@@ -98,8 +119,7 @@ def _max_export_bytes() -> int:
 def _tmpfs_dir() -> Path:
     """Diretorio para montar o ZIP. Prefere tmpfs (`/dev/shm`), cai para tmp."""
     candidate = Path(
-        os.environ.get("EXPORT_TMPFS_DIR")
-        or ("/dev/shm" if os.path.isdir("/dev/shm") else tempfile.gettempdir())
+        os.environ.get("EXPORT_TMPFS_DIR") or ("/dev/shm" if os.path.isdir("/dev/shm") else tempfile.gettempdir())
     )
     if not candidate.is_dir():
         return Path(tempfile.gettempdir())
@@ -171,9 +191,7 @@ def _mark_running(conn, export_id: uuid.UUID) -> None:
     conn.commit()
 
 
-def _mark_failed(
-    conn, export_id: uuid.UUID, *, code: str, message: str
-) -> None:
+def _mark_failed(conn, export_id: uuid.UUID, *, code: str, message: str) -> None:
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -206,8 +224,12 @@ def _mark_empty(conn, export_id: uuid.UUID) -> None:
 
 
 def _list_items(
-    conn, *, tenant_id: uuid.UUID, company_id: uuid.UUID,
-    period_start, period_end,
+    conn,
+    *,
+    tenant_id: uuid.UUID,
+    company_id: uuid.UUID,
+    period_start,
+    period_end,
 ) -> list[tuple[int, str]]:
     """Lista (nsu, xml_object_key) dos itens do periodo."""
     with conn.cursor() as cur:
@@ -387,9 +409,7 @@ def build_export(
                 code="kind_not_implemented",
                 message=f"kind {export.kind!r} nao implementado neste release",
             )
-            raise ExportError(
-                "kind_not_implemented", f"kind {export.kind!r} nao suportado"
-            )
+            raise ExportError("kind_not_implemented", f"kind {export.kind!r} nao suportado")
 
         _mark_running(conn, eid)
 
@@ -415,24 +435,18 @@ def build_export(
 
         tmpdir = _tmpfs_dir()
         tmpdir.mkdir(parents=True, exist_ok=True)
-        zip_fd, zip_path_str = tempfile.mkstemp(
-            dir=str(tmpdir), prefix="export-", suffix=".zip"
-        )
+        zip_fd, zip_path_str = tempfile.mkstemp(dir=str(tmpdir), prefix="export-", suffix=".zip")
         os.close(zip_fd)  # ZipFile abre pelo nome.
         zip_path = Path(zip_path_str)
 
         try:
             written_bytes = 0
-            with zipfile.ZipFile(
-                zip_path, mode="w", compression=zipfile.ZIP_DEFLATED
-            ) as zf:
+            with zipfile.ZipFile(zip_path, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
                 for nsu, object_key in items:
                     try:
                         body = storage.download_bytes(object_key)
                     except StorageError as exc:
-                        raise ExportError(
-                            "s3_error", f"falha ao baixar {object_key}: {exc}"
-                        ) from exc
+                        raise ExportError("s3_error", f"falha ao baixar {object_key}: {exc}") from exc
                     # Projecao: limite conservador pelo tamanho dos XMLs
                     # (ZIP sempre sera menor ou igual com deflate); se ja
                     # passou do cap no payload bruto, aborta.
@@ -518,13 +532,44 @@ def build_export(
             "object_key": upload.object_key,
         }
 
+
 # Codigos de ocorrencia (docs/architecture/occurrence-codes.md).
 OCC_CRED_INVALID = "CRED_INVALID"
 OCC_CERT_EXPIRED = "CERT_EXPIRED"
 OCC_PORTAL_5XX = "PORTAL_5XX"
+OCC_PORTAL_TIMEOUT = "PORTAL_TIMEOUT"
+OCC_PORTAL_RATE_LIMIT = "PORTAL_RATE_LIMIT"
+OCC_PORTAL_HTTP_ERROR = "PORTAL_HTTP_ERROR"
 OCC_PARSE_ERROR = "PARSE_ERROR"
 OCC_STORAGE_ERROR = "STORAGE_ERROR"
 OCC_UNKNOWN = "UNKNOWN"
+
+
+def _classify_mtls_value_error(exc: ValueError) -> tuple[str, str]:
+    msg = str(exc).lower()
+    if "vencid" in msg or "expir" in msg:
+        return OCC_CERT_EXPIRED, "mtls_cert_expired"
+    if "cnpj" in msg or "cn" in msg or "diverg" in msg:
+        return OCC_CRED_INVALID, "mtls_cert_subject_mismatch"
+    if "senha" in msg or "password" in msg:
+        return OCC_CRED_INVALID, "mtls_pfx_password_invalid"
+    if "pfx" in msg or "pkcs" in msg or "certificado" in msg:
+        return OCC_CRED_INVALID, "mtls_pfx_invalid"
+    return OCC_CRED_INVALID, "mtls_session_failed"
+
+
+def _portal_occurrence_code(exc: BaseException) -> tuple[str, str]:
+    if isinstance(exc, requests.Timeout):
+        return OCC_PORTAL_TIMEOUT, "collector_portal_timeout"
+    if isinstance(exc, requests.ConnectionError):
+        return OCC_PORTAL_HTTP_ERROR, "collector_portal_connection_error"
+    if isinstance(exc, PortalRequestError):
+        if exc.code == "ADN_HTTP_5XX":
+            return OCC_PORTAL_5XX, "collector_portal_5xx"
+        if exc.code == "ADN_RATE_LIMIT":
+            return OCC_PORTAL_RATE_LIMIT, "collector_portal_rate_limit"
+        return OCC_PORTAL_HTTP_ERROR, "collector_portal_http_error"
+    return OCC_UNKNOWN, "collector_error"
 
 
 class JobError(RuntimeError):
@@ -554,6 +599,7 @@ def run_execution(
     *,
     storage_client: Optional[S3StorageClient] = None,
     read_credential_blob: Optional[Callable[[str], bytes]] = None,
+    dry_run: Optional[bool] = None,
 ) -> dict:
     """Handler picado pelo RQ worker.
 
@@ -563,6 +609,9 @@ def run_execution(
         storage_client:       Injecao para testes. Default: `S3StorageClient()`.
         read_credential_blob: Injecao para testes. Default: usa boto3 para
                               ler o blob cifrado do prefixo de credenciais.
+        dry_run:              Quando True, coleta e contabiliza, mas nao faz
+                              upload dos XMLs nem persiste execution_items/NSU.
+                              Se omitido, le `job.meta["dry_run"]` do RQ.
 
     Retorna um dict com o status final e os contadores — expoe para o
     RQ result_ttl. Excecoes nao-capturadas marcam a execucao como `failed`
@@ -575,12 +624,13 @@ def run_execution(
     if ctx is None:
         # Execucao sumiu entre o enqueue e o pick. Nao temos tenant_id pra
         # marcar como failed — apenas loga e sai (DB e RLS mantem auditoria).
-        logger.warning(
-            "jobs.run_execution.not_found", extra={"execution_id": str(eid)}
-        )
+        logger.warning("jobs.run_execution.not_found", extra={"execution_id": str(eid)})
         return {"status": "not_found", "execution_id": str(eid)}
 
-    storage = storage_client if storage_client is not None else S3StorageClient()
+    dry_run_enabled = _resolve_job_dry_run(dry_run)
+    storage = storage_client
+    if storage is None and not dry_run_enabled:
+        storage = S3StorageClient()
     read_blob = read_credential_blob or _default_read_credential_blob
 
     _mark_running(ctx)
@@ -589,20 +639,23 @@ def run_execution(
         pfx_bytes, pfx_password = _decrypt_credential(ctx, read_blob)
     except CryptoError as exc:
         _mark_failed(ctx, error_summary="credential_decrypt_failed")
-        _create_occurrence(ctx, code=OCC_CRED_INVALID, severity="error",
-                           title="Credencial nao pode ser decifrada", detail=str(exc))
+        _create_occurrence(
+            ctx, code=OCC_CRED_INVALID, severity="error", title="Credencial nao pode ser decifrada", detail=str(exc)
+        )
         raise JobError("credential_decrypt_failed") from exc
     except StorageError as exc:
         _mark_failed(ctx, error_summary="credential_blob_missing")
-        _create_occurrence(ctx, code=OCC_CRED_INVALID, severity="error",
-                           title="Blob de credencial ausente no storage", detail=str(exc))
+        _create_occurrence(
+            ctx, code=OCC_CRED_INVALID, severity="error", title="Blob de credencial ausente no storage", detail=str(exc)
+        )
         raise JobError("credential_blob_missing") from exc
 
-    nsu_source = DbNsuSource(
+    db_nsu_source = DbNsuSource(
         tenant_id=ctx.tenant_id,
         company_id=ctx.company_id,
         session_factory=get_tenant_session,
     )
+    nsu_source = _DryRunNsuSource(db_nsu_source) if dry_run_enabled else db_nsu_source
 
     items_ok = 0
     items_fail = 0
@@ -611,9 +664,26 @@ def run_execution(
     def _on_progress(item: NfseItem) -> None:
         nonlocal items_ok, items_fail, storage_errors
         try:
+            if dry_run_enabled:
+                if item.status == "ok":
+                    items_ok += 1
+                else:
+                    items_fail += 1
+                logger.info(
+                    "jobs.run_execution.dry_run_item",
+                    extra={
+                        "execution_id": str(ctx.execution_id),
+                        "nsu": item.nsu,
+                        "status": item.status,
+                    },
+                )
+                return
+
             xml_key: Optional[str] = None
             if item.xml_bytes is not None:
                 try:
+                    if storage is None:
+                        raise StorageError("storage indisponivel")
                     result = storage.upload_xml(
                         ctx.tenant_id,
                         ctx.execution_id,
@@ -668,20 +738,23 @@ def run_execution(
             nsu_source=nsu_source,
             on_progress=_on_progress,
             on_log=_on_log,
+            persist_nsu=False,
         )
     except ValueError as exc:
-        # mtls_session levanta ValueError para PFX invalido / senha errada /
-        # cert vencido. Diferenciamos via mensagem para classificar ocorrencia.
-        msg = str(exc).lower()
-        code = OCC_CERT_EXPIRED if "vencid" in msg or "expir" in msg else OCC_CRED_INVALID
-        _mark_failed(ctx, error_summary="mtls_session_failed")
-        _create_occurrence(ctx, code=code, severity="error",
-                           title="Falha na sessao mTLS", detail=str(exc))
-        raise JobError("mtls_session_failed") from exc
+        code, error_summary = _classify_mtls_value_error(exc)
+        _mark_failed(ctx, error_summary=error_summary)
+        _create_occurrence(ctx, code=code, severity="error", title="Falha na sessao mTLS", detail=str(exc))
+        raise JobError(error_summary) from exc
+    except (requests.Timeout, requests.ConnectionError, PortalRequestError) as exc:
+        code, error_summary = _portal_occurrence_code(exc)
+        _mark_failed(ctx, error_summary=error_summary)
+        _create_occurrence(ctx, code=code, severity="error", title="Falha no portal ADN", detail=str(exc))
+        raise JobError(error_summary) from exc
     except Exception as exc:  # noqa: BLE001 — erro inesperado do coletor
         _mark_failed(ctx, error_summary="collector_error")
-        _create_occurrence(ctx, code=OCC_UNKNOWN, severity="error",
-                           title="Erro nao categorizado no coletor", detail=str(exc))
+        _create_occurrence(
+            ctx, code=OCC_UNKNOWN, severity="error", title="Erro nao categorizado no coletor", detail=str(exc)
+        )
         raise JobError("collector_error") from exc
 
     final_status = _decide_final_status(summary, items_ok, items_fail, storage_errors)
@@ -693,21 +766,30 @@ def run_execution(
         items_fail=items_fail,
     )
 
+    if final_status == "succeeded" and not dry_run_enabled and summary.nsu_to > summary.nsu_from:
+        db_nsu_source.set(ctx.cnpj, int(summary.nsu_to))
+
     if storage_errors:
         _create_occurrence(
-            ctx, code=OCC_STORAGE_ERROR, severity="warning",
+            ctx,
+            code=OCC_STORAGE_ERROR,
+            severity="warning",
             title=f"{storage_errors} XML(s) falharam no upload para S3",
             detail=f"storage_errors={storage_errors}",
         )
     if summary.fatal_rejected:
         _create_occurrence(
-            ctx, code=OCC_PORTAL_5XX, severity="error",
+            ctx,
+            code=OCC_PORTAL_5XX,
+            severity="error",
             title="Portal ADN rejeitou a paginacao",
             detail="fatal_rejected=True",
         )
     if summary.total_erro:
         _create_occurrence(
-            ctx, code=OCC_PARSE_ERROR, severity="warning",
+            ctx,
+            code=OCC_PARSE_ERROR,
+            severity="warning",
             title=f"{summary.total_erro} XML(s) com parse_error",
             detail=f"total_erro={summary.total_erro}",
         )
@@ -721,6 +803,7 @@ def run_execution(
             "items_ok": items_ok,
             "items_fail": items_fail,
             "storage_errors": storage_errors,
+            "dry_run": dry_run_enabled,
             "nsu_from": summary.nsu_from,
             "nsu_to": summary.nsu_to,
         },
@@ -732,6 +815,7 @@ def run_execution(
         "items_ok": items_ok,
         "items_fail": items_fail,
         "storage_errors": storage_errors,
+        "dry_run": dry_run_enabled,
         "nsu_from": summary.nsu_from,
         "nsu_to": summary.nsu_to,
     }
@@ -1012,9 +1096,7 @@ def _default_read_credential_blob(object_key: str) -> bytes:
         resp = client.get_object(Bucket=settings.bucket, Key=object_key)
     except ClientError as exc:
         code = exc.response.get("Error", {}).get("Code", "")
-        raise StorageError(
-            f"falha ao ler credencial no storage (code={code!r})"
-        ) from exc
+        raise StorageError(f"falha ao ler credencial no storage (code={code!r})") from exc
     return resp["Body"].read()
 
 
