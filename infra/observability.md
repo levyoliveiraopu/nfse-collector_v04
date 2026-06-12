@@ -148,8 +148,13 @@ sudo chmod 0640 /etc/nginx/.htpasswd-ops
    - Clicar em **Test** — deve retornar "Data source connected and
      labels found".
 4. Abrir o dashboard provisionado: `Dashboards > NFS-e > NFS-e — Logs
-   API & Worker`. Deve mostrar os paineis de logs (vazios ate os
-   services `nfse-api`/`nfse-worker` subirem — normal nesta fase).
+   API & Worker`. Deve mostrar logs, taxa de erro, fila RQ, ticks do
+   scheduler, status final de execucoes, ocorrencias por codigo e status
+   do backup Postgres. Paineis podem ficar vazios ate os services
+   `nfse-api`/`nfse-worker` produzirem log — normal nesta fase.
+5. Conferir os links de runbook no topo do dashboard. Devem apontar para
+   fila travada, SSL expirando, backup falhou, refresh token/sessoes,
+   migration falhou e restore completo.
 
 > Para ajustar o dashboard sem perder o provisioning: editar o JSON em
 > `infra/compose/grafana/dashboards/api-worker-logs.json` no repo,
@@ -223,16 +228,23 @@ Quando os tres estiverem verdes, marcar o DoD do ticket.
   > Save to file` e salvar sobre
   `infra/compose/grafana/dashboards/api-worker-logs.json` no repo.
 
-## 9. Runbooks de infra (DOCS-05)
+## 9. Runbooks de infra e suporte (DOCS-05)
 
-Os 4 runbooks operacionais de infra ficam em `docs/runbooks/`:
+Os runbooks operacionais ficam em `docs/runbooks/`:
 
 | Cenario | Runbook | Alerta correspondente |
 |---------|---------|-----------------------|
 | Disco cheio na VPS | `docs/runbooks/disco-cheio.md` | Uptime Kuma caindo em cascata + log `no space left` via Loki |
 | Fila RQ travada / worker off | `docs/runbooks/fila-travada.md` | Monitor `worker` em `/healthz` (Uptime Kuma) |
 | Cert TLS expirando | `docs/runbooks/ssl-expirando.md` | "Certificate Expiry Notification" dos monitores Uptime Kuma |
-| Backup do Postgres falhou | `docs/runbooks/backup-falhou.md` | `systemctl --failed` + linha JSON `status!="ok"` em `backup-postgres.log` |
+| Backup do Postgres falhou | `docs/runbooks/backup-falhou.md` | `systemctl --failed` + linha JSON `status="failed"` em `backup-postgres.log` |
+| Refresh token/revogacao de sessoes | `docs/runbooks/sessoes-refresh-token.md` | suspeita de replay/acesso indevido |
+| Migration/Alembic falhou | `docs/runbooks/migration-falhou.md` | deploy `migrate` falhou |
+| Restore completo | `docs/runbooks/restore-completo.md` | DR drill ou desastre real |
+| Credencial invalida/certificado vencido | `docs/runbooks/checklist-credencial-invalida.md` | occurrences `CRED_INVALID`, `CERT_EXPIRED`, `CERT_EXPIRING` |
+| Simulacao de incidentes | `docs/runbooks/incident-simulation-checklist.md` | validacao pre go-live dos runbooks |
+
+O contrato de alertas versionado fica em `infra/observability-alerts.md`.
 
 ### 9.1 Links no dashboard Grafana
 
@@ -259,11 +271,11 @@ Ativar tambem a opcao **Certificate Expiry Notification** em cada um
 dos monitores HTTPs — dispara Telegram a 14/7/3 dias do vencimento com
 link para `ssl-expirando.md` (via campo Description).
 
-### 9.3 Alert rules Grafana (futuro)
+### 9.3 Alert rules Grafana/Uptime Kuma
 
-Quando o projeto passar a definir alert rules em cima do Loki (taxa de
-erro, disco cheio via scrape de stdout, etc.), cada rule **deve** ter
-`runbook_url` em `annotations`:
+As regras obrigatorias e queries LogQL de referencia estao em
+`infra/observability-alerts.md`. Ao criar uma rule em cima do Loki,
+cada rule **deve** ter `runbook_url` em `annotations`:
 
 ```yaml
 # Exemplo de alert rule Grafana (formato JSON/YAML provisionado):

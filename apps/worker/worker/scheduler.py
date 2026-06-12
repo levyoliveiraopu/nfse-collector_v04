@@ -73,6 +73,8 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 from uuid import UUID
 
+from worker_core.logging import configure_json_logging
+
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -485,23 +487,7 @@ def run_tick(
 def _configure_logging() -> None:
     level_name = (os.environ.get("LOG_LEVEL") or "INFO").upper()
     level = getattr(logging, level_name, logging.INFO)
-    try:
-        from pythonjsonlogger import jsonlogger  # type: ignore[import-untyped]
-
-        handler = logging.StreamHandler(sys.stdout)
-        handler.setFormatter(
-            jsonlogger.JsonFormatter(
-                "%(asctime)s %(name)s %(levelname)s %(message)s",
-                rename_fields={"asctime": "ts", "levelname": "level"},
-            )
-        )
-        logging.basicConfig(level=level, handlers=[handler], force=True)
-    except ImportError:
-        logging.basicConfig(
-            level=level,
-            format="%(asctime)s %(levelname)s %(name)s - %(message)s",
-            force=True,
-        )
+    configure_json_logging(level)
 
 
 def build_scheduler(*, tick: Optional[Callable[[], Any]] = None) -> Any:

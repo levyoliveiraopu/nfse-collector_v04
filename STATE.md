@@ -104,6 +104,24 @@
     tests/test_jobs.py apps/api/tests/test_queue_unit.py`, e `python -m py_compile
     packages/worker-core/scripts/reconcile_storage.py`.
 
+  - **2026-06-12 — PROD-READY 4 / observabilidade e operacao:**
+    finalizados os itens versionaveis do bloco 4. API, worker e scheduler
+    emitem JSON Lines com filtro de redacao para tokens, PFX, senhas,
+    ciphertext e presigned URLs; o dashboard Grafana versionado agora cobre
+    logs, fila RQ, scheduler, execucoes, codigos de ocorrencia e backup; o
+    contrato de alertas (`infra/observability-alerts.md`) define sinais,
+    janelas, severidades e runbooks; e foram adicionados runbooks/checklists
+    para sessoes/refresh tokens, migrations com falha, restore completo,
+    credencial invalida e simulacoes pre go-live. Permanece como etapa
+    operacional a validacao real da stack Uptime Kuma/Grafana/Loki/Promtail
+    na VPS por depender de DNS, acesso e segredos reais. Evidencias locais:
+    `python -m pytest apps/api/tests/test_logging_redaction.py
+    tests/test_worker_logging_redaction.py -q`, `python -m json.tool
+    infra/compose/grafana/dashboards/api-worker-logs.json >/dev/null`, e
+    `ruff check apps/api/api/logging.py apps/worker/worker/main.py
+    apps/worker/worker/scheduler.py packages/worker-core/worker_core/logging.py
+    apps/api/tests/test_logging_redaction.py tests/test_worker_logging_redaction.py`.
+
 Trabalhos em aberto tambem seguem referenciados em
 `docs/auditoria-tecnica-2026-04-22.md` (correcoes pendentes de
 seguranca/CI/scheduler) e nas decisoes do final do arquivo (nome

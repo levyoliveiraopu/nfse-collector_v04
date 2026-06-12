@@ -1,0 +1,16 @@
+# Exemplo de contact point Grafana para Telegram.
+# Nao coloque token real no repo. Copie para contact-points.yml na VPS e
+# substitua ${TELEGRAM_BOT_TOKEN}/${TELEGRAM_CHAT_ID} via provisioning seguro
+# ou configure manualmente na UI do Grafana/Uptime Kuma.
+apiVersion: 1
+contactPoints:
+  - orgId: 1
+    name: telegram-ops
+    receivers:
+      - uid: telegram-ops
+        type: telegram
+        settings:
+          bottoken: ${TELEGRAM_BOT_TOKEN}
+          chatid: ${TELEGRAM_CHAT_ID}
+          message: |
+            {{ template "default.message" . }}

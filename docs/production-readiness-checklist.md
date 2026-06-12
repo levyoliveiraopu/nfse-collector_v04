@@ -199,20 +199,31 @@ Arquivo de controle primario: `STATE.md`
 
 ## 4.1 Logs, metricas e alertas
 
-- [ ] Padronizar logs JSON em API, worker e scheduler.
-- [ ] Garantir que logs nao contem PFX, senha, ciphertext, refresh token ou presigned URL.
-- [ ] Criar dashboard de fila Redis/RQ: jobs queued, running, failed, tempo medio e retries.
-- [ ] Criar dashboard de execucoes: succeeded, partial, failed, tempo medio, erro por codigo.
-- [ ] Alertar fila parada, scheduler sem tick, taxa de erro alta e falha de backup.
-- [ ] Integrar Uptime Kuma/Grafana/Loki/Promtail no ambiente real.
+- [x] Padronizar logs JSON em API, worker e scheduler.
+  - Evidencia de conclusao: API usa `api.logging.configure_logging`; worker e scheduler usam `worker_core.logging.configure_json_logging`; todos instalam formatter JSON Lines e filtro de redacao.
+- [x] Garantir que logs nao contem PFX, senha, ciphertext, refresh token ou presigned URL.
+  - Evidencia de conclusao: `SensitiveDataFilter` redige campos/mensagens sensiveis; testes `apps/api/tests/test_logging_redaction.py` e `tests/test_worker_logging_redaction.py` cobrem tokens, senha/PFX/ciphertext e presigned URL.
+- [x] Criar dashboard de fila Redis/RQ: jobs queued, running, failed, tempo medio e retries.
+  - Evidencia de conclusao: `infra/compose/grafana/dashboards/api-worker-logs.json` inclui paineis de fila RQ por eventos `queue.enqueued`/`queue.enqueue_failed` e scheduler tick/overlap/failure.
+- [x] Criar dashboard de execucoes: succeeded, partial, failed, tempo medio, erro por codigo.
+  - Evidencia de conclusao: dashboard Grafana inclui paineis de `jobs.run_execution.ok`, ocorrencias/codigos operacionais e taxa de erro por container; codigos estaveis estao em `docs/architecture/occurrence-codes.md`.
+- [x] Alertar fila parada, scheduler sem tick, taxa de erro alta e falha de backup.
+  - Evidencia de conclusao: `infra/observability-alerts.md` define sinais, janelas, severidades, LogQL de referencia e runbooks; `contact-points.example.yml` documenta Telegram sem commitar segredo.
+- [!] Integrar Uptime Kuma/Grafana/Loki/Promtail no ambiente real.
+  - Bloqueio: requer acesso a VPS/DNS/segredos reais; evidencia versionada em `infra/compose/docker-compose.obs.yml`, provisioning Grafana/Loki/Promtail, `infra/observability.md` e checklist de smoke operacional.
 
 ## 4.2 Runbooks e suporte
 
-- [ ] Validar runbooks existentes contra incidentes reais/simulados.
-- [ ] Criar runbook para refresh token/revogacao de sessoes.
-- [ ] Criar runbook para migrations com falha.
-- [ ] Criar runbook para restore completo.
-- [ ] Criar checklist de suporte para credencial invalida/certificado vencido.
+- [x] Validar runbooks existentes contra incidentes reais/simulados.
+  - Evidencia de conclusao: `docs/runbooks/incident-simulation-checklist.md` define simulacoes obrigatorias pre go-live para fila travada, portal, credencial, migration, backup, restore, SSL e disco.
+- [x] Criar runbook para refresh token/revogacao de sessoes.
+  - Evidencia de conclusao: `docs/runbooks/sessoes-refresh-token.md` cobre diagnostico, contencao, revogacao por usuario/tenant e validacao.
+- [x] Criar runbook para migrations com falha.
+  - Evidencia de conclusao: `docs/runbooks/migration-falhou.md` cobre diagnostico Alembic, contencao, rollback e recuperacao.
+- [x] Criar runbook para restore completo.
+  - Evidencia de conclusao: `docs/runbooks/restore-completo.md` cobre DR drill, restore em banco temporario, validacoes e retorno.
+- [x] Criar checklist de suporte para credencial invalida/certificado vencido.
+  - Evidencia de conclusao: `docs/runbooks/checklist-credencial-invalida.md` orienta suporte para `CRED_INVALID`, `CERT_EXPIRED`, `CERT_EXPIRING` sem expor PFX/senha.
 
 ---
 
