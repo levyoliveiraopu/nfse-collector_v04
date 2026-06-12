@@ -274,6 +274,33 @@ def test_run_execution_dry_run_nao_grava_items_nem_upload(
     assert not any("insert into execution_items" in sql for sql, _ in patched_db.calls)
 
 
+def test_run_execution_dry_run_nao_grava_items_nem_upload(
+    monkeypatch, patched_db, patched_decrypt, fake_storage, fake_read_blob, execution_id
+) -> None:
+    items = [_item(1), _item(2, status="parse_error", chave=None)]
+
+    def _fake_fetch(**kwargs):
+        for it in items:
+            kwargs["on_progress"](it)
+        return _summary(nsu_to=2, total_erro=1)
+
+    monkeypatch.setattr(jobs_module, "fetch_nfse", _fake_fetch)
+
+    result = run_execution(
+        str(execution_id),
+        storage_client=fake_storage,
+        read_credential_blob=fake_read_blob,
+        dry_run=True,
+    )
+
+    assert result["dry_run"] is True
+    assert result["status"] == "partial"
+    assert result["items_ok"] == 1
+    assert result["items_fail"] == 1
+    assert fake_storage.uploads == []
+    assert not any("insert into execution_items" in sql for sql, _ in patched_db.calls)
+
+
 # ---------------------------------------------------------------------------
 # Tests — parcial
 # ---------------------------------------------------------------------------
