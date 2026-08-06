@@ -22,6 +22,23 @@
   atualizar o item correspondente no checklist, registrar a evidencia
   neste arquivo e atualizar o `CHANGELOG.md` quando houver mudanca de
   comportamento, seguranca, deploy, API, worker ou UI.
+  - **2026-08-06 - Deploy self-host para testes + correcoes de boot:**
+    adicionado caminho de deploy gratuito em VM unica (ex: Oracle Cloud
+    Always Free): `docs/deploy-oracle-free.md`, `infra/oracle/setup.sh`,
+    `infra/compose/docker-compose.selfhost.yml`,
+    `infra/compose/caddy/Caddyfile` e `infra/compose/.env.selfhost.example`.
+    Sobe toda a stack com HTTPS automatico (Caddy/Let's Encrypt) e storage
+    S3 local (MinIO), sem servico externo pago; painel em `/` e API em
+    `/backend` (mesma origem, sem CORS). No caminho foram corrigidos dois
+    bugs que impediam a API de iniciar: `apps/api/api/config.py` com um `if`
+    duplicado sem corpo (IndentationError no import) e o login sem
+    `tenant_slug` retornando 500 (`psycopg AmbiguousParameter`, resolvido
+    com `CAST(:tenant_slug AS text)`). Adicionado CORS opcional na API via
+    `API_CORS_ORIGINS` (desligado por padrao). Evidencias locais:
+    `ruff check .` verde; `pytest tests apps/api/tests apps/worker/tests` =
+    525 passed / 188 skipped; `docker compose config` valida o merge
+    base+selfhost; round-trip S3 contra MinIO (put/get/URL pre-assinada/
+    download) e boot do worker RQ OK.
   - **2026-06-12 — PROD-READY 1.1 / refresh token chain revoke:**
     corrigida a CTE recursiva de `apps/api/api/security/tokens.py` para
     caminhar do token reutilizado para seus descendentes via `replaced_by`
