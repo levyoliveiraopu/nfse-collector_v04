@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import Depends, FastAPI, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from slowapi.errors import RateLimitExceeded
@@ -53,6 +54,18 @@ def create_app() -> FastAPI:
     app.state.limiter = auth_limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
     app.add_middleware(SlowAPIMiddleware)
+
+    # CORS: so ativa quando API_CORS_ORIGINS esta configurado (painel e API
+    # em origens distintas). No self-host padrao painel e API compartilham
+    # a mesma origem, entao fica desligado.
+    if settings.cors_origins_list:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_origins_list,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
 
     logger = logging.getLogger("api")
     logger.info(

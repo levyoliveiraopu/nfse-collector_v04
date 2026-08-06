@@ -1,0 +1,37 @@
+# Caddy — proxy reverso com HTTPS automatico (Let's Encrypt).
+#
+# Variaveis vem do ambiente (docker-compose.selfhost.yml):
+#   {$DOMAIN}         dominio publico (ex: nfse-teste.duckdns.org)
+#   {$ACME_EMAIL}     e-mail para o Let's Encrypt
+#   {$S3_PUBLIC_PORT} porta HTTPS do MinIO (default 8443)
+
+{
+	email {$ACME_EMAIL}
+}
+
+# ---------------------------------------------------------------------------
+# Painel + API no mesmo dominio (mesma origem => sem CORS).
+#   /            -> painel Next.js
+#   /backend/*   -> API FastAPI (prefixo /backend removido antes de repassar)
+# ---------------------------------------------------------------------------
+{$DOMAIN} {
+	encode zstd gzip
+
+	handle_path /backend/* {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		reverse_proxy web-app:3000
+	}
+}
+
+# ---------------------------------------------------------------------------
+# MinIO (S3) em porta dedicada, para downloads via URL pre-assinada.
+# Reaproveita o certificado ja emitido para {$DOMAIN}. Caddy preserva o
+# header Host, entao a assinatura SigV4 gerada pelo boto3 bate com a que o
+# MinIO valida (MINIO_SERVER_URL aponta para esta mesma URL).
+# ---------------------------------------------------------------------------
+{$DOMAIN}:{$S3_PUBLIC_PORT} {
+	reverse_proxy minio:9000
+}
