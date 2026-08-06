@@ -4,7 +4,6 @@
 #   {$DOMAIN}         dominio publico (ex: nfse-teste.duckdns.org)
 #   {$ACME_EMAIL}     e-mail para o Let's Encrypt
 #   {$S3_PUBLIC_PORT} porta HTTPS do MinIO (default 8443)
-
 {
 	email {$ACME_EMAIL}
 }

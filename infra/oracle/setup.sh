@@ -136,7 +136,15 @@ $COMPOSE build
 
 log "Subindo Postgres, Redis e MinIO ..."
 $COMPOSE up -d postgres redis minio
-$COMPOSE up minio-init
+
+log "Criando bucket no MinIO ..."
+# Destacado (-d) para nao ficar anexado ao MinIO (dependencia que segue no ar);
+# depois aguardamos apenas o container de init terminar.
+$COMPOSE up -d minio-init
+INIT_CID="$($COMPOSE ps -q minio-init 2>/dev/null || true)"
+if [ -n "$INIT_CID" ]; then
+  $DOCKER wait "$INIT_CID" >/dev/null 2>&1 || true
+fi
 
 log "Rodando migrations do banco ..."
 $COMPOSE run --rm migrate
