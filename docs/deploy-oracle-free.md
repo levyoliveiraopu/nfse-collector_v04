@@ -111,7 +111,38 @@ subdomínio grátis:
 
 ---
 
-## 5. Instalar o sistema (SSH + 1 comando)
+## 5. Instalar o sistema — Opção A: automática (recomendada)
+
+Com esta opção você **não digita nenhum comando**: a VM se instala sozinha no
+primeiro boot. Use o arquivo `infra/oracle/cloud-init.yaml`.
+
+1. Abra `infra/oracle/cloud-init.yaml`
+   ([ver no GitHub](https://github.com/levyoliveiraopu/nfse-collector_v04/blob/claude/sistema-testes-internet-ap40rm/infra/oracle/cloud-init.yaml))
+   e edite **as duas linhas** no topo do script:
+   - `DOMAIN="SEU_DOMINIO"` → seu domínio (ex.: `nfse-teste.duckdns.org`)
+   - `ACME_EMAIL="SEU_EMAIL"` → seu e-mail
+2. **Este passo é feito na criação da VM (passo 2)**: em *Create instance* →
+   **Show advanced options** → aba **Management** → **User data** →
+   **Paste cloud-init script** → cole **todo** o conteúdo do arquivo (já com
+   as duas linhas editadas).
+3. Crie a VM normalmente. No primeiro boot ela instala tudo sozinha
+   (Docker, segredos, build, migrations, HTTPS) — leva ~5–10 min.
+4. Depois de a VM ter IP público, aponte seu domínio (DuckDNS, passo 4) para
+   esse IP. O Caddy emite o certificado assim que o DNS resolver.
+
+Para acompanhar a instalação (opcional), conecte por SSH e rode:
+
+```bash
+sudo tail -f /var/log/nfse-setup.log
+```
+
+Quando aparecer o bloco final com "Painel: https://...", está no ar. 🎉
+
+> Já criou a VM sem o cloud-init? Sem problema — use a **Opção B** abaixo.
+
+---
+
+## 5-B. Instalar o sistema — Opção B: manual (SSH + 1 comando)
 
 Conecte na VM por SSH (troque a chave e o IP pelos seus). O usuário padrão
 da imagem Ubuntu da Oracle é `ubuntu`:

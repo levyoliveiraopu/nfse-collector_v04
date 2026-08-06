@@ -29,6 +29,16 @@ log()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[aviso]\033[0m %s\n' "$*"; }
 die()  { printf '\033[1;31m[erro]\033[0m %s\n' "$*" >&2; exit 1; }
 
+# Rodando como root (ex: via cloud-init) nao precisa de sudo; como usuario
+# comum, usa sudo. Se nem root nem sudo existir, tenta direto.
+if [ "$(id -u)" = "0" ]; then
+  SUDO=""
+elif command -v sudo >/dev/null 2>&1; then
+  SUDO="sudo"
+else
+  SUDO=""
+fi
+
 # --- argumentos -------------------------------------------------------------
 DOMAIN="${1:-${DOMAIN:-}}"
 ACME_EMAIL="${2:-${ACME_EMAIL:-}}"
@@ -46,15 +56,15 @@ fi
 if ! command -v docker >/dev/null 2>&1; then
   log "Docker nao encontrado; instalando via get.docker.com ..."
   curl -fsSL https://get.docker.com | sh
-  sudo systemctl enable --now docker || true
-  if [ -n "${SUDO_USER:-}" ]; then sudo usermod -aG docker "$SUDO_USER" || true; fi
+  $SUDO systemctl enable --now docker || true
+  if [ -n "${SUDO_USER:-}" ]; then $SUDO usermod -aG docker "$SUDO_USER" || true; fi
 fi
 
 # usa sudo no docker se o usuario atual nao tiver acesso ao daemon
 DOCKER="docker"
 if ! docker info >/dev/null 2>&1; then
-  if sudo docker info >/dev/null 2>&1; then
-    DOCKER="sudo docker"
+  if [ -n "$SUDO" ] && $SUDO docker info >/dev/null 2>&1; then
+    DOCKER="$SUDO docker"
   else
     die "docker instalado mas o daemon nao responde. Rode: sudo systemctl start docker"
   fi
@@ -65,18 +75,18 @@ $DOCKER compose version >/dev/null 2>&1 || die "plugin 'docker compose' ausente.
 open_port() {
   local p="$1"
   if command -v iptables >/dev/null 2>&1; then
-    if ! sudo iptables -C INPUT -p tcp --dport "$p" -j ACCEPT >/dev/null 2>&1; then
-      sudo iptables -I INPUT -p tcp --dport "$p" -j ACCEPT || warn "nao consegui abrir a porta $p no iptables"
+    if ! $SUDO iptables -C INPUT -p tcp --dport "$p" -j ACCEPT >/dev/null 2>&1; then
+      $SUDO iptables -I INPUT -p tcp --dport "$p" -j ACCEPT || warn "nao consegui abrir a porta $p no iptables"
     fi
   fi
 }
 log "Abrindo portas 80, 443 e 8443 no firewall do SO ..."
 open_port 80; open_port 443; open_port 8443
 if command -v netfilter-persistent >/dev/null 2>&1; then
-  sudo netfilter-persistent save >/dev/null 2>&1 || true
+  $SUDO netfilter-persistent save >/dev/null 2>&1 || true
 else
   # tenta persistir sem o pacote extra
-  sudo bash -c 'iptables-save > /etc/iptables/rules.v4' 2>/dev/null || true
+  $SUDO bash -c 'iptables-save > /etc/iptables/rules.v4' 2>/dev/null || true
 fi
 warn "Lembre-se: abra tambem 80, 443 e 8443 na Security List da VCN no console da Oracle (ingress 0.0.0.0/0)."
 

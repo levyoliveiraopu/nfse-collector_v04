@@ -40,7 +40,9 @@ Segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
   `/backend` (mesma origem, sem CORS) e expoe o MinIO em `:8443` para downloads
   pre-assinados; `infra/oracle/setup.sh` e um instalador idempotente de 1
   comando (instala Docker, abre firewall, gera segredos, builda, migra e sobe);
-  `docs/deploy-oracle-free.md` traz o guia passo a passo. A API ganhou CORS
+  `docs/deploy-oracle-free.md` traz o guia passo a passo; `infra/oracle/cloud-init.yaml`
+  permite instalacao **100% automatica** no primeiro boot da VM (basta colar no
+  campo "user data" ao criar a instancia). A API ganhou CORS
   opcional via `API_CORS_ORIGINS` (desligado por padrao). Validado localmente:
   compatibilidade do MinIO com o cliente S3 (put/get/URL pre-assinada/download)
   e boot do worker RQ.
