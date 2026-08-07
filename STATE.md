@@ -22,6 +22,14 @@
   atualizar o item correspondente no checklist, registrar a evidencia
   neste arquivo e atualizar o `CHANGELOG.md` quando houver mudanca de
   comportamento, seguranca, deploy, API, worker ou UI.
+  - **2026-08-07 - Correcoes minimas de boot e login:** removido o `if`
+    duplicado sem corpo em `apps/api/api/config.py`; a consulta de login passa
+    a usar `CAST(:tenant_slug AS text)`, evitando `AmbiguousParameter` quando o
+    slug nao e informado; e o teste de `dry_run` duplicado foi removido de
+    `tests/test_jobs.py`. O deploy self-host da PR #168 ficou deliberadamente
+    fora deste recorte. Evidencias locais: `ruff check .` verde; `py_compile`
+    dos modulos alterados; 22 testes direcionados aprovados; smoke com
+    PostgreSQL 16, migrations completas, signup 201 e login sem slug 200.
   - **2026-06-12 — PROD-READY 1.1 / refresh token chain revoke:**
     corrigida a CTE recursiva de `apps/api/api/security/tokens.py` para
     caminhar do token reutilizado para seus descendentes via `replaced_by`

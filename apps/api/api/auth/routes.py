@@ -201,7 +201,7 @@ def login(
                   JOIN tenant_users tu ON tu.user_id = u.id
                   JOIN tenants t ON t.id = tu.tenant_id
                  WHERE LOWER(u.email) = LOWER(:email)
-                   AND (:tenant_slug IS NULL OR t.slug = :tenant_slug)
+                   AND (CAST(:tenant_slug AS text) IS NULL OR t.slug = CAST(:tenant_slug AS text))
                  ORDER BY tu.accepted_at NULLS LAST, t.created_at ASC
                 """
             ),
