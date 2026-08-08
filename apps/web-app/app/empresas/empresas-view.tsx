@@ -30,7 +30,7 @@ export function EmpresasView() {
   }, [queryClient]);
 
   return (
-    <>
+    <div className="flex flex-col gap-4" data-help-id="companies-primary">
       <div className="flex justify-end">
         {canWrite ? (
           <button
@@ -53,6 +53,6 @@ export function EmpresasView() {
           onCreated={handleCreated}
         />
       ) : null}
-    </>
+    </div>
   );
 }

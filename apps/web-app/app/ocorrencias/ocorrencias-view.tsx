@@ -12,7 +12,7 @@ import { OcorrenciasTable } from "./ocorrencias-table";
  */
 export function OcorrenciasView() {
   return (
-    <div data-view="ocorrencias">
+    <div data-view="ocorrencias" data-help-id="occurrences-primary">
       <OcorrenciasTable />
     </div>
   );

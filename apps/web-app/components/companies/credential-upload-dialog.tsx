@@ -153,6 +153,7 @@ export function CredentialUploadDialog({
             </label>
             <SecretField
               id="pfx-password"
+              aria-describedby="credential-security-help"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Digite a senha do certificado"
@@ -161,6 +162,10 @@ export function CredentialUploadDialog({
               autoFocus
             />
           </div>
+          <p id="credential-security-help" className="text-xs text-muted-foreground">
+            A senha é usada somente para validar e cifrar a credencial. Não a
+            registre em observações, chamados ou mensagens.
+          </p>
           {error ? (
             <p
               role="alert"

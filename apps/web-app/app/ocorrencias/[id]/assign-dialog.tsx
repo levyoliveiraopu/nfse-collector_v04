@@ -78,6 +78,9 @@ export function AssignDialog({
           </label>
           <input
             id="assign-user-id"
+            aria-describedby={
+              errors.assignee_user_id ? undefined : "assign-user-help"
+            }
             type="text"
             autoComplete="off"
             spellCheck={false}
@@ -91,7 +94,7 @@ export function AssignDialog({
               {errors.assignee_user_id.message}
             </p>
           ) : (
-            <p className="text-xs text-muted-foreground">
+            <p id="assign-user-help" className="text-xs text-muted-foreground">
               Cole o UUID da tabela `/usuarios` (ticket futuro traz o
               seletor).
             </p>

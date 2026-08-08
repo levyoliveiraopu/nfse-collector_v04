@@ -22,6 +22,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ready": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ready */
+        get: operations["ready_ready_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/version": {
         parameters: {
             query?: never;
@@ -474,6 +491,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/onboarding/first-collection-done": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Registra na outbox a conclusao da 1a coleta do onboarding. */
+        post: operations["record_first_collection_done_onboarding_first_collection_done_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reprocess": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cria um reprocess_job + executions filhas e enfileira no Redis */
+        post: operations["create_reprocess_reprocess_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reprocess/{reprocess_job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Detalha um reprocess_job + progresso agregado das executions */
+        get: operations["get_reprocess_reprocess__reprocess_job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/help/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Incrementa uma metrica diaria anonimizada da ajuda */
+        post: operations["record_help_event_help_events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/help/insights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Indicadores agregados da ajuda para administradores */
+        get: operations["get_help_insights_help_insights_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -686,7 +788,7 @@ export interface components {
          *     - `company_id`: UUID da company (escopo do export). RLS valida
          *       ownership pelo tenant.
          *     - `period_start` <= `period_end` (validado aqui e via CHECK no DB).
-         *     - `kind`: hoje so `zip_xml`.
+         *     - `kind`: ZIP dos XMLs ou planilha das NFS-e emitidas.
          */
         CreateExportIn: {
             /**
@@ -707,9 +809,9 @@ export interface components {
             /**
              * Kind
              * @default zip_xml
-             * @constant
+             * @enum {string}
              */
-            kind: "zip_xml";
+            kind: "zip_xml" | "excel_nfse";
         };
         /**
          * CreateExportOut
@@ -994,9 +1096,9 @@ export interface components {
             requested_by_user_id?: string | null;
             /**
              * Kind
-             * @constant
+             * @enum {string}
              */
-            kind: "zip_xml";
+            kind: "zip_xml" | "excel_nfse";
             /**
              * Period Start
              * Format: date
@@ -1111,10 +1213,163 @@ export interface components {
              */
             expires_at: string;
         };
+        /**
+         * FirstCollectionDoneOut
+         * @description Resposta de `POST /onboarding/first-collection-done`.
+         *
+         *     - `already_recorded=True` quando ja havia `notifications` com o
+         *       mesmo (tenant_id, user_id, type) — o endpoint e idempotente.
+         *     - `notification_id` e o id da linha recem criada (ou da existente
+         *       quando `already_recorded`).
+         */
+        FirstCollectionDoneOut: {
+            /** Already Recorded */
+            already_recorded: boolean;
+            /** Notification Id */
+            notification_id?: string | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * HelpEventIn
+         * @description Evento anonimo e normalizado; nunca recebe texto pesquisado ou URL.
+         */
+        HelpEventIn: {
+            /**
+             * Event Type
+             * @enum {string}
+             */
+            event_type: "article_opened" | "search_performed" | "search_no_results" | "tour_started" | "tour_completed" | "tour_skipped" | "tour_failed" | "feedback_yes" | "feedback_no";
+            /** Article Slug */
+            article_slug?: string | null;
+            /** Route Key */
+            route_key?: ("dashboard" | "companies" | "company_detail" | "credential" | "executions" | "execution_new" | "execution_detail" | "schedules" | "occurrences" | "occurrence_detail" | "files" | "users" | "subscription" | "help") | null;
+            /** Tour Id */
+            tour_id?: string | null;
+        };
+        /** HelpInsightRow */
+        HelpInsightRow: {
+            /** Article Slug */
+            article_slug: string;
+            /** Route Key */
+            route_key: string;
+            /**
+             * Article Opened
+             * @default 0
+             */
+            article_opened: number;
+            /**
+             * Search Performed
+             * @default 0
+             */
+            search_performed: number;
+            /**
+             * Search No Results
+             * @default 0
+             */
+            search_no_results: number;
+            /**
+             * Tour Started
+             * @default 0
+             */
+            tour_started: number;
+            /**
+             * Tour Completed
+             * @default 0
+             */
+            tour_completed: number;
+            /**
+             * Tour Skipped
+             * @default 0
+             */
+            tour_skipped: number;
+            /**
+             * Tour Failed
+             * @default 0
+             */
+            tour_failed: number;
+            /**
+             * Feedback Yes
+             * @default 0
+             */
+            feedback_yes: number;
+            /**
+             * Feedback No
+             * @default 0
+             */
+            feedback_no: number;
+        };
+        /** HelpInsightsOut */
+        HelpInsightsOut: {
+            /**
+             * Days
+             * @enum {integer}
+             */
+            days: 7 | 30 | 90;
+            /**
+             * Date From
+             * Format: date
+             */
+            date_from: string;
+            /**
+             * Date To
+             * Format: date
+             */
+            date_to: string;
+            totals: components["schemas"]["HelpInsightsTotals"];
+            /** Rows */
+            rows: components["schemas"]["HelpInsightRow"][];
+        };
+        /** HelpInsightsTotals */
+        HelpInsightsTotals: {
+            /**
+             * Article Opened
+             * @default 0
+             */
+            article_opened: number;
+            /**
+             * Search Performed
+             * @default 0
+             */
+            search_performed: number;
+            /**
+             * Search No Results
+             * @default 0
+             */
+            search_no_results: number;
+            /**
+             * Tour Started
+             * @default 0
+             */
+            tour_started: number;
+            /**
+             * Tour Completed
+             * @default 0
+             */
+            tour_completed: number;
+            /**
+             * Tour Skipped
+             * @default 0
+             */
+            tour_skipped: number;
+            /**
+             * Tour Failed
+             * @default 0
+             */
+            tour_failed: number;
+            /**
+             * Feedback Yes
+             * @default 0
+             */
+            feedback_yes: number;
+            /**
+             * Feedback No
+             * @default 0
+             */
+            feedback_no: number;
         };
         /** LoginIn */
         LoginIn: {
@@ -1125,6 +1380,11 @@ export interface components {
             email: string;
             /** Password */
             password: string;
+            /**
+             * Tenant Slug
+             * @description Slug do tenant. Obrigatorio quando o usuario tem mais de uma membership ativa.
+             */
+            tenant_slug?: string | null;
         };
         /** LogoutIn */
         LogoutIn: {
@@ -1258,6 +1518,150 @@ export interface components {
         RefreshIn: {
             /** Refresh Token */
             refresh_token: string;
+        };
+        /**
+         * ReprocessChildExecution
+         * @description Item da resposta de POST /reprocess — 1 linha por execution filha.
+         */
+        ReprocessChildExecution: {
+            /**
+             * Execution Id
+             * Format: uuid
+             */
+            execution_id: string;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /**
+             * Period Start
+             * Format: date
+             */
+            period_start: string;
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "failed";
+            /** Job Id */
+            job_id?: string | null;
+            /** Enqueue Error */
+            enqueue_error?: string | null;
+        };
+        /**
+         * ReprocessIn
+         * @description Payload de `POST /reprocess` — exatamente 1 dos 3 escopos.
+         */
+        ReprocessIn: {
+            /** Execution Item Ids */
+            execution_item_ids?: string[] | null;
+            /** Company Id */
+            company_id?: string | null;
+            /** Nsus */
+            nsus?: number[] | null;
+            period?: components["schemas"]["ReprocessPeriod"] | null;
+            /** Statuses */
+            statuses?: ("ok" | "failed" | "skipped" | "pending")[] | null;
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+        };
+        /**
+         * ReprocessOut
+         * @description Representacao retornada por POST e GET /reprocess/{id}.
+         */
+        ReprocessOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+            /** Scope */
+            scope: {
+                [key: string]: unknown;
+            };
+            /** Result Execution Ids */
+            result_execution_ids: string[];
+            /** Error Summary */
+            error_summary?: string | null;
+            /** Created By User Id */
+            created_by_user_id?: string | null;
+            /** Started At */
+            started_at?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Created Executions */
+            created_executions?: components["schemas"]["ReprocessChildExecution"][] | null;
+            progress?: components["schemas"]["ReprocessProgress"] | null;
+        };
+        /**
+         * ReprocessPeriod
+         * @description Janela de competencia (alias das datas de `executions`).
+         */
+        ReprocessPeriod: {
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
+            /**
+             * End
+             * Format: date
+             */
+            end: string;
+        };
+        /**
+         * ReprocessProgress
+         * @description Contagens agregadas das executions filhas (derivadas em GET).
+         */
+        ReprocessProgress: {
+            /** Total */
+            total: number;
+            /** Queued */
+            queued: number;
+            /** Running */
+            running: number;
+            /** Succeeded */
+            succeeded: number;
+            /** Failed */
+            failed: number;
+            /** Cancelled */
+            cancelled: number;
+            /** Partial */
+            partial: number;
+            /**
+             * Effective Status
+             * @enum {string}
+             */
+            effective_status: "queued" | "running" | "succeeded" | "partial" | "failed" | "cancelled";
         };
         /**
          * ScheduleIn
@@ -1439,6 +1843,26 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
+                };
+            };
+        };
+    };
+    ready_ready_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };
@@ -2515,6 +2939,8 @@ export interface operations {
                 page_size?: number;
                 status?: ("ok" | "failed" | "skipped" | "pending") | null;
                 nsu?: number | null;
+                /** @description issued filtra pelo CNPJ emitente da empresa; all e diagnostico. */
+                scope?: "issued" | "all";
             };
             header?: {
                 Authorization?: string | null;
@@ -2601,6 +3027,171 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_first_collection_done_onboarding_first_collection_done_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FirstCollectionDoneOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_reprocess_reprocess_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReprocessIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReprocessOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_reprocess_reprocess__reprocess_job_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                reprocess_job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReprocessOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_help_event_help_events_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HelpEventIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_help_insights_help_insights_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HelpInsightsOut"];
                 };
             };
             /** @description Validation Error */

@@ -232,10 +232,15 @@ export function GerarZipDialog({
             <PeriodPicker
               value={period}
               onChange={(next) => setPeriod(next)}
+              descriptionId="export-period-help"
             />
+            <p id="export-period-help" className="text-xs text-muted-foreground">
+              O período inclui as duas datas e considera somente notas emitidas
+              pela empresa selecionada.
+            </p>
           </div>
 
-          <fieldset className="flex flex-col gap-2">
+          <fieldset className="flex flex-col gap-2" aria-describedby="export-format-help">
             <legend className="text-sm font-medium">Formato</legend>
             <label className="flex items-center gap-2 text-sm">
               <input
@@ -259,6 +264,10 @@ export function GerarZipDialog({
               />
               Excel com notas e resumo
             </label>
+            <p id="export-format-help" className="text-xs text-muted-foreground">
+              Use Excel para análise e ZIP para obter os XMLs originais. Notas
+              canceladas permanecem identificadas no resultado.
+            </p>
           </fieldset>
 
           {state.phase === "failed" ? (

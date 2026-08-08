@@ -25,6 +25,8 @@ export interface PeriodPickerProps {
   className?: string;
   /** Data de referencia para os presets (default: hoje). Util para testes. */
   today?: Date;
+  /** Id de uma orientacao visivel associada aos dois campos de data. */
+  descriptionId?: string;
 }
 
 const PRESETS: Exclude<PeriodPreset, "custom">[] = [
@@ -52,6 +54,7 @@ export const PeriodPicker = React.forwardRef<HTMLDivElement, PeriodPickerProps>(
       hidePresets = false,
       className,
       today,
+      descriptionId,
     },
     ref,
   ) {
@@ -139,6 +142,7 @@ export const PeriodPicker = React.forwardRef<HTMLDivElement, PeriodPickerProps>(
               value={current.from}
               onChange={(e) => handleCustom("from", e.target.value)}
               aria-label="Data inicial"
+              aria-describedby={descriptionId}
               className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
           </label>
@@ -152,6 +156,7 @@ export const PeriodPicker = React.forwardRef<HTMLDivElement, PeriodPickerProps>(
               value={current.to}
               onChange={(e) => handleCustom("to", e.target.value)}
               aria-label="Data final"
+              aria-describedby={descriptionId}
               min={current.from}
               className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />

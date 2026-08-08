@@ -70,6 +70,7 @@ export function ResolveDialog({
           </label>
           <textarea
             id="resolve-note"
+            aria-describedby={errors.note ? undefined : "resolve-note-help"}
             rows={4}
             placeholder="Ex.: reprocessei execucao xyz; todos os NSUs foram recuperados."
             disabled={pending}
@@ -79,8 +80,9 @@ export function ResolveDialog({
           {errors.note ? (
             <p className="text-xs text-destructive">{errors.note.message}</p>
           ) : (
-            <p className="text-xs text-muted-foreground">
-              Ate 2000 caracteres. Registrada em `audit_logs.metadata.note`.
+            <p id="resolve-note-help" className="text-xs text-muted-foreground">
+              Descreva a correção e o resultado sem incluir senhas, tokens ou
+              dados fiscais desnecessários. A nota fica na auditoria.
             </p>
           )}
         </div>

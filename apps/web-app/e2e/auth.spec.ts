@@ -1,4 +1,4 @@
-import { test, expect, type Route } from "@playwright/test";
+import { test, expect, type Page, type Route } from "@playwright/test";
 
 /**
  * E2E de autenticacao (APP-01).
@@ -40,8 +40,17 @@ async function fulfillJson(route: Route, status: number, body: unknown) {
   });
 }
 
+async function seedRefreshCookie(page: Page) {
+  // As rotas de auth sao interceptadas nestes testes, portanto o Route
+  // Handler real nao existe para gravar o cookie httpOnly do middleware.
+  await page.context().addCookies([
+    { name: "nfse_refresh", value: "e2e-refresh-stub", domain: "127.0.0.1", path: "/" },
+  ]);
+}
+
 test.describe("fluxo de auth", () => {
   test("signup -> dashboard", async ({ page }) => {
+    await seedRefreshCookie(page);
     await page.route("**/api/auth/refresh", async (route) => {
       await fulfillJson(route, 401, { detail: "sessao expirada" });
     });
@@ -74,6 +83,7 @@ test.describe("fluxo de auth", () => {
   });
 
   test("refresh automatico rehidrata a sessao", async ({ page }) => {
+    await seedRefreshCookie(page);
     // Primeiro bootstrap: refresh succeeda -> sessao autenticada.
     let refreshCalls = 0;
     await page.route("**/api/auth/refresh", async (route) => {

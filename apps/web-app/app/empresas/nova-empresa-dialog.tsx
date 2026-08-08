@@ -227,6 +227,7 @@ export function NovaEmpresaDialog({
               autoComplete="off"
               maxLength={10}
               placeholder="Ex: 3550308"
+              aria-describedby="company-location-help"
               aria-invalid={errors.municipio_ibge ? true : undefined}
               {...register("municipio_ibge")}
               className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -244,6 +245,7 @@ export function NovaEmpresaDialog({
             </label>
             <select
               id="nova-empresa-uf"
+              aria-describedby="company-location-help"
               aria-invalid={errors.uf ? true : undefined}
               {...register("uf")}
               className="h-9 rounded-md border border-input bg-background px-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -262,6 +264,10 @@ export function NovaEmpresaDialog({
             ) : null}
           </div>
         </div>
+        <p id="company-location-help" className="-mt-2 text-xs text-muted-foreground">
+          Use o código IBGE oficial do município e a UF correspondente. Esses
+          dados direcionam a integração fiscal da empresa.
+        </p>
 
         {submitError ? (
           <div

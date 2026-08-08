@@ -118,7 +118,7 @@ export function OccurrenceDetailView({
   });
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6" data-help-id="occurrence-detail-primary">
       <Link
         href="/ocorrencias"
         className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"

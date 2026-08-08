@@ -42,6 +42,9 @@ async function json(route: Route, status: number, body: unknown) {
 
 test.describe("fluxo /usuarios", () => {
   test("owner convida novo membro e ve item em pendentes", async ({ page }) => {
+    await page.context().addCookies([
+      { name: "nfse_refresh", value: "e2e-refresh-stub", domain: "127.0.0.1", path: "/" },
+    ]);
     await page.route("**/api/auth/refresh", (route) => json(route, 200, session("owner")));
     await page.route("**/tenant/members", (route) =>
       json(route, 200, [
@@ -87,10 +90,15 @@ test.describe("fluxo /usuarios", () => {
     await page.getByRole("button", { name: /enviar convite/i }).click();
 
     await expect.poll(() => inviteCalls).toBe(1);
-    await expect(page.getByText("novo@tenant.com")).toBeVisible();
+    await expect(
+      page.getByRole("cell", { name: "novo@tenant.com", exact: true }),
+    ).toBeVisible();
   });
 
   test("aceitar convite redireciona para dashboard", async ({ page }) => {
+    await page.context().addCookies([
+      { name: "nfse_refresh", value: "e2e-refresh-stub", domain: "127.0.0.1", path: "/" },
+    ]);
     // refresh inicial: anonimo.
     await page.route("**/api/auth/refresh", (route) =>
       json(route, 401, { detail: "sessao expirada" }),
@@ -113,7 +121,7 @@ test.describe("fluxo /usuarios", () => {
 
     await page.goto("/aceitar-convite/convite-token-123");
     await page.getByLabel("Seu nome").fill("Novo Fulano");
-    await page.getByLabel("Senha").fill("senha-forte-123");
+    await page.getByLabel("Senha", { exact: true }).fill("senha-forte-123");
     await page.getByLabel("Confirmar senha").fill("senha-forte-123");
     await page.getByRole("button", { name: /aceitar convite/i }).click();
 
@@ -123,6 +131,9 @@ test.describe("fluxo /usuarios", () => {
   test("admin nao consegue agir sobre owner (botao desabilitado)", async ({
     page,
   }) => {
+    await page.context().addCookies([
+      { name: "nfse_refresh", value: "e2e-refresh-stub", domain: "127.0.0.1", path: "/" },
+    ]);
     await page.route("**/api/auth/refresh", (route) => json(route, 200, session("admin")));
     await page.route("**/tenant/members", (route) =>
       json(route, 200, [

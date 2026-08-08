@@ -10,6 +10,7 @@ import {
   PlayCircle,
   Users,
   Settings,
+  CircleHelp,
   type LucideIcon,
 } from "lucide-react";
 
@@ -36,6 +37,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Agendamentos", href: "/agendamentos", icon: CalendarClock },
   { label: "Ocorrencias", href: "/ocorrencias", icon: AlertCircle },
   { label: "Arquivos", href: "/arquivos", icon: FolderArchive },
+  { label: "Ajuda", href: "/ajuda", icon: CircleHelp },
   { label: "Notas", href: "/dashboard/notas", icon: FileText },
   { label: "Certificados", href: "/dashboard/certificados", icon: ShieldCheck },
   { label: "Tenants", href: "/dashboard/tenants", icon: Building2 },

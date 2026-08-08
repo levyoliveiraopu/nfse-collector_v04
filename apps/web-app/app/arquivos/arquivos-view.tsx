@@ -153,7 +153,7 @@ export function ArquivosView() {
   const companies = companiesQuery.data?.rows ?? [];
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4" data-help-id="files-primary">
       <RetentionBanner />
 
       <div className="flex flex-wrap items-end justify-between gap-3">

@@ -95,6 +95,7 @@ export function ExecucoesList() {
   return (
     <section
       aria-label="Execucoes"
+      data-help-id="executions-primary"
       className="rounded-lg border border-border bg-card text-card-foreground shadow-sm"
     >
       <header className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3">

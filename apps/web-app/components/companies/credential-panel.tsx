@@ -103,7 +103,7 @@ export function CredentialPanel({
   );
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4" data-help-id="credential-primary">
       <header className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold tracking-tight">
           Credencial A1

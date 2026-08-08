@@ -15,6 +15,25 @@
 
 ## Em Andamento
 
+- **2026-08-08 - Ajuda contextual e guias interativos:** todas as rotas
+  funcionais possuem artigo Markdown sanitizado, ajuda sob demanda no topbar,
+  pesquisa central em `/ajuda`, conteudo e acoes coerentes com o RBAC e tours
+  opcionais sem mutacao usando seletores estaveis `data-help-id`. Login,
+  convite e recuperacao de acesso recebem ajuda curta, sem tours. A migration
+  `0020_help_metrics_daily` armazena apenas contagens diarias anonimas por
+  tenant, papel, evento, artigo, rota e tour, com RLS; `POST /help/events` e
+  assincrono para a interface e `GET /help/insights` e restrito a
+  `owner`/`admin`. Evidencias locais: Ruff e suite Python verdes (552 testes
+  aprovados, 197 ignorados por dependerem de servicos externos); lint,
+  typecheck, 462 testes Vitest e build de producao Next.js verdes. A stack
+  Docker local foi reconstruida, a migration aplicada sobre PostgreSQL 16 e
+  a navegacao real confirmou painel persistente entre rotas, busca sem
+  acentos, tour sem mutacao, `Esc` com retorno de foco e insights de admin.
+  Os 6 cenarios Playwright existentes tambem passaram usando a opcao local
+  explicita de Chrome do sistema; as fixtures agora reproduzem o cookie
+  `nfse_refresh` exigido pelo middleware, que tambem passou a proteger
+  `/ajuda`.
+
 - **2026-08-08 - Rotulos de exports por formato:** a lista de arquivos
   distingue `Excel NFS-e` para `.xlsx`/`.xls` e `XML (ZIP)` para `.zip`,
   embora ambos continuem usando `kind=export` no schema existente.

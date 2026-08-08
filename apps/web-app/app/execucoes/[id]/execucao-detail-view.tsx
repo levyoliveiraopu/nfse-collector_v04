@@ -192,7 +192,7 @@ export function ExecucaoDetailView({
     "Reprocessamento sera liberado junto com APP-06 / API-10.";
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6" data-help-id="execution-detail-primary">
       <header
         className="rounded-lg border border-border bg-card p-4 shadow-sm"
         data-execution-status={execution.status}

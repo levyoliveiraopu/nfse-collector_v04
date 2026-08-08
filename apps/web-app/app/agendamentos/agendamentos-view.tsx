@@ -180,7 +180,7 @@ export function AgendamentosView() {
   const schedules: Schedule[] = schedulesQuery.data?.items ?? [];
 
   return (
-    <>
+    <div className="flex flex-col gap-4" data-help-id="schedules-primary">
       <div className="flex justify-end">
         {canWrite ? (
           <button
@@ -369,6 +369,6 @@ export function AgendamentosView() {
           companiesLoading={companiesQuery.isLoading}
         />
       ) : null}
-    </>
+    </div>
   );
 }
