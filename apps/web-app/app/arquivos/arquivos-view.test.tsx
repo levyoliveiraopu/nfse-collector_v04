@@ -147,6 +147,25 @@ describe("ArquivosView", () => {
     expect(screen.getByTestId("total-count").textContent).toMatch(/1/);
   });
 
+  it("exibe export XLSX como Excel NFS-e", async () => {
+    mockAuth();
+    listFilesMock.mockResolvedValue({
+      items: [
+        {
+          ...fileFixture,
+          kind: "export",
+          object_key: "tenants-exports/t-1/relatorio.xlsx",
+        },
+      ],
+      page: 1,
+      page_size: 20,
+      total: 1,
+    });
+    render(withQueryClient(<ArquivosView />));
+
+    expect(await screen.findByText("Excel NFS-e")).toBeInTheDocument();
+  });
+
   it("clicar em Baixar chama getFileDownloadUrl e abre a URL", async () => {
     mockAuth();
     listFilesMock.mockResolvedValue({
