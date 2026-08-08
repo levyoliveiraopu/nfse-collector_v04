@@ -11,11 +11,11 @@ Fluxo de uma request protegida:
 
     request --> get_current_claims  (401 se faltar/invalido)
              -> assert_tenant_active (403 se nao existe/suspenso)
-             -> get_tenant_db        (Session com SET LOCAL app.current_tenant)
+             -> get_tenant_db        (Session com app.current_tenant local)
 
 Ativacao do RLS: `get_tenant_db` reusa `get_tenant_session(tenant_id)` do
-`api.db`, que abre transacao com `SET LOCAL app.current_tenant = :id`. O
-`SET LOCAL` expira no commit/rollback, logo a conexao devolvida ao pool
+`api.db`, que abre transacao com `set_config(..., true)`. A configuracao local
+expira no commit/rollback, logo a conexao devolvida ao pool
 **nao** carrega a GUC — condicao exigida no DoD do ticket.
 """
 
@@ -101,7 +101,7 @@ def assert_tenant_active(
 def get_tenant_db(
     claims: AccessClaims = Depends(assert_tenant_active),
 ) -> Iterator[Session]:
-    """Sessao SQLAlchemy com `SET LOCAL app.current_tenant = :tid`.
+    """Sessao SQLAlchemy com `app.current_tenant` local a transacao.
 
     Usa generator (nao context manager) para integrar com o ciclo de
     vida de dependencies FastAPI: o `yield` entrega a sessao ao handler,

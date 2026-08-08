@@ -17,7 +17,7 @@ COPY --from=deps /repo/node_modules ./node_modules
 COPY --from=deps /repo/apps/web-app/node_modules ./apps/web-app/node_modules
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web-app ./apps/web-app
-RUN pnpm --filter web-app build
+RUN mkdir -p apps/web-app/public && pnpm --filter web-app build
 
 FROM node:20-alpine AS runner
 ENV NODE_ENV=production \

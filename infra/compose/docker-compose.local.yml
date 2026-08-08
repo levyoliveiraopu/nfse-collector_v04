@@ -1,0 +1,254 @@
+# Stack completa para desenvolvimento local no Docker Desktop.
+#
+# Uso recomendado (a partir da raiz do repositorio):
+#   powershell -ExecutionPolicy Bypass -File .\infra\local\start.ps1
+
+x-api-image: &api-image
+  image: nfse-api:local
+  build:
+    context: ../../apps/api
+    dockerfile: Dockerfile
+
+x-worker-image: &worker-image
+  image: nfse-worker:local
+  build:
+    context: ../..
+    dockerfile: apps/worker/Dockerfile
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER nao definido}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD nao definido}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB nao definido}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - local
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD nao definido}
+      --appendonly yes
+      --appendfsync everysec
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?REDIS_PASSWORD nao definido}
+    volumes:
+      - redisdata:/data
+    networks:
+      - local
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_KEY_ID:?S3_KEY_ID nao definido}
+      MINIO_ROOT_PASSWORD: ${S3_APPLICATION_KEY:?S3_APPLICATION_KEY nao definido}
+      MINIO_SERVER_URL: ${S3_ENDPOINT:?S3_ENDPOINT nao definido}
+    volumes:
+      - miniodata:/data
+    networks:
+      - local
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    restart: "no"
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      S3_BUCKET: ${S3_BUCKET:?S3_BUCKET nao definido}
+      S3_KEY_ID: ${S3_KEY_ID}
+      S3_APPLICATION_KEY: ${S3_APPLICATION_KEY}
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 \"$$S3_KEY_ID\" \"$$S3_APPLICATION_KEY\" &&
+      mc mb --ignore-existing local/\"$$S3_BUCKET\" &&
+      echo 'bucket pronto: '\"$$S3_BUCKET\"
+      "
+    networks:
+      - local
+
+  migrate:
+    <<: *api-image
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - ${ENV_FILE:-../local/.env.local}
+    command: ["alembic", "upgrade", "head"]
+    networks:
+      - local
+
+  seed:
+    <<: *api-image
+    restart: "no"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    env_file:
+      - ${ENV_FILE:-../local/.env.local}
+    volumes:
+      - ../../apps/api/scripts:/app/scripts:ro
+    command: ["python", "-m", "scripts.seed"]
+    networks:
+      - local
+
+  api:
+    <<: *api-image
+    restart: unless-stopped
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    env_file:
+      - ${ENV_FILE:-../local/.env.local}
+    networks:
+      - local
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/ready').status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  worker:
+    <<: *worker-image
+    restart: unless-stopped
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    env_file:
+      - ${ENV_FILE:-../local/.env.local}
+    environment:
+      WORKER_HEALTHZ_PORT: 8080
+    networks:
+      - local
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/healthz').status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    stop_grace_period: 60s
+
+  scheduler:
+    <<: *worker-image
+    command: ["python", "-m", "worker.scheduler"]
+    restart: unless-stopped
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    env_file:
+      - ${ENV_FILE:-../local/.env.local}
+    environment:
+      SCHEDULER_HEALTHZ_PORT: 8081
+    networks:
+      - local
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8081/healthz').status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    stop_grace_period: 30s
+
+  web-app:
+    image: nfse-web-app:local
+    build:
+      context: ../..
+      dockerfile: apps/web-app/Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: /backend
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    env_file:
+      - ${ENV_FILE:-../local/.env.local}
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      NEXT_PUBLIC_API_BASE_URL: /backend
+      API_BASE_URL: http://api:8000
+    networks:
+      - local
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    depends_on:
+      web-app:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      LOCAL_HTTP_PORT: ${LOCAL_HTTP_PORT:-3000}
+    ports:
+      - "127.0.0.1:${LOCAL_HTTP_PORT:-3000}:${LOCAL_HTTP_PORT:-3000}"
+    volumes:
+      - ../local/Caddyfile:/etc/caddy/Caddyfile:ro
+    networks:
+      local:
+        aliases:
+          - s3.localhost
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:$${LOCAL_HTTP_PORT}/api/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+volumes:
+  pgdata:
+  redisdata:
+  miniodata:
+
+networks:
+  local:
+    driver: bridge

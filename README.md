@@ -57,6 +57,7 @@ packages/
                 S3 client, jobs run_execution + build_export)
 infra/
   compose/      docker-compose base + deploy + obs
+  local/        Bootstrap da stack completa no Docker Desktop
   deploy/       Script idempotente + runbook (INFRA-09)
   nginx/        Server blocks dos 5 hostnames + ops.conf (INFRA-04/07)
   scripts/      backup-postgres.sh, restore-postgres.sh, s3-smoke-test.sh
@@ -88,6 +89,8 @@ continuar funcionando como CLI single-tenant.
 - **SETUP.md** — guia do **coletor legado** (CLI single-tenant). Para
   o SaaS multi-tenant, ver `infra/deploy/README.md` e
   `apps/api/README.md`.
+- **infra/local/README.md** - sobe o SaaS completo no Docker Desktop e
+  abre o painel local com uma conta de demonstracao pronta.
 - **TROUBLESHOOTING.md** — cenarios de erro do coletor legado. Para
   o SaaS, ver `docs/runbooks/`.
 - **docs/tasks/** — tickets com DoD e prompt pronto (~80 tickets).
