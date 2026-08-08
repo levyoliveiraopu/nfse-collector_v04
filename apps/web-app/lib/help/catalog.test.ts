@@ -85,7 +85,15 @@ describe("help catalog", () => {
     }
     walk(appDir);
 
-    const excluded = new Set(["/", "/legal", "/styleguide"]);
+    const excluded = new Set([
+      "/",
+      "/legal",
+      "/styleguide",
+      // Compatibilidade com favoritos antigos: estas paginas apenas
+      // redirecionam e nunca renderizam ajuda propria.
+      "/dashboard/notas",
+      "/dashboard/certificados",
+    ]);
     const routes = pages.map((file) => {
       const relative = path.relative(appDir, path.dirname(file));
       const segments = relative

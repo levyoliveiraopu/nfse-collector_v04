@@ -15,6 +15,16 @@
 
 ## Em Andamento
 
+- **2026-08-08 - Navegacao sem atalhos quebrados:** o menu autenticado agora
+  exibe somente telas funcionais. Os placeholders de Notas, Certificados,
+  Tenants e Configuracoes foram removidos; favoritos antigos de
+  `/dashboard/notas` redirecionam para Arquivos e
+  `/dashboard/certificados` redirecionam para Empresas, onde ficam os fluxos
+  reais de exportacao fiscal e credenciais A1, respectivamente. Evidencias:
+  lint e typecheck verdes, 465 testes Vitest aprovados, build Next.js verde,
+  container web local saudavel e os dois redirecionamentos confirmados em
+  sessao autenticada.
+
 - **2026-08-08 - Ajuda contextual e guias interativos:** todas as rotas
   funcionais possuem artigo Markdown sanitizado, ajuda sob demanda no topbar,
   pesquisa central em `/ajuda`, conteudo e acoes coerentes com o RBAC e tours
