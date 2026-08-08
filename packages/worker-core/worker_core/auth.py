@@ -140,7 +140,12 @@ def _gravar_pem_seguro(dados_pem: bytes, sufixo: str) -> str:
     # queremos; usamos mkstemp + fchmod defensivo.
     fd, caminho = tempfile.mkstemp(suffix=sufixo, dir=diretorio)
     try:
-        os.fchmod(fd, 0o600)
+        if hasattr(os, "fchmod"):
+            os.fchmod(fd, 0o600)
+        else:
+            # Windows nao expoe fchmod; mkstemp ja cria o arquivo exclusivo
+            # e chmod aplica a protecao equivalente disponivel na plataforma.
+            os.chmod(caminho, 0o600)
         with os.fdopen(fd, "wb") as f:
             f.write(dados_pem)
     except Exception:

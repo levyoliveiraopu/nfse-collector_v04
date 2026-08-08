@@ -16,6 +16,7 @@ import {
   getExport,
   isTerminalExportStatus,
   type ExportRecord,
+  type ExportKind,
   type ExportStatus,
 } from "@/lib/api/exports";
 
@@ -56,6 +57,7 @@ export function GerarZipDialog({
   const queryClient = useQueryClient();
 
   const [companyId, setCompanyId] = React.useState("");
+  const [kind, setKind] = React.useState<ExportKind>("zip_xml");
   const [period, setPeriod] = React.useState<PeriodRange>(() =>
     computePresetRange("last_30d"),
   );
@@ -75,6 +77,7 @@ export function GerarZipDialog({
   React.useEffect(() => {
     if (!open) return;
     setCompanyId("");
+    setKind("zip_xml");
     setPeriod(computePresetRange("last_30d"));
     setState({ phase: "idle" });
   }, [open]);
@@ -144,7 +147,7 @@ export function GerarZipDialog({
     if (!companyId) {
       setState({
         phase: "failed",
-        message: "Selecione uma empresa para gerar o ZIP.",
+        message: "Selecione uma empresa para gerar o arquivo.",
       });
       return;
     }
@@ -155,7 +158,7 @@ export function GerarZipDialog({
           company_id: companyId,
           period_start: period.from,
           period_end: period.to,
-          kind: "zip_xml",
+          kind,
         },
         ctx,
       );
@@ -191,8 +194,8 @@ export function GerarZipDialog({
     <Modal
       open={open}
       onClose={dismissable ? onClose : () => undefined}
-      title="Gerar ZIP de XMLs"
-      description="Empacota os XMLs coletados de uma empresa no periodo em um unico ZIP."
+      title="Gerar arquivo fiscal"
+      description="Gera os XMLs em ZIP ou uma planilha Excel das NFS-e emitidas."
       dismissable={dismissable}
       maxWidth="max-w-lg"
     >
@@ -231,6 +234,32 @@ export function GerarZipDialog({
               onChange={(next) => setPeriod(next)}
             />
           </div>
+
+          <fieldset className="flex flex-col gap-2">
+            <legend className="text-sm font-medium">Formato</legend>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name="export-kind"
+                value="zip_xml"
+                checked={kind === "zip_xml"}
+                onChange={() => setKind("zip_xml")}
+                disabled={isInProgress(state)}
+              />
+              ZIP com os XMLs
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name="export-kind"
+                value="excel_nfse"
+                checked={kind === "excel_nfse"}
+                onChange={() => setKind("excel_nfse")}
+                disabled={isInProgress(state)}
+              />
+              Excel com notas e resumo
+            </label>
+          </fieldset>
 
           {state.phase === "failed" ? (
             <div
@@ -299,6 +328,7 @@ function ReadyPanel({
   record: ExportRecord;
   onClose: () => void;
 }) {
+  const isExcel = record.kind === "excel_nfse";
   return (
     <div className="flex flex-col gap-4" data-testid="export-ready">
       <div className="flex items-start gap-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-900 dark:text-emerald-200">
@@ -307,10 +337,12 @@ function ReadyPanel({
           aria-hidden="true"
         />
         <div className="flex flex-col gap-0.5">
-          <strong className="font-medium">ZIP pronto para download</strong>
+          <strong className="font-medium">
+            {isExcel ? "Excel pronto para download" : "ZIP pronto para download"}
+          </strong>
           <span className="text-xs opacity-90">
-            {record.items_count} XML{record.items_count === 1 ? "" : "s"}{" "}
-            empacotados. A URL expira em 1 hora.
+            {record.items_count} nota{record.items_count === 1 ? "" : "s"}{" "}
+            emitida{record.items_count === 1 ? "" : "s"}. A URL expira em 1 hora.
           </span>
         </div>
       </div>
@@ -330,7 +362,7 @@ function ReadyPanel({
             className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground shadow-sm transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <Download className="h-4 w-4" aria-hidden="true" />
-            Baixar ZIP
+            {isExcel ? "Baixar Excel" : "Baixar ZIP"}
           </a>
         ) : null}
       </div>
@@ -342,8 +374,8 @@ function EmptyPanel({ onClose }: { onClose: () => void }) {
   return (
     <div className="flex flex-col gap-4" data-testid="export-empty">
       <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
-        Nenhum XML foi encontrado para essa empresa e periodo. Nenhum ZIP foi
-        gerado.
+        Nenhuma NFS-e emitida foi encontrada para essa empresa e periodo.
+        Nenhum arquivo foi gerado.
       </p>
       <div className="flex items-center justify-end">
         <button

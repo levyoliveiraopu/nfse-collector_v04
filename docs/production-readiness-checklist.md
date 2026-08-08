@@ -174,13 +174,13 @@ Arquivo de controle primario: `STATE.md`
 - [x] Validar idempotencia de `execution_items` por chave NFS-e.
   - Evidencia de conclusao: `_insert_execution_item` usa `ON CONFLICT (tenant_id, chave_nfse) WHERE chave_nfse IS NOT NULL DO NOTHING`; `tests/test_jobs.py::test_run_execution_idempotente_quando_insert_nao_retorna_linha` valida retry idempotente.
 - [x] Validar comportamento quando XML sobe no S3, mas insert no DB falha.
-  - Evidencia de conclusao: excecao no callback incrementa `callback_errors`, o job vira partial/failed e a politica de NSU nao avanca em final diferente de `succeeded`; reconciliador `packages/worker-core/scripts/reconcile_storage.py` detecta divergencias DB/S3.
+  - Evidencia de conclusao: excecao no callback incrementa `callback_errors` e o job vira partial/failed; o NSU pode avancar em `partial` somente quando nao houve falha de storage nem rejeicao fatal, pois os documentos recebidos ja foram preservados. O reconciliador `packages/worker-core/scripts/reconcile_storage.py` detecta divergencias DB/S3.
 - [x] Validar comportamento quando insert no DB ocorre, mas upload XML falha.
   - Evidencia de conclusao: falha de `upload_xml` incrementa `storage_errors`, persiste item com `xml_object_key=None`, cria occurrence `STORAGE_ERROR`, finaliza partial/failed e nao avanca NSU; teste `test_run_execution_storage_error_cria_occurrence` cobre.
 - [x] Criar reconciliador para objetos S3 orfaos ou linhas DB sem objeto, se necessario.
   - Evidencia de conclusao: `packages/worker-core/scripts/reconcile_storage.py` roda em dry-run e lista `execution_items` ok sem `xml_object_key` ou com objeto ausente no S3.
 - [x] Definir politica para NSU quando ha falha parcial.
-  - Evidencia de conclusao: worker chama `fetch_nfse(..., persist_nsu=False)` e so executa `DbNsuSource.set` quando `final_status == succeeded` e nao e dry-run; testes validam que partial/storage error nao avanca `last_nsu`.
+  - Evidencia de conclusao: worker chama `fetch_nfse(..., persist_nsu=False)` e executa `DbNsuSource.set` em `succeeded` ou `partial` apenas sem erro de storage/rejeicao fatal e fora de dry-run; isso preserva a sequencia depois que todos os documentos recebidos foram armazenados, enquanto falha de storage continua sem avancar `last_nsu`.
 
 ## 3.3 Exportacoes e arquivos
 

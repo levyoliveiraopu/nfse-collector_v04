@@ -1,10 +1,12 @@
 """Testes para o módulo excel_builder."""
 
 from io import BytesIO
+from datetime import date
 
 from openpyxl import load_workbook
 
 from src import excel_builder
+from worker_core.excel_builder import gerar_excel_periodo
 
 
 def _carregar_wb(excel_bytes: bytes):
@@ -115,3 +117,15 @@ class TestGerarExcelCliente:
         assert ws.cell(5, 2).value == 0
         # Total de notas canceladas = 1
         assert ws.cell(6, 2).value == 1
+
+
+def test_gerar_excel_periodo_exibe_intervalo_inclusivo() -> None:
+    resultado = gerar_excel_periodo(
+        [],
+        "12345678000199",
+        "Empresa ABC",
+        date(2026, 6, 1),
+        date(2026, 7, 31),
+    )
+    wb = _carregar_wb(resultado)
+    assert wb["Resumo"].cell(1, 2).value == "01/06/2026 a 31/07/2026"

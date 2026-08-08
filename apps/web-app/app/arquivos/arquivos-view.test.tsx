@@ -207,7 +207,7 @@ describe("ArquivosView", () => {
     });
   });
 
-  it("oculta botao Gerar ZIP para viewer", async () => {
+  it("oculta botao Gerar arquivo para viewer", async () => {
     mockAuth("viewer");
     listFilesMock.mockResolvedValue({
       items: [],
@@ -220,7 +220,7 @@ describe("ArquivosView", () => {
       expect(screen.getByTestId("retention-banner")).toBeInTheDocument();
     });
     expect(
-      screen.queryByRole("button", { name: /Gerar ZIP/i }),
+      screen.queryByRole("button", { name: /Gerar arquivo/i }),
     ).not.toBeInTheDocument();
   });
 });

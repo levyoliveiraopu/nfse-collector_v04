@@ -67,6 +67,15 @@ def test_resolve_admin_password_prefers_env(monkeypatch) -> None:
     assert seed.resolve_admin_password() == "supersecret"
 
 
+def test_resolve_tenant_name_preserves_default_or_uses_env(monkeypatch) -> None:
+    from scripts import seed
+
+    monkeypatch.delenv("API_SEED_TENANT_NAME", raising=False)
+    assert seed.resolve_tenant_name() == seed.DEMO_TENANT_NAME
+    monkeypatch.setenv("API_SEED_TENANT_NAME", "  Vice Versa  ")
+    assert seed.resolve_tenant_name() == "Vice Versa"
+
+
 def test_resolve_admin_password_dev_fallback(monkeypatch) -> None:
     from api.config import get_settings
     from scripts import seed

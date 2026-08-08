@@ -223,7 +223,7 @@ export function ArquivosView() {
             className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground shadow-sm transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <FolderArchive className="h-4 w-4" aria-hidden="true" />
-            Gerar ZIP
+            Gerar arquivo
           </button>
         ) : null}
       </div>

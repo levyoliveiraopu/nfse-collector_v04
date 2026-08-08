@@ -15,6 +15,22 @@
 
 ## Em Andamento
 
+- **2026-08-08 - NFS-e emitidas e export fiscal:** a coleta continua
+  persistindo todos os documentos distribuidos pelo ADN para manter a
+  sequencia NSU, mas os contadores e a listagem padrao agora consideram
+  somente o CNPJ da empresa como emitente; `scope=all` fica disponivel
+  explicitamente para diagnostico. Notas canceladas emitidas permanecem
+  visiveis e nao entram nos totais financeiros ativos. `POST /exports`
+  aceita `excel_nfse` alem de `zip_xml`, sempre filtrado por emitente e
+  periodo inclusivo. O bootstrap local aceita `-AdnEnvironment` e
+  `-TenantName`, preservando os valores existentes quando omitidos. O
+  tenant mantem slug/login de desenvolvimento e pode ser exibido como
+  "Vice Versa" sem cadastra-la como empresa coletada. Migration
+  `0019_export_excel_nfse` adicionada.
+  O helper mTLS tambem ganhou fallback seguro para Windows quando
+  `os.fchmod` nao esta disponivel, mantendo `mkstemp` exclusivo e permissao
+  restrita antes de gravar o PEM temporario.
+
 - **PROD-READY** — Checklist de prontidao para producao criado em
   `docs/production-readiness-checklist.md`. Este passa a ser o backlog
   mestre de producao, enquanto este `STATE.md` segue como arquivo de

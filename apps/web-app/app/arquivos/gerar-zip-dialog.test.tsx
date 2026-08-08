@@ -112,6 +112,37 @@ describe("GerarZipDialog", () => {
     expect(createExportMock).not.toHaveBeenCalled();
   });
 
+  it("permite solicitar planilha Excel", async () => {
+    createExportMock.mockResolvedValue({
+      export_id: "exp-1",
+      status: "queued",
+      job_id: "rq-1",
+      enqueue_error: null,
+    });
+    render(
+      withQueryClient(
+        <GerarZipDialog
+          open
+          onClose={() => undefined}
+          companies={[companyFixture]}
+        />,
+      ),
+    );
+
+    fireEvent.change(screen.getByLabelText(/Empresa/i), {
+      target: { value: "cmp-1" },
+    });
+    fireEvent.click(screen.getByLabelText(/Excel com notas e resumo/i));
+    fireEvent.click(screen.getByRole("button", { name: /^Gerar$/i }));
+
+    await waitFor(() => {
+      expect(createExportMock).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: "excel_nfse" }),
+        expect.any(Object),
+      );
+    });
+  });
+
   it("polling transiciona de running -> ready e exibe link de download", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     createExportMock.mockResolvedValue({

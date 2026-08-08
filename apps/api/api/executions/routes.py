@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -512,10 +512,22 @@ def list_execution_items(
     page_size: int = Query(default=50, ge=1, le=200),
     status_: Optional[ExecutionItemStatus] = Query(default=None, alias="status"),
     nsu: Optional[int] = Query(default=None, ge=0),
+    scope: Literal["issued", "all"] = Query(
+        default="issued",
+        description="issued filtra pelo CNPJ emitente da empresa; all e diagnostico.",
+    ),
 ) -> ExecutionItemListOut:
     # 404 antes de listar — RLS isola cross-tenant.
     parent = db.execute(
-        text("SELECT id FROM executions WHERE id = :eid"),
+        text(
+            """
+            SELECT e.id, c.cnpj AS company_cnpj
+              FROM executions e
+              JOIN companies c
+                ON c.id = e.company_id AND c.tenant_id = e.tenant_id
+             WHERE e.id = :eid
+            """
+        ),
         {"eid": str(execution_id)},
     ).one_or_none()
     if parent is None:
@@ -530,6 +542,11 @@ def list_execution_items(
         "offset": (page - 1) * page_size,
     }
     where: list[str] = ["execution_id = :eid"]
+    if scope == "issued":
+        where.append(
+            "regexp_replace(COALESCE(cnpj_emitente, ''), '[^0-9]', '', 'g') = :company_cnpj"
+        )
+        params["company_cnpj"] = parent.company_cnpj
     if status_ is not None:
         where.append("status = :status")
         params["status"] = status_
