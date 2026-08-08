@@ -15,6 +15,10 @@
 
 ## Em Andamento
 
+- **2026-08-08 - Rotulos de exports por formato:** a lista de arquivos
+  distingue `Excel NFS-e` para `.xlsx`/`.xls` e `XML (ZIP)` para `.zip`,
+  embora ambos continuem usando `kind=export` no schema existente.
+
 - **2026-08-08 - Compatibilidade com o leiaute nacional v1.01:** o parser
   passa a ler a chave em `infNFSe/@Id`, a descricao em `xDescServ`, o valor
   em `vServPrest/vServ` e a retencao em `tpRetISSQN` com a semantica oficial.

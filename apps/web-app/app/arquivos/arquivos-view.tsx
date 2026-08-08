@@ -14,6 +14,7 @@ import {
   UI_FILTER_KINDS,
   formatBytes,
   getFileDownloadUrl,
+  getFileKindLabel,
   listFiles,
   type ApiFile,
   type FileKind,
@@ -310,7 +311,7 @@ export function ArquivosView() {
                       data-testid={`file-row-${file.id}`}
                     >
                       <td className="px-4 py-2">
-                        {FILE_KIND_LABEL[file.kind]}
+                        {getFileKindLabel(file)}
                       </td>
                       <td className="px-4 py-2 text-xs text-muted-foreground">
                         {companyLabel}
