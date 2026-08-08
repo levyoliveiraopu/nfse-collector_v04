@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ShieldCheck } from "lucide-react";
 import type { ReactNode } from "react";
+import { AuthPageHelp } from "@/components/help/auth-page-help";
 
 type AuthShellProps = {
   title: string;
@@ -32,6 +33,7 @@ export function AuthShell({ title, subtitle, children, footer }: AuthShellProps)
             ) : null}
           </header>
           {children}
+          <AuthPageHelp />
         </div>
         {footer ? (
           <footer className="mt-4 text-center text-xs text-muted-foreground">

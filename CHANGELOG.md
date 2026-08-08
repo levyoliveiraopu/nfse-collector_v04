@@ -32,6 +32,13 @@ Segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
   Postgres + Redis + S3, Nginx host).
 
 ### Added
+- Central de ajuda contextual em portugues em todas as rotas funcionais,
+  com painel lateral responsivo, busca sem diferenciar maiusculas ou acentos,
+  conteudo filtrado por papel, assuntos relacionados e guias opcionais que
+  apenas destacam controles reais. Campos operacionais criticos agora exibem
+  orientacoes visiveis. A API registra metricas diarias anonimas e agregadas
+  de uso da ajuda, isoladas por tenant via RLS, e disponibiliza indicadores
+  somente para `owner` e `admin` em `/ajuda`.
 - Exportacao `excel_nfse` em `.xlsx`, com abas "Notas Emitidas" e "Resumo",
   ao lado do ZIP de XMLs; ambos filtram CNPJ emitente e periodo inclusivo.
 - Parametros `-AdnEnvironment` e `-TenantName` no bootstrap Docker local,

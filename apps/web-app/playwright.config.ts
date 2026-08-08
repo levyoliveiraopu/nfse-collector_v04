@@ -6,6 +6,7 @@ import { defineConfig, devices } from "@playwright/test";
  * evitando dependencia de Postgres/FastAPI no CI. Ver APP-01.
  */
 const PORT = Number(process.env.PLAYWRIGHT_PORT ?? 3100);
+const useSystemChrome = process.env.PLAYWRIGHT_USE_SYSTEM_CHROME === "1";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -19,11 +20,14 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      use: {
+        ...devices["Desktop Chrome"],
+        ...(useSystemChrome ? { channel: "chrome" } : {}),
+      },
     },
   ],
   webServer: {
-    command: `pnpm next dev -p ${PORT}`,
+    command: `corepack pnpm exec next dev -p ${PORT}`,
     url: `http://127.0.0.1:${PORT}`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

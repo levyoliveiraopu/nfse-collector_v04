@@ -32,6 +32,9 @@ async function json(route: Route, status: number, body: unknown) {
 
 test.describe("fluxo /execucoes", () => {
   test("cria -> acompanha -> ve itens aparecendo (polling)", async ({ page }) => {
+    await page.context().addCookies([
+      { name: "nfse_refresh", value: "e2e-refresh-stub", domain: "127.0.0.1", path: "/" },
+    ]);
     await page.route("**/api/auth/refresh", (route) => json(route, 200, session()));
 
     // Listagem de companies para o multi-select.
@@ -83,7 +86,9 @@ test.describe("fluxo /execucoes", () => {
     let detailCalls = 0;
     await page.route("**/executions/e1", (route) => {
       detailCalls += 1;
-      const status = detailCalls === 1 ? "running" : "succeeded";
+      // Mantem a execucao ativa por dois ciclos para que o polling de items
+      // tambem tenha tempo de observar a transicao vazio -> preenchido.
+      const status = detailCalls < 3 ? "running" : "succeeded";
       const base = {
         id: "e1",
         tenant_id: "tenant-1",

@@ -23,6 +23,7 @@ from .companies.routes import router as companies_router
 from .config import Settings, get_settings
 from .schedules.routes import router as schedules_router
 from .files.routes import router as files_router
+from .help.routes import router as help_router
 from .executions.routes import router as executions_router
 from .exports.routes import router as exports_router
 from .logging import configure_logging
@@ -131,6 +132,7 @@ def create_app() -> FastAPI:
     app.include_router(exports_router)
     app.include_router(onboarding_router)
     app.include_router(reprocess_router)
+    app.include_router(help_router)
 
     return app
 
