@@ -190,6 +190,43 @@ class TestExtrairDadosNfse:
         dados = nfse_fetcher.extrair_dados_nfse(xml)
         assert dados["iss_retido"] is False
 
+    def test_leiaute_nacional_v101(self):
+        xml = """
+        <NFSe xmlns="http://www.sped.fazenda.gov.br/nfse">
+          <infNFSe Id="NFS00000000000000000000000000000000000000000000000001">
+            <nNFSe>00042</nNFSe>
+            <DPS>
+              <infDPS>
+                <dhEmi>2026-06-15T10:30:00-03:00</dhEmi>
+                <prest><CNPJ>40131594000194</CNPJ><xNome>Prestador</xNome></prest>
+                <toma><CPF>00100200304</CPF><xNome>Tomador</xNome></toma>
+                <serv><cServ><xDescServ>Serviço nacional</xDescServ></cServ></serv>
+                <valores>
+                  <vServPrest><vServ>1234.56</vServ></vServPrest>
+                  <trib><tribMun><tpRetISSQN>2</tpRetISSQN></tribMun></trib>
+                </valores>
+              </infDPS>
+            </DPS>
+          </infNFSe>
+        </NFSe>
+        """
+        dados = nfse_fetcher.extrair_dados_nfse(xml)
+        assert dados["numero_nfse"] == "00042"
+        assert dados["chave_acesso"] == "0" * 49 + "1"
+        assert dados["descricao_servico"] == "Serviço nacional"
+        assert dados["valor_servico"] == 1234.56
+        assert dados["valor_iss"] is None
+        assert dados["iss_retido"] is True
+
+    def test_tp_ret_issqn_segue_semantica_oficial(self):
+        for codigo, esperado in (("1", False), ("2", True), ("3", True)):
+            xml = (
+                "<NFSe><valores><trib><tribMun>"
+                f"<tpRetISSQN>{codigo}</tpRetISSQN>"
+                "</tribMun></trib></valores></NFSe>"
+            )
+            assert nfse_fetcher.extrair_dados_nfse(xml)["iss_retido"] is esperado
+
     def test_situacao_cancelada(self):
         xml = '<nfse><nfseCanc>true</nfseCanc></nfse>'
         dados = nfse_fetcher.extrair_dados_nfse(xml)
