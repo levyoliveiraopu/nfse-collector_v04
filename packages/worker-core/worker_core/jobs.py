@@ -199,7 +199,7 @@ def _load_export(conn, export_id: uuid.UUID) -> Optional[_ExportRow]:
     )
 
 
-def _mark_running(conn, export_id: uuid.UUID) -> None:
+def _mark_export_running(conn, export_id: uuid.UUID) -> None:
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -438,7 +438,7 @@ def build_export(
             )
             raise ExportError("kind_not_implemented", f"kind {export.kind!r} nao suportado")
 
-        _mark_running(conn, eid)
+        _mark_export_running(conn, eid)
 
         try:
             items = _list_items(

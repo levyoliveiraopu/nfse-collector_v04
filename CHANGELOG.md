@@ -50,7 +50,8 @@ Segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Fixed
 - Worker: usa `set_config(..., true)` para ativar o RLS tenant com parametro
-  bindado, evitando falha de sintaxe antes do inicio de uma coleta real.
+  bindado, evitando falha de sintaxe antes do inicio de uma coleta real; separa
+  os helpers de estado `running` de execucoes e exports para os jobs ZIP/Excel.
 - Remove dado fiscal e senha reais de um CSV legado de exemplo que ainda
   estava versionado no repositório.
 - Compatibilidade do arquivo PEM temporario mTLS no Windows, usando `chmod`
