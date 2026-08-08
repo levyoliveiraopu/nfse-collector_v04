@@ -20,7 +20,9 @@
   `SELECT set_config('app.current_tenant', :tid, true)`. A forma anterior,
   `SET LOCAL ... = :tid`, era convertida pelo psycopg em `$1` e falhava com
   erro de sintaxe antes de qualquer chamada ao ADN. Teste de contrato garante
-  o GUC parametrizado e restrito a transacao.
+  o GUC parametrizado e restrito a transacao. O smoke real tambem revelou e
+  corrigiu uma colisao de nomes entre os helpers `_mark_running` de execucao e
+  export, que impedia os jobs de ZIP/Excel antes da leitura dos XMLs.
 
 - **2026-08-08 - NFS-e emitidas e export fiscal:** a coleta continua
   persistindo todos os documentos distribuidos pelo ADN para manter a
