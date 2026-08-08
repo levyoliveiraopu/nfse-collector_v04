@@ -15,6 +15,13 @@
 
 ## Em Andamento
 
+- **2026-08-08 - RLS do worker em PostgreSQL:** corrigida a abertura da
+  sessao tenant do `worker-core` para usar
+  `SELECT set_config('app.current_tenant', :tid, true)`. A forma anterior,
+  `SET LOCAL ... = :tid`, era convertida pelo psycopg em `$1` e falhava com
+  erro de sintaxe antes de qualquer chamada ao ADN. Teste de contrato garante
+  o GUC parametrizado e restrito a transacao.
+
 - **2026-08-08 - NFS-e emitidas e export fiscal:** a coleta continua
   persistindo todos os documentos distribuidos pelo ADN para manter a
   sequencia NSU, mas os contadores e a listagem padrao agora consideram

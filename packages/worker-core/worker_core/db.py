@@ -100,7 +100,7 @@ def get_tenant_session(tenant_id: UUID | str) -> Iterator[Session]:
     try:
         with session.begin():
             session.execute(
-                text("SET LOCAL app.current_tenant = :tid"),
+                text("SELECT set_config('app.current_tenant', :tid, true)"),
                 {"tid": str(tenant_id)},
             )
             yield session
