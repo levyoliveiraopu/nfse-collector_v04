@@ -4,7 +4,11 @@ import * as React from "react";
 
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 
-function Exploder({ attempt }: { attempt: number }) {
+function Exploder({ attempt, armed }: { attempt: number; armed: boolean }) {
+  if (!armed) {
+    return <p className="text-sm text-muted-foreground">Preparando demonstração...</p>;
+  }
+
   if (attempt === 0) {
     throw new Error("Falha simulada no primeiro render.");
   }
@@ -18,6 +22,11 @@ function Exploder({ attempt }: { attempt: number }) {
 export function ErrorBoundaryDemo() {
   const [attempt, setAttempt] = React.useState(0);
   const [nonce, setNonce] = React.useState(0);
+  const [mounted, setMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
 
   return (
     <div className="space-y-3">
@@ -28,7 +37,7 @@ export function ErrorBoundaryDemo() {
           setNonce((value) => value + 1);
         }}
       >
-        <Exploder attempt={attempt} />
+        <Exploder attempt={attempt} armed={mounted} />
       </ErrorBoundary>
       <button
         type="button"

@@ -8,7 +8,7 @@ Duas fabricas de sessao convivem porque o schema usa Row Level Security
    definido ainda (ex.: `/auth/signup`, `/auth/login`).
 
 2. `get_tenant_session(tenant_id)` — conecta com `app_user`
-   (**NOBYPASSRLS**) e executa `SET LOCAL app.current_tenant = '<uuid>'`
+   (**NOBYPASSRLS**) e define `app.current_tenant` no escopo da transacao
    na mesma transacao. E o caminho padrao pos-auth: qualquer query
    enxerga apenas linhas do tenant corrente.
 
@@ -95,7 +95,7 @@ def get_admin_session() -> Iterator[Session]:
 
 @contextmanager
 def get_tenant_session(tenant_id: UUID | str) -> Iterator[Session]:
-    """Sessao com `SET LOCAL app.current_tenant` — RLS ativa.
+    """Sessao com `app.current_tenant` local a transacao — RLS ativa.
 
     A GUC e setada dentro da transacao atual; ao final do `with` o
     commit/rollback fecha a transacao e o escopo do `SET LOCAL` e
@@ -104,10 +104,11 @@ def get_tenant_session(tenant_id: UUID | str) -> Iterator[Session]:
     session_factory = _get_sessionmaker()
     session = session_factory()
     try:
-        # `SET LOCAL` precisa de transacao ativa: begin() explicito.
+        # O terceiro argumento de set_config equivale a SET LOCAL. Essa forma
+        # aceita bind parameter no PostgreSQL; `SET LOCAL ... = :tid` nao aceita.
         with session.begin():
             session.execute(
-                text("SET LOCAL app.current_tenant = :tid"),
+                text("SELECT set_config('app.current_tenant', :tid, true)"),
                 {"tid": str(tenant_id)},
             )
             yield session

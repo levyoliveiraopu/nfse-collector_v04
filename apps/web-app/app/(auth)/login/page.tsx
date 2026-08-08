@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -14,6 +14,24 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { cn } from "@/lib/utils";
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginPageFallback />}>
+      <LoginPageContent />
+    </Suspense>
+  );
+}
+
+function LoginPageFallback() {
+  return (
+    <AuthShell title="Entrar" subtitle="Acesse o painel da sua operacao NFS-e.">
+      <p className="text-sm text-muted-foreground" role="status">
+        Carregando...
+      </p>
+    </AuthShell>
+  );
+}
+
+function LoginPageContent() {
   const router = useRouter();
   const params = useSearchParams();
   const redirectTo = params.get("next") ?? "/dashboard";

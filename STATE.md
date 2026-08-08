@@ -22,6 +22,22 @@
   atualizar o item correspondente no checklist, registrar a evidencia
   neste arquivo e atualizar o `CHANGELOG.md` quando houver mudanca de
   comportamento, seguranca, deploy, API, worker ou UI.
+  - **2026-08-07 - Stack Docker local completa (`nfse-local`):** ambiente
+    isolado para Docker Desktop entregue com PostgreSQL, Redis, MinIO, API,
+    worker, scheduler, web-app e Caddy, expondo somente
+    `http://127.0.0.1:3000` (ou a primeira porta livre ate 3099). O bootstrap
+    PowerShell gera segredos ignorados pelo Git, aplica migrations, cria o
+    bucket, executa seed idempotente e abre o navegador com a conta local
+    `admin@demo.local`. O login reservado e aceito somente com flag explicita
+    em development. Durante o smoke foi corrigida a ativacao do RLS para usar
+    `set_config(..., true)`, forma parametrizavel equivalente a `SET LOCAL` no
+    PostgreSQL. Evidencias locais: build das tres imagens; todos os oito
+    servicos long-running saudaveis e tres init jobs com exit 0; frontend com
+    lint/typecheck/build verdes e 433 testes aprovados; Ruff verde e 11 testes
+    Python direcionados aprovados (1 integracao ignorada sem banco de teste);
+    login 200; listas de empresas, execucoes, agendamentos, ocorrencias e
+    arquivos com 200; round-trip e URL pre-assinada do MinIO aprovados. Os
+    containers antigos `nfse-postgres` e `nfse-redis` permaneceram intactos.
   - **2026-08-07 - Correcoes minimas de boot e login:** removido o `if`
     duplicado sem corpo em `apps/api/api/config.py`; a consulta de login passa
     a usar `CAST(:tenant_slug AS text)`, evitando `AmbiguousParameter` quando o
