@@ -268,6 +268,11 @@ def resolve_admin_password() -> str:
     return _DEV_FALLBACK_PASSWORD
 
 
+def resolve_tenant_name() -> str:
+    """Mantem o slug demo e permite personalizar apenas o nome exibido."""
+    return os.environ.get("API_SEED_TENANT_NAME", "").strip() or DEMO_TENANT_NAME
+
+
 def run_seed() -> None:
     """Aplica o seed numa unica transacao (commit no `with` do context manager)."""
     admin_password = resolve_admin_password()
@@ -280,7 +285,7 @@ def run_seed() -> None:
         tenant_id = upsert_tenant(
             session,
             slug=DEMO_TENANT_SLUG,
-            name=DEMO_TENANT_NAME,
+            name=resolve_tenant_name(),
             plan_id=DEMO_TENANT_PLAN,
         )
 

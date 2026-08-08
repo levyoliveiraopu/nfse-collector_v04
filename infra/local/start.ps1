@@ -1,10 +1,18 @@
 [CmdletBinding()]
 param(
-    [switch]$NoBrowser
+    [switch]$NoBrowser,
+    [ValidateSet("HOMOLOGACAO", "PRODUCAO")]
+    [string]$AdnEnvironment,
+    [ValidateNotNullOrEmpty()]
+    [string]$TenantName
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+if ($PSBoundParameters.ContainsKey("TenantName") -and [string]::IsNullOrWhiteSpace($TenantName)) {
+    throw "TenantName nao pode ser vazio."
+}
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $composeFile = Join-Path $repoRoot "infra\compose\docker-compose.local.yml"
@@ -59,10 +67,43 @@ function Get-EnvValue {
     return $line.Substring($prefix.Length)
 }
 
+function Set-EnvValue {
+    param(
+        [string]$Path,
+        [string]$Name,
+        [string]$Value
+    )
+
+    if ($Value.Contains("`r") -or $Value.Contains("`n") -or $Value.Contains("=")) {
+        throw "Valor invalido para $Name."
+    }
+    $prefix = "$Name="
+    $lines = @(Get-Content -LiteralPath $Path)
+    $found = $false
+    for ($index = 0; $index -lt $lines.Count; $index++) {
+        if ($lines[$index].StartsWith($prefix)) {
+            $lines[$index] = "$prefix$Value"
+            $found = $true
+            break
+        }
+    }
+    if (-not $found) {
+        $lines += "$prefix$Value"
+    }
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText(
+        $Path,
+        (($lines -join [Environment]::NewLine) + [Environment]::NewLine),
+        $utf8NoBom
+    )
+}
+
 function New-LocalEnvFile {
     param(
         [string]$Path,
-        [int]$Port
+        [int]$Port,
+        [string]$Environment,
+        [string]$Tenant
     )
 
     $postgresPassword = New-UrlSafeSecret
@@ -93,6 +134,7 @@ function New-LocalEnvFile {
         "API_CREDENTIAL_KEK_B64=$credentialKek",
         "API_ALLOW_LOCAL_DEMO_LOGIN=true",
         "API_SEED_ADMIN_PASSWORD=demo12345",
+        "API_SEED_TENANT_NAME=$Tenant",
         "",
         "NEXT_PUBLIC_API_BASE_URL=/backend",
         "API_BASE_URL=http://api:8000",
@@ -107,7 +149,7 @@ function New-LocalEnvFile {
         "S3_EXPORTS_PREFIX=tenants-exports/",
         "S3_CREDENTIALS_PREFIX=tenants-credentials/",
         "",
-        "NFSE_AMBIENTE=HOMOLOGACAO",
+        "NFSE_AMBIENTE=$Environment",
         "NFSE_ADN_CONNECT_TIMEOUT_SECONDS=10",
         "NFSE_ADN_READ_TIMEOUT_SECONDS=60",
         "NFSE_ADN_RETRY_ATTEMPTS=5",
@@ -153,7 +195,9 @@ if (-not (Test-Path -LiteralPath $envFile)) {
         throw "Nenhuma porta livre encontrada entre 3000 e 3099."
     }
 
-    New-LocalEnvFile -Path $envFile -Port $port
+    $initialEnvironment = if ($PSBoundParameters.ContainsKey("AdnEnvironment")) { $AdnEnvironment } else { "HOMOLOGACAO" }
+    $initialTenant = if ($PSBoundParameters.ContainsKey("TenantName")) { $TenantName.Trim() } else { "Tenant Demo" }
+    New-LocalEnvFile -Path $envFile -Port $port -Environment $initialEnvironment -Tenant $initialTenant
     Write-Host "[nfse-local] Configuracao local criada com segredos aleatorios."
 }
 else {
@@ -163,6 +207,13 @@ else {
     }
     $port = [int]$portValue
     Write-Host "[nfse-local] Reutilizando configuracao e volumes existentes."
+}
+
+if ($PSBoundParameters.ContainsKey("AdnEnvironment")) {
+    Set-EnvValue -Path $envFile -Name "NFSE_AMBIENTE" -Value $AdnEnvironment
+}
+if ($PSBoundParameters.ContainsKey("TenantName")) {
+    Set-EnvValue -Path $envFile -Name "API_SEED_TENANT_NAME" -Value $TenantName.Trim()
 }
 
 # Mantem configuracoes geradas por versoes anteriores compativeis com a

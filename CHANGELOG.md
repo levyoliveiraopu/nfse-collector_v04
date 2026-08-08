@@ -32,6 +32,13 @@ Segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
   Postgres + Redis + S3, Nginx host).
 
 ### Added
+- Exportacao `excel_nfse` em `.xlsx`, com abas "Notas Emitidas" e "Resumo",
+  ao lado do ZIP de XMLs; ambos filtram CNPJ emitente e periodo inclusivo.
+- Parametros `-AdnEnvironment` e `-TenantName` no bootstrap Docker local,
+  com atualizacao idempotente da configuracao ignorada pelo Git.
+- Escopo padrao de itens e contadores limitado a NFS-e emitidas pela empresa,
+  com `scope=all` explicito para diagnostico e canceladas preservadas.
+
 - Ambiente `nfse-local` completo e isolado para Docker Desktop: Postgres,
   Redis, MinIO, API, worker, scheduler, painel e Caddy sob uma unica origem
   local. O bootstrap PowerShell gera segredos, aplica migrations, cria o
@@ -42,6 +49,10 @@ Segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - APP-11: wizard de onboarding em 3 passos (cadastrar empresa -> subir PFX -> rodar 1a coleta) em `apps/web-app/components/onboarding/` montado em `<RequireAuth>` (cobre todas as rotas autenticadas, nao apenas `/dashboard`). `<OnboardingWizard>` renderiza modal bloqueante enquanto o tenant nao cumpriu os 3 passos; deteccao do passo atual e 100% derivada do backend em `use-onboarding-state.ts` (`listCompanies` + `fetchCredential` + `listExecutions(status=succeeded|partial)` — zero migration nova). Passo 1 em `step-empresa.tsx` duplica deliberadamente ~20 linhas do schema Zod de `<NovaEmpresaDialog>` (APP-03) para evitar refatorar entrega anterior; passo 2 em `step-credencial.tsx` usa `FileDropzone` + `SecretField` direto (sem abrir `<CredentialUploadDialog>` para nao aninhar modais); passo 3 em `step-execucao.tsx` enfileira coleta dos ultimos 30 dias via `createExecutions` + polla `getExecution` a cada 2s (mesma cadencia de APP-05) e, em `succeeded|partial`, dispara uma unica vez `postFirstCollectionDone`. Skip "destacado como nao recomendado" grava timestamp em `localStorage` (`nfse:onboarding:dismissed:<tenantId>:<userId>`); `isDismissalActive` suprime por 24h, depois disso wizard reaparece enquanto onboarding seguir incompleto. Ao completar, `<OnboardingCelebration>` exibe mensagem unica e limpa o dismiss. Backend novo em `apps/api/api/onboarding/routes.py` com `POST /onboarding/first-collection-done` (registrado em `main.py`) que insere linha em `notifications` com `channel='email'`, `type='first_collection_done'`, `payload='{}'::jsonb`, `user_id=<claims.sub>`, `tenant_id` via RLS GUC; idempotencia por lookup-antes-insert em `(user_id, type, channel)` — retorna `already_recorded=true` + `notification_id` da linha existente. Consumer SMTP fica como tech debt ate ticket futuro (outbox permanece com `status='pending'`). Schemas em `apps/api/api/onboarding/schemas.py` (`FirstCollectionDoneOut`). RBAC: qualquer membro autenticado registra (`_AnyMember = require_role("owner","admin","operator","viewer")`). Novo cliente HTTP `apps/web-app/lib/api/onboarding.ts`. Testes: 5 de integracao em `apps/api/tests/test_onboarding_routes_integration.py` gated por `TEST_DATABASE_URL` (feliz, idempotente, viewer pode registrar, sem token -> 401, RLS isola cross-tenant); 8 vitest em `apps/web-app/components/onboarding/onboarding-wizard.test.tsx` (sessao nao autenticada, cada um dos 3 passos, onboarding completo, skip grava localStorage, dismiss ativo suprime, dismiss expirado reabre). `pnpm typecheck`/`pnpm lint` verdes; `pnpm test` = 44 files / 398 passed (+8 do wizard). DoD "< 10 min ate 1a coleta ok" cumprido estruturalmente (validacao empirica fica com owner apos deploy); DoD "skip visivel mas destacado como nao recomendado" entregue pelo botao muted + frase de aviso logo abaixo.
 
 ### Fixed
+- Remove dado fiscal e senha reais de um CSV legado de exemplo que ainda
+  estava versionado no repositório.
+- Compatibilidade do arquivo PEM temporario mTLS no Windows, usando `chmod`
+  como fallback quando `os.fchmod` nao existe.
 - Ambiente local: permite a identidade reservada `admin@demo.local` apenas
   quando `API_ALLOW_LOCAL_DEMO_LOGIN=true` em development; troca o comando de
   contexto RLS por `SELECT set_config('app.current_tenant', :tid, true)`, que

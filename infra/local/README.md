@@ -49,6 +49,17 @@ powershell -ExecutionPolicy Bypass -File .\infra\local\start.ps1
 
 Para validar sem abrir o navegador automaticamente, use `-NoBrowser`.
 
+Para definir explicitamente o ADN e o nome exibido do tenant, sem alterar o
+slug nem criar outra conta, use:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\infra\local\start.ps1 `
+  -AdnEnvironment PRODUCAO -TenantName "Vice Versa"
+```
+
+Quando esses parametros sao omitidos, o script preserva os valores existentes
+em `.env.local`. Use `PRODUCAO` somente com certificados validos e autorizados.
+
 ## Limpeza total
 
 O comando abaixo remove os containers e os volumes do ambiente local. Ele e

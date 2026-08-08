@@ -597,6 +597,7 @@ def _seed_execution_item(
     nsu: int | None,
     status_: str = "ok",
     chave_nfse: str | None = None,
+    cnpj_emitente: str | None = VALID_CNPJ_A,
 ) -> str:
     from api.db import get_admin_session
     from sqlalchemy import text
@@ -606,8 +607,9 @@ def _seed_execution_item(
             text(
                 """
                 INSERT INTO execution_items (
-                    tenant_id, execution_id, nsu, chave_nfse, status
-                ) VALUES (:tid, :eid, :nsu, :chave, :st)
+                    tenant_id, execution_id, nsu, chave_nfse,
+                    cnpj_emitente, status
+                ) VALUES (:tid, :eid, :nsu, :chave, :cnpj_emitente, :st)
                 RETURNING id
                 """
             ),
@@ -616,6 +618,7 @@ def _seed_execution_item(
                 "eid": execution_id,
                 "nsu": nsu,
                 "chave": chave_nfse,
+                "cnpj_emitente": cnpj_emitente,
                 "st": status_,
             },
         ).one()
@@ -847,6 +850,41 @@ def test_executions_items_filtra_por_status_e_nsu(client) -> None:
     ).json()
     assert body_nsu["total"] == 1
     assert body_nsu["items"][0]["id"] == fail_id
+
+
+def test_executions_items_default_emitidas_e_scope_all(client) -> None:
+    tid, _, token = _seed_tenant(slug="acme", email="owner@acme.test")
+    cid = _seed_company(tenant_id=tid, cnpj=VALID_CNPJ_A)
+    eid = _seed_execution_directly(tenant_id=tid, company_id=cid)
+    issued_id = _seed_execution_item(
+        tenant_id=tid,
+        execution_id=eid,
+        nsu=20,
+        cnpj_emitente=VALID_CNPJ_A,
+    )
+    _seed_execution_item(
+        tenant_id=tid,
+        execution_id=eid,
+        nsu=21,
+        cnpj_emitente=VALID_CNPJ_B,
+    )
+    _seed_execution_item(
+        tenant_id=tid,
+        execution_id=eid,
+        nsu=22,
+        cnpj_emitente=None,
+    )
+
+    default_body = client.get(
+        f"/executions/{eid}/items", headers=_auth(token)
+    ).json()
+    assert default_body["total"] == 1
+    assert default_body["items"][0]["id"] == issued_id
+
+    all_body = client.get(
+        f"/executions/{eid}/items?scope=all", headers=_auth(token)
+    ).json()
+    assert all_body["total"] == 3
 
 
 def test_executions_items_cross_tenant_404(client) -> None:

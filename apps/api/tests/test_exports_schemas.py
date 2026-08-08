@@ -51,7 +51,17 @@ def test_create_export_same_day_ok() -> None:
     assert payload.period_start == payload.period_end == d
 
 
-def test_kind_only_accepts_zip_xml_hoje() -> None:
+def test_kind_accepts_excel_nfse() -> None:
+    payload = CreateExportIn(
+        company_id=uuid4(),
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 1, 31),
+        kind="excel_nfse",
+    )
+    assert payload.kind == "excel_nfse"
+
+
+def test_kind_rejects_unknown_value() -> None:
     with pytest.raises(ValidationError):
         CreateExportIn(
             company_id=uuid4(),

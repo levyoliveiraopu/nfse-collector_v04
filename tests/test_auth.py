@@ -141,8 +141,9 @@ class TestMtlsSession:
             assert os.path.isfile(cert_tmp)
             assert os.path.isfile(key_tmp)
             # Permissão 0600 — somente owner.
-            assert (os.stat(cert_tmp).st_mode & 0o777) == 0o600
-            assert (os.stat(key_tmp).st_mode & 0o777) == 0o600
+            if os.name != "nt":
+                assert (os.stat(cert_tmp).st_mode & 0o777) == 0o600
+                assert (os.stat(key_tmp).st_mode & 0o777) == 0o600
             # Objeto certificate exposto para consumidores.
             assert isinstance(session.nfse_certificate, x509.Certificate)
 
@@ -236,8 +237,9 @@ class TestCriarSessionClienteWrapper:
             assert session.cert == (cert_tmp, key_tmp)
             assert os.path.isfile(cert_tmp)
             assert os.path.isfile(key_tmp)
-            assert (os.stat(cert_tmp).st_mode & 0o777) == 0o600
-            assert (os.stat(key_tmp).st_mode & 0o777) == 0o600
+            if os.name != "nt":
+                assert (os.stat(cert_tmp).st_mode & 0o777) == 0o600
+                assert (os.stat(key_tmp).st_mode & 0o777) == 0o600
             assert isinstance(certificate, x509.Certificate)
         finally:
             auth.limpar_temporarios(cert_tmp, key_tmp)
