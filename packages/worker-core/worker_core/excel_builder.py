@@ -71,6 +71,7 @@ _IDX_VALOR_ISS     = 7   # coluna G
 _IDX_ISS_RETIDO    = 8   # coluna H
 _IDX_SITUACAO      = 9   # coluna I
 _IDX_CHAVE         = 10  # coluna J
+_IDX_TEXTO_EXATO   = (1, 3, 10)  # número, documento do tomador e chave
 
 
 # ---------------------------------------------------------------------------
@@ -190,6 +191,16 @@ def _escrever_linha_nota(ws, linha: int, dados: dict, fill: PatternFill) -> None
         cell = ws.cell(row=linha, column=col_idx)
         cell.fill = fill
 
+        # Identificadores precisam ser texto para preservar zeros à esquerda
+        # e impedir que o Excel os exiba em notação científica.
+        if col_idx in _IDX_TEXTO_EXATO:
+            cell.value = str(valor_bruto) if valor_bruto is not None else None
+            cell.number_format = "@"
+            cell.alignment = _ALINHAMENTO_ESQUERDA
+            if col_idx == _IDX_CHAVE:
+                cell.font = _FONT_CHAVE
+            continue
+
         # --- Coluna ISS Retido ---
         if col_idx == _IDX_ISS_RETIDO:
             if valor_bruto is True:
@@ -217,13 +228,6 @@ def _escrever_linha_nota(ws, linha: int, dados: dict, fill: PatternFill) -> None
                 cell.font = _FONT_CANCELADA
             elif valor_bruto == "Ativa":
                 cell.font = _FONT_ATIVA
-            continue
-
-        # --- Coluna Chave de Acesso ---
-        if col_idx == _IDX_CHAVE:
-            cell.value = valor_bruto
-            cell.font = _FONT_CHAVE
-            cell.alignment = _ALINHAMENTO_ESQUERDA
             continue
 
         # --- Demais colunas ---

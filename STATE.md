@@ -15,6 +15,13 @@
 
 ## Em Andamento
 
+- **2026-08-08 - Compatibilidade com o leiaute nacional v1.01:** o parser
+  passa a ler a chave em `infNFSe/@Id`, a descricao em `xDescServ`, o valor
+  em `vServPrest/vServ` e a retencao em `tpRetISSQN` com a semantica oficial.
+  Identificadores no Excel sao gravados como texto para preservar zeros e
+  evitar notacao cientifica. Valores de ISS ausentes no XML permanecem
+  vazios, sem estimativa ou fabricacao de dado fiscal.
+
 - **2026-08-08 - RLS do worker em PostgreSQL:** corrigida a abertura da
   sessao tenant do `worker-core` para usar
   `SELECT set_config('app.current_tenant', :tid, true)`. A forma anterior,

@@ -72,6 +72,30 @@ class TestGerarExcelCliente:
         assert ws.cell(2, 1).value == "001"
         assert ws.cell(3, 1).value == "002"
 
+    def test_identificadores_sao_texto_exato(self):
+        dados = [
+            {
+                **self._DADOS[0],
+                "numero_nfse": "000001",
+                "cnpj_tomador": "00100200304",
+                "chave_acesso": "0" * 49 + "1",
+            }
+        ]
+        resultado = excel_builder.gerar_excel_cliente(
+            dados, "12345678000199", "Empresa ABC", 2025, 3
+        )
+        ws = _carregar_wb(resultado)["Notas Emitidas"]
+
+        for coluna, esperado in (
+            (1, "000001"),
+            (3, "00100200304"),
+            (10, "0" * 49 + "1"),
+        ):
+            cell = ws.cell(2, coluna)
+            assert cell.value == esperado
+            assert cell.data_type == "s"
+            assert cell.number_format == "@"
+
     def test_aba_resumo_tem_totais(self):
         resultado = excel_builder.gerar_excel_cliente(
             self._DADOS, "12345678000199", "Empresa ABC", 2025, 3
