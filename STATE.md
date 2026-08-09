@@ -15,6 +15,71 @@
 
 ## Em Andamento
 
+- **2026-08-08 - Navegacao sem atalhos quebrados:** o menu autenticado agora
+  exibe somente telas funcionais. Os placeholders de Notas, Certificados,
+  Tenants e Configuracoes foram removidos; favoritos antigos de
+  `/dashboard/notas` redirecionam para Arquivos e
+  `/dashboard/certificados` redirecionam para Empresas, onde ficam os fluxos
+  reais de exportacao fiscal e credenciais A1, respectivamente. Evidencias:
+  lint e typecheck verdes, 465 testes Vitest aprovados, build Next.js verde,
+  container web local saudavel e os dois redirecionamentos confirmados em
+  sessao autenticada.
+
+- **2026-08-08 - Ajuda contextual e guias interativos:** todas as rotas
+  funcionais possuem artigo Markdown sanitizado, ajuda sob demanda no topbar,
+  pesquisa central em `/ajuda`, conteudo e acoes coerentes com o RBAC e tours
+  opcionais sem mutacao usando seletores estaveis `data-help-id`. Login,
+  convite e recuperacao de acesso recebem ajuda curta, sem tours. A migration
+  `0020_help_metrics_daily` armazena apenas contagens diarias anonimas por
+  tenant, papel, evento, artigo, rota e tour, com RLS; `POST /help/events` e
+  assincrono para a interface e `GET /help/insights` e restrito a
+  `owner`/`admin`. Evidencias locais: Ruff e suite Python verdes (552 testes
+  aprovados, 197 ignorados por dependerem de servicos externos); lint,
+  typecheck, 462 testes Vitest e build de producao Next.js verdes. A stack
+  Docker local foi reconstruida, a migration aplicada sobre PostgreSQL 16 e
+  a navegacao real confirmou painel persistente entre rotas, busca sem
+  acentos, tour sem mutacao, `Esc` com retorno de foco e insights de admin.
+  Os 6 cenarios Playwright existentes tambem passaram usando a opcao local
+  explicita de Chrome do sistema; as fixtures agora reproduzem o cookie
+  `nfse_refresh` exigido pelo middleware, que tambem passou a proteger
+  `/ajuda`.
+
+- **2026-08-08 - Rotulos de exports por formato:** a lista de arquivos
+  distingue `Excel NFS-e` para `.xlsx`/`.xls` e `XML (ZIP)` para `.zip`,
+  embora ambos continuem usando `kind=export` no schema existente.
+
+- **2026-08-08 - Compatibilidade com o leiaute nacional v1.01:** o parser
+  passa a ler a chave em `infNFSe/@Id`, a descricao em `xDescServ`, o valor
+  em `vServPrest/vServ` e a retencao em `tpRetISSQN` com a semantica oficial.
+  Identificadores no Excel sao gravados como texto para preservar zeros e
+  evitar notacao cientifica. Valores de ISS ausentes no XML permanecem
+  vazios, sem estimativa ou fabricacao de dado fiscal.
+
+- **2026-08-08 - RLS do worker em PostgreSQL:** corrigida a abertura da
+  sessao tenant do `worker-core` para usar
+  `SELECT set_config('app.current_tenant', :tid, true)`. A forma anterior,
+  `SET LOCAL ... = :tid`, era convertida pelo psycopg em `$1` e falhava com
+  erro de sintaxe antes de qualquer chamada ao ADN. Teste de contrato garante
+  o GUC parametrizado e restrito a transacao. O smoke real tambem revelou e
+  corrigiu uma colisao de nomes entre os helpers `_mark_running` de execucao e
+  export, que impedia os jobs de ZIP/Excel antes da leitura dos XMLs.
+
+- **2026-08-08 - NFS-e emitidas e export fiscal:** a coleta continua
+  persistindo todos os documentos distribuidos pelo ADN para manter a
+  sequencia NSU, mas os contadores e a listagem padrao agora consideram
+  somente o CNPJ da empresa como emitente; `scope=all` fica disponivel
+  explicitamente para diagnostico. Notas canceladas emitidas permanecem
+  visiveis e nao entram nos totais financeiros ativos. `POST /exports`
+  aceita `excel_nfse` alem de `zip_xml`, sempre filtrado por emitente e
+  periodo inclusivo. O bootstrap local aceita `-AdnEnvironment` e
+  `-TenantName`, preservando os valores existentes quando omitidos. O
+  tenant mantem slug/login de desenvolvimento e pode ser exibido como
+  "Vice Versa" sem cadastra-la como empresa coletada. Migration
+  `0019_export_excel_nfse` adicionada.
+  O helper mTLS tambem ganhou fallback seguro para Windows quando
+  `os.fchmod` nao esta disponivel, mantendo `mkstemp` exclusivo e permissao
+  restrita antes de gravar o PEM temporario.
+
 - **PROD-READY** — Checklist de prontidao para producao criado em
   `docs/production-readiness-checklist.md`. Este passa a ser o backlog
   mestre de producao, enquanto este `STATE.md` segue como arquivo de
@@ -22,23 +87,46 @@
   atualizar o item correspondente no checklist, registrar a evidencia
   neste arquivo e atualizar o `CHANGELOG.md` quando houver mudanca de
   comportamento, seguranca, deploy, API, worker ou UI.
-  - **2026-08-06 - Deploy self-host para testes + correcoes de boot:**
-    adicionado caminho de deploy gratuito em VM unica (ex: Oracle Cloud
-    Always Free): `docs/deploy-oracle-free.md`, `infra/oracle/setup.sh`,
-    `infra/compose/docker-compose.selfhost.yml`,
+  - **2026-08-06 - Deploy self-host gratuito para testes (PR #168):**
+    adicionado caminho de deploy que sobe toda a stack em uma unica VM
+    gratuita (ex: Oracle Cloud Always Free), sem servico externo pago:
+    `docs/deploy-oracle-free.md`, `infra/oracle/setup.sh`,
+    `infra/oracle/cloud-init.yaml`, `infra/compose/docker-compose.selfhost.yml`,
     `infra/compose/caddy/Caddyfile` e `infra/compose/.env.selfhost.example`.
-    Sobe toda a stack com HTTPS automatico (Caddy/Let's Encrypt) e storage
-    S3 local (MinIO), sem servico externo pago; painel em `/` e API em
-    `/backend` (mesma origem, sem CORS). No caminho foram corrigidos dois
-    bugs que impediam a API de iniciar: `apps/api/api/config.py` com um `if`
-    duplicado sem corpo (IndentationError no import) e o login sem
-    `tenant_slug` retornando 500 (`psycopg AmbiguousParameter`, resolvido
-    com `CAST(:tenant_slug AS text)`). Adicionado CORS opcional na API via
-    `API_CORS_ORIGINS` (desligado por padrao). Evidencias locais:
-    `ruff check .` verde; `pytest tests apps/api/tests apps/worker/tests` =
-    525 passed / 188 skipped; `docker compose config` valida o merge
-    base+selfhost; round-trip S3 contra MinIO (put/get/URL pre-assinada/
-    download) e boot do worker RQ OK.
+    Builda as imagens na propria VM e adiciona MinIO (storage S3 local, no
+    lugar do Backblaze B2) e Caddy (HTTPS automatico via Let's Encrypt);
+    painel em `/` e API em `/backend` (mesma origem, sem CORS), com CORS
+    opcional via `API_CORS_ORIGINS`. As correcoes de boot/login que este PR
+    tambem trazia ja entraram em `main` via #170 (ver entradas 2026-08-07
+    abaixo); apos o merge de `main`, #168 fica focado no deploy. Evidencias
+    locais: `docker compose config` valida o merge base+selfhost; round-trip
+    S3 contra MinIO (put/get/URL pre-assinada/download) e boot do worker RQ
+    OK; `ruff check .` e `pytest tests apps/api/tests apps/worker/tests`
+    verdes.
+  - **2026-08-07 - Stack Docker local completa (`nfse-local`):** ambiente
+    isolado para Docker Desktop entregue com PostgreSQL, Redis, MinIO, API,
+    worker, scheduler, web-app e Caddy, expondo somente
+    `http://127.0.0.1:3000` (ou a primeira porta livre ate 3099). O bootstrap
+    PowerShell gera segredos ignorados pelo Git, aplica migrations, cria o
+    bucket, executa seed idempotente e abre o navegador com a conta local
+    `admin@demo.local`. O login reservado e aceito somente com flag explicita
+    em development. Durante o smoke foi corrigida a ativacao do RLS para usar
+    `set_config(..., true)`, forma parametrizavel equivalente a `SET LOCAL` no
+    PostgreSQL. Evidencias locais: build das tres imagens; todos os oito
+    servicos long-running saudaveis e tres init jobs com exit 0; frontend com
+    lint/typecheck/build verdes e 433 testes aprovados; Ruff verde e 11 testes
+    Python direcionados aprovados (1 integracao ignorada sem banco de teste);
+    login 200; listas de empresas, execucoes, agendamentos, ocorrencias e
+    arquivos com 200; round-trip e URL pre-assinada do MinIO aprovados. Os
+    containers antigos `nfse-postgres` e `nfse-redis` permaneceram intactos.
+  - **2026-08-07 - Correcoes minimas de boot e login:** removido o `if`
+    duplicado sem corpo em `apps/api/api/config.py`; a consulta de login passa
+    a usar `CAST(:tenant_slug AS text)`, evitando `AmbiguousParameter` quando o
+    slug nao e informado; e o teste de `dry_run` duplicado foi removido de
+    `tests/test_jobs.py`. O deploy self-host da PR #168 ficou deliberadamente
+    fora deste recorte. Evidencias locais: `ruff check .` verde; `py_compile`
+    dos modulos alterados; 22 testes direcionados aprovados; smoke com
+    PostgreSQL 16, migrations completas, signup 201 e login sem slug 200.
   - **2026-06-12 — PROD-READY 1.1 / refresh token chain revoke:**
     corrigida a CTE recursiva de `apps/api/api/security/tokens.py` para
     caminhar do token reutilizado para seus descendentes via `replaced_by`

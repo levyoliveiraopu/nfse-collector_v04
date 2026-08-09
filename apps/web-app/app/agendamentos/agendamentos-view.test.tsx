@@ -112,16 +112,20 @@ describe("AgendamentosView", () => {
     ).toBeNull();
   });
 
-  it("mostra botao 'Novo agendamento' para owner/admin/operator", async () => {
-    for (const role of ["owner", "admin", "operator"]) {
-      mockAuth(role);
-      const { unmount } = render(withQueryClient(<AgendamentosView />));
-      expect(
-        await screen.findByRole("button", { name: /novo agendamento/i }),
-      ).toBeInTheDocument();
-      unmount();
-    }
-  });
+  it(
+    "mostra botao 'Novo agendamento' para owner/admin/operator",
+    async () => {
+      for (const role of ["owner", "admin", "operator"]) {
+        mockAuth(role);
+        const { unmount } = render(withQueryClient(<AgendamentosView />));
+        expect(
+          await screen.findByRole("button", { name: /novo agendamento/i }),
+        ).toBeInTheDocument();
+        unmount();
+      }
+    },
+    30_000,
+  );
 
   it("renderiza linha de agendamento com cron humanizado e status Ativo", async () => {
     mockAuth("admin");

@@ -18,7 +18,7 @@ export function RetentionBanner() {
         <strong className="font-medium">Retencao de 90 dias</strong>
         <span className="text-xs opacity-90">
           Arquivos sao apagados automaticamente 90 dias apos a criacao
-          (ADR-003). Exports ZIP tem retencao de 30 dias. Baixe o que
+          (ADR-003). Arquivos exportados tem retencao de 30 dias. Baixe o que
           precisar preservar localmente.
         </span>
       </div>

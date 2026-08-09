@@ -184,17 +184,23 @@ def fake_read_blob():
     return lambda _key: b"ENC_PFX"
 
 
-def _item(nsu: int, *, status: str = "ok", chave: str | None = None) -> NfseItem:
+def _item(
+    nsu: int,
+    *,
+    status: str = "ok",
+    chave: str | None = None,
+    cnpj_emitente: str | None = "12345678000199",
+) -> NfseItem:
     return NfseItem(
         nsu=nsu,
         chave_nfse=chave or f"CHAVE{nsu}",
-        cnpj_emitente="12345678000199",
+        cnpj_emitente=cnpj_emitente,
         data_emissao="10/04/2026",
         valor=100.0,
-        xml_bytes=b"<xml/>" if status == "ok" else None,
+        xml_bytes=b"<xml/>" if status != "parse_error" else None,
         status=status,
-        error_code=None if status == "ok" else "XML_PARSE",
-        error_message=None if status == "ok" else "parse failed",
+        error_code="XML_PARSE" if status == "parse_error" else None,
+        error_message="parse failed" if status == "parse_error" else None,
     )
 
 
@@ -245,6 +251,61 @@ def test_run_execution_sucesso(
     assert finished_updates
     nsu_updates = [c for c in patched_db.calls if "update companies" in c[0] and "last_nsu" in c[0]]
     assert nsu_updates
+
+
+def test_run_execution_retem_tomadas_mas_contabiliza_so_emitidas(
+    monkeypatch, patched_db, patched_decrypt, fake_storage, fake_read_blob, execution_id
+) -> None:
+    items = [
+        _item(1, cnpj_emitente="12.345.678/0001-99"),
+        _item(2, cnpj_emitente="99888777000166"),
+        _item(3, cnpj_emitente=None),
+    ]
+
+    def _fake_fetch(**kwargs):
+        for item in items:
+            kwargs["on_progress"](item)
+        return _summary(nsu_to=3)
+
+    monkeypatch.setattr(jobs_module, "fetch_nfse", _fake_fetch)
+    result = run_execution(
+        str(execution_id),
+        storage_client=fake_storage,
+        read_credential_blob=fake_read_blob,
+    )
+
+    assert result["items_ok"] == 1
+    assert result["items_fail"] == 0
+    assert len(fake_storage.uploads) == 3
+    inserts = [params for sql, params in patched_db.calls if "insert into execution_items" in sql]
+    assert [params["cnpj_em"] for params in inserts] == [
+        "12345678000199",
+        "99888777000166",
+        None,
+    ]
+
+
+def test_run_execution_cancelada_emitida_conta_como_processada(
+    monkeypatch, patched_db, patched_decrypt, fake_storage, fake_read_blob, execution_id
+) -> None:
+    item = _item(1, status="cancelada")
+
+    def _fake_fetch(**kwargs):
+        kwargs["on_progress"](item)
+        return _summary(nsu_to=1)
+
+    monkeypatch.setattr(jobs_module, "fetch_nfse", _fake_fetch)
+    result = run_execution(
+        str(execution_id),
+        storage_client=fake_storage,
+        read_credential_blob=fake_read_blob,
+    )
+
+    assert result["status"] == "succeeded"
+    assert result["items_ok"] == 1
+    assert result["items_fail"] == 0
+    insert = next(params for sql, params in patched_db.calls if "insert into execution_items" in sql)
+    assert insert["st"] == "skipped"
 
 
 def test_run_execution_dry_run_nao_grava_items_nem_upload(
@@ -304,7 +365,7 @@ def test_run_execution_partial_com_parse_error(
     occ_inserts = [c for c in patched_db.calls if "insert into occurrences" in c[0]]
     codes = [c[1].get("code") for c in occ_inserts]
     assert "PARSE_ERROR" in codes
-    assert not any("update companies" in sql and "last_nsu" in sql for sql, _ in patched_db.calls)
+    assert any("update companies" in sql and "last_nsu" in sql for sql, _ in patched_db.calls)
 
 
 # ---------------------------------------------------------------------------

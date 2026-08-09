@@ -7,6 +7,7 @@ import { Breadcrumbs } from "./breadcrumbs";
 import { NotificationsBell } from "./notifications-bell";
 import { TenantSwitcher } from "./tenant-switcher";
 import { UserMenu } from "./user-menu";
+import { HelpButton } from "@/components/help/help-button";
 
 type TopbarProps = {
   collapsed: boolean;
@@ -56,6 +57,7 @@ export function Topbar({
           <TenantSwitcher />
         </div>
         <NotificationsBell />
+        <HelpButton />
         <ThemeToggle />
         <UserMenu />
       </div>

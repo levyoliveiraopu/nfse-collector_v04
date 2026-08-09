@@ -7,6 +7,7 @@ import {
   UI_FILTER_KINDS,
   formatBytes,
   getFileDownloadUrl,
+  getFileKindLabel,
   listFiles,
 } from "./files";
 
@@ -176,6 +177,21 @@ describe("helpers", () => {
     expect(FILE_KIND_LABEL.pfx).toBeTruthy();
     expect(FILE_KIND_LABEL.report).toBeTruthy();
     expect(FILE_KIND_LABEL.other).toBeTruthy();
+  });
+
+  it("getFileKindLabel distingue Excel, ZIP e export generico", () => {
+    expect(
+      getFileKindLabel({ kind: "export", object_key: "exports/arquivo.XLSX" }),
+    ).toBe("Excel NFS-e");
+    expect(
+      getFileKindLabel({ kind: "export", object_key: "exports/xml.zip" }),
+    ).toBe("XML (ZIP)");
+    expect(
+      getFileKindLabel({ kind: "export", object_key: "exports/arquivo.bin" }),
+    ).toBe("Export");
+    expect(
+      getFileKindLabel({ kind: "nfse_xml", object_key: "xml/1.xml" }),
+    ).toBe("XML (NFS-e)");
   });
 
   it("FilesApiError carrega code e status", () => {

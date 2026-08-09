@@ -14,6 +14,7 @@ import {
   UI_FILTER_KINDS,
   formatBytes,
   getFileDownloadUrl,
+  getFileKindLabel,
   listFiles,
   type ApiFile,
   type FileKind,
@@ -152,7 +153,7 @@ export function ArquivosView() {
   const companies = companiesQuery.data?.rows ?? [];
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4" data-help-id="files-primary">
       <RetentionBanner />
 
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -223,7 +224,7 @@ export function ArquivosView() {
             className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground shadow-sm transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <FolderArchive className="h-4 w-4" aria-hidden="true" />
-            Gerar ZIP
+            Gerar arquivo
           </button>
         ) : null}
       </div>
@@ -310,7 +311,7 @@ export function ArquivosView() {
                       data-testid={`file-row-${file.id}`}
                     >
                       <td className="px-4 py-2">
-                        {FILE_KIND_LABEL[file.kind]}
+                        {getFileKindLabel(file)}
                       </td>
                       <td className="px-4 py-2 text-xs text-muted-foreground">
                         {companyLabel}

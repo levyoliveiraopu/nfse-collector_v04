@@ -2,7 +2,34 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, EmailStr, Field
+from typing import Annotated
+
+from pydantic import (
+    BaseModel,
+    EmailStr,
+    Field,
+    ValidatorFunctionWrapHandler,
+    WrapValidator,
+)
+
+from api.config import get_settings
+
+
+def _validate_login_email(value: object, handler: ValidatorFunctionWrapHandler) -> str:
+    """Aceita a identidade reservada somente na stack local explicita."""
+
+    settings = get_settings()
+    if (
+        settings.environment == "development"
+        and settings.allow_local_demo_login
+        and isinstance(value, str)
+        and value.lower() == "admin@demo.local"
+    ):
+        return value.lower()
+    return str(handler(value))
+
+
+LoginEmail = Annotated[EmailStr, WrapValidator(_validate_login_email)]
 
 
 class SignupIn(BaseModel):
@@ -21,7 +48,7 @@ class SignupIn(BaseModel):
 
 
 class LoginIn(BaseModel):
-    email: EmailStr
+    email: LoginEmail
     password: str = Field(min_length=1, max_length=256)
     tenant_slug: str | None = Field(
         default=None,

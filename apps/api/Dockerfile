@@ -12,6 +12,7 @@ ENV PIP_NO_CACHE_DIR=1 \
 WORKDIR /build
 
 COPY pyproject.toml ./
+COPY README.md ./
 COPY api ./api
 COPY alembic.ini ./alembic.ini
 COPY alembic ./alembic

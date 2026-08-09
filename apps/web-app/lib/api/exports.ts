@@ -13,7 +13,7 @@
 import { ApiError, apiFetch } from "@/lib/auth/api-client";
 import type { AuthSessionPayload } from "@/lib/auth/types";
 
-export type ExportKind = "zip_xml";
+export type ExportKind = "zip_xml" | "excel_nfse";
 
 export type ExportStatus = "queued" | "running" | "ready" | "failed" | "empty";
 

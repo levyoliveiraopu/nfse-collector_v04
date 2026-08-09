@@ -1,0 +1,20 @@
+{
+	auto_https off
+	admin off
+}
+
+http://s3.localhost:{$LOCAL_HTTP_PORT} {
+	reverse_proxy minio:9000
+}
+
+http://localhost:{$LOCAL_HTTP_PORT}, http://127.0.0.1:{$LOCAL_HTTP_PORT} {
+	encode zstd gzip
+
+	handle_path /backend/* {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		reverse_proxy web-app:3000
+	}
+}

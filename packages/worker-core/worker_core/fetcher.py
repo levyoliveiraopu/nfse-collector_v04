@@ -575,6 +575,13 @@ def extrair_dados_nfse(xml_content: str) -> dict:
         or _buscar_campo_xml(raiz, "chaveAcesso")
         or _buscar_campo_xml(raiz, "ChaveNFSe")
     )
+    if dados["chave_acesso"] is None:
+        inf_nfse_id = _buscar_atributo_xml(raiz, "infNFSe", "Id")
+        if inf_nfse_id:
+            # No leiaute nacional v1.01, o Id tem o formato ``NFS<chave>``.
+            dados["chave_acesso"] = (
+                inf_nfse_id[3:] if inf_nfse_id.startswith("NFS") else inf_nfse_id
+            )
 
     # --- Prestador ---
     dados["cnpj_prestador"] = (
@@ -605,31 +612,48 @@ def extrair_dados_nfse(xml_content: str) -> dict:
 
     # --- Serviço ---
     dados["descricao_servico"] = (
-        _buscar_campo_xml(raiz, "serv/xDisc")
+        _buscar_campo_xml(raiz, "serv/cServ/xDescServ")
+        or _buscar_campo_xml(raiz, "serv/xDisc")
         or _buscar_campo_xml(raiz, "Servico/Discriminacao")
         or _buscar_campo_xml(raiz, "Discriminacao")
     )
     dados["valor_servico"] = _extrair_float(
-        _buscar_campo_xml(raiz, "serv/vServ")
+        _buscar_campo_xml(raiz, "valores/vServPrest/vServ")
+        or _buscar_campo_xml(raiz, "serv/vServ")
         or _buscar_campo_xml(raiz, "Servico/Valores/ValorServicos")
         or _buscar_campo_xml(raiz, "ValorServicos")
     )
     dados["valor_iss"] = _extrair_float(
-        _buscar_campo_xml(raiz, "serv/vISS")
+        _buscar_campo_xml(raiz, "valores/trib/tribMun/vISSQN")
+        or _buscar_campo_xml(raiz, "valores/trib/tribMun/vISS")
+        or _buscar_campo_xml(raiz, "serv/vISS")
         or _buscar_campo_xml(raiz, "Servico/Valores/ValorIss")
         or _buscar_campo_xml(raiz, "ValorIss")
     )
 
     # --- ISS retido ---
-    ind_iss_ret = (
-        _buscar_campo_xml(raiz, "serv/indISSRet")
-        or _buscar_campo_xml(raiz, "Servico/Valores/IssRetido")
-        or _buscar_campo_xml(raiz, "IssRetido")
-    )
-    if ind_iss_ret is not None:
-        # indISSRet: 1 = retido, 2 = não retido (padrão nacional)
-        # IssRetido: "1" ou "2" (ABRASF) / "true"/"false" (alguns municípios)
-        dados["iss_retido"] = ind_iss_ret.strip() in ("1", "true", "True", "S", "s")
+    tipo_retencao = _buscar_campo_xml(raiz, "valores/trib/tribMun/tpRetISSQN")
+    if tipo_retencao is not None:
+        # Leiaute nacional v1.01: 1 = não retido; 2 = tomador; 3 = intermediário.
+        tipo_retencao = tipo_retencao.strip()
+        if tipo_retencao in ("1", "2", "3"):
+            dados["iss_retido"] = tipo_retencao in ("2", "3")
+    else:
+        ind_iss_ret = (
+            _buscar_campo_xml(raiz, "serv/indISSRet")
+            or _buscar_campo_xml(raiz, "Servico/Valores/IssRetido")
+            or _buscar_campo_xml(raiz, "IssRetido")
+        )
+        if ind_iss_ret is not None:
+            # Campos legados/ABRASF: 1 = retido, 2 = não retido;
+            # alguns municípios também usam true/false ou S/N.
+            dados["iss_retido"] = ind_iss_ret.strip() in (
+                "1",
+                "true",
+                "True",
+                "S",
+                "s",
+            )
 
     # --- Situação ---
     dados["situacao"] = _extrair_situacao(raiz)
@@ -794,6 +818,22 @@ def _buscar_campo_xml(raiz: ET.Element, caminho: str) -> str | None:
         elemento = raiz.find(f".//{caminho_com_ns}")
         if elemento is not None and elemento.text and elemento.text.strip():
             return elemento.text.strip()
+    return None
+
+
+def _buscar_atributo_xml(
+    raiz: ET.Element,
+    tag: str,
+    atributo: str,
+) -> str | None:
+    """Busca um atributo por nomes locais, independentemente de namespace."""
+    for elemento in raiz.iter():
+        nome_tag = str(elemento.tag).rsplit("}", 1)[-1]
+        if nome_tag != tag:
+            continue
+        for nome_atributo, valor in elemento.attrib.items():
+            if str(nome_atributo).rsplit("}", 1)[-1] == atributo and valor.strip():
+                return valor.strip()
     return None
 
 

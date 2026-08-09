@@ -11,8 +11,7 @@
  *  - feedback: success (verde) + warning (ambar)
  */
 
-@layer base {
-  :root {
+:root {
     /* ---------- Cores (light) ---------- */
     --background: 0 0% 100%;
     --foreground: 222 47% 11%;
@@ -94,9 +93,9 @@
       0 4px 6px -4px hsl(222 47% 11% / 0.08);
     --shadow-xl: 0 20px 25px -5px hsl(222 47% 11% / 0.1),
       0 8px 10px -6px hsl(222 47% 11% / 0.08);
-  }
+}
 
-  .dark {
+.dark {
     /* ---------- Cores (dark) ---------- */
     --background: 222 47% 6%;
     --foreground: 210 40% 98%;
@@ -140,5 +139,4 @@
       0 4px 6px -4px hsl(0 0% 0% / 0.4);
     --shadow-xl: 0 20px 25px -5px hsl(0 0% 0% / 0.55),
       0 8px 10px -6px hsl(0 0% 0% / 0.4);
-  }
 }

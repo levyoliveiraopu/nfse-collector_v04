@@ -311,6 +311,7 @@ export function ScheduleFormDialog({
           </label>
           <select
             id="schedule-company"
+            aria-describedby="schedule-company-help"
             value={state.companyId}
             onChange={(e) =>
               setState((p) => ({ ...p, companyId: e.target.value }))
@@ -325,7 +326,7 @@ export function ScheduleFormDialog({
               </option>
             ))}
           </select>
-          <span className="text-xs text-muted-foreground">
+          <span id="schedule-company-help" className="text-xs text-muted-foreground">
             Deixe em branco para coletar de todas as empresas do tenant.
           </span>
         </div>
@@ -337,6 +338,7 @@ export function ScheduleFormDialog({
             className="flex flex-wrap gap-2"
             role="radiogroup"
             aria-label="Frequencia"
+            aria-describedby="schedule-frequency-help"
           >
             {(
               [
@@ -365,6 +367,9 @@ export function ScheduleFormDialog({
               );
             })}
           </div>
+          <p id="schedule-frequency-help" className="text-xs text-muted-foreground">
+            A frequência, o horário e o fuso definem juntos a próxima execução.
+          </p>
         </fieldset>
 
         {/* Campos por modo */}
@@ -380,6 +385,7 @@ export function ScheduleFormDialog({
           </label>
           <select
             id="schedule-tz"
+            aria-describedby="schedule-tz-help"
             value={state.timezone}
             onChange={(e) =>
               setState((p) => ({ ...p, timezone: e.target.value }))
@@ -398,12 +404,16 @@ export function ScheduleFormDialog({
               <option value={editing.timezone}>{editing.timezone}</option>
             ) : null}
           </select>
+          <p id="schedule-tz-help" className="text-xs text-muted-foreground">
+            Escolha o fuso da operação; trocar o fuso altera o horário efetivo.
+          </p>
         </div>
 
         {/* Ativo/Pausado */}
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
+            aria-describedby="schedule-enabled-help"
             checked={state.enabled}
             onChange={(e) =>
               setState((p) => ({ ...p, enabled: e.target.checked }))
@@ -413,6 +423,9 @@ export function ScheduleFormDialog({
             Ativar agora (se desmarcar, next_run_at fica vazio ate reativar)
           </span>
         </label>
+        <p id="schedule-enabled-help" className="-mt-2 text-xs text-muted-foreground">
+          Pausar preserva o histórico e impede novas execuções automáticas.
+        </p>
 
         {/* Expressao e preview */}
         <div className="flex flex-col gap-2 rounded-md border border-border bg-muted/20 p-3">

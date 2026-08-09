@@ -54,6 +54,10 @@ class Settings(BaseSettings):
 
     # Formato aceito pelo slowapi: "<count>/<period>" (ex: "5/minute").
     login_rate_limit: str = Field(default="5/minute")
+    # Excecao estritamente local para a conta criada por scripts.seed.
+    # Permanece desativada por default e nunca substitui a validacao normal
+    # de e-mail em outros ambientes.
+    allow_local_demo_login: bool = Field(default=False)
 
     # -----------------------------------------------------------------
     # Credenciais PFX (API-06)

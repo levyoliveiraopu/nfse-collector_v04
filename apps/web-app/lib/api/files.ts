@@ -195,11 +195,25 @@ export async function getFileDownloadUrl(
 
 export const FILE_KIND_LABEL: Record<FileKind, string> = {
   nfse_xml: "XML (NFS-e)",
-  export: "Export (ZIP)",
+  export: "Export",
   pfx: "Certificado",
   report: "Relatorio",
   other: "Outro",
 };
+
+/** Distingue os formatos derivados, que compartilham `kind=export` no banco. */
+export function getFileKindLabel(
+  file: Pick<ApiFile, "kind" | "object_key">,
+): string {
+  if (file.kind !== "export") return FILE_KIND_LABEL[file.kind];
+
+  const objectKey = file.object_key.toLowerCase();
+  if (objectKey.endsWith(".xlsx") || objectKey.endsWith(".xls")) {
+    return "Excel NFS-e";
+  }
+  if (objectKey.endsWith(".zip")) return "XML (ZIP)";
+  return FILE_KIND_LABEL.export;
+}
 
 /** Kinds expostos no filtro da UI. Oculta `pfx`/`other` (internos). */
 export const UI_FILTER_KINDS: readonly FileKind[] = [

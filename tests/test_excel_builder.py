@@ -1,10 +1,12 @@
 """Testes para o módulo excel_builder."""
 
 from io import BytesIO
+from datetime import date
 
 from openpyxl import load_workbook
 
 from src import excel_builder
+from worker_core.excel_builder import gerar_excel_periodo
 
 
 def _carregar_wb(excel_bytes: bytes):
@@ -70,6 +72,30 @@ class TestGerarExcelCliente:
         assert ws.cell(2, 1).value == "001"
         assert ws.cell(3, 1).value == "002"
 
+    def test_identificadores_sao_texto_exato(self):
+        dados = [
+            {
+                **self._DADOS[0],
+                "numero_nfse": "000001",
+                "cnpj_tomador": "00100200304",
+                "chave_acesso": "0" * 49 + "1",
+            }
+        ]
+        resultado = excel_builder.gerar_excel_cliente(
+            dados, "12345678000199", "Empresa ABC", 2025, 3
+        )
+        ws = _carregar_wb(resultado)["Notas Emitidas"]
+
+        for coluna, esperado in (
+            (1, "000001"),
+            (3, "00100200304"),
+            (10, "0" * 49 + "1"),
+        ):
+            cell = ws.cell(2, coluna)
+            assert cell.value == esperado
+            assert cell.data_type == "s"
+            assert cell.number_format == "@"
+
     def test_aba_resumo_tem_totais(self):
         resultado = excel_builder.gerar_excel_cliente(
             self._DADOS, "12345678000199", "Empresa ABC", 2025, 3
@@ -115,3 +141,15 @@ class TestGerarExcelCliente:
         assert ws.cell(5, 2).value == 0
         # Total de notas canceladas = 1
         assert ws.cell(6, 2).value == 1
+
+
+def test_gerar_excel_periodo_exibe_intervalo_inclusivo() -> None:
+    resultado = gerar_excel_periodo(
+        [],
+        "12345678000199",
+        "Empresa ABC",
+        date(2026, 6, 1),
+        date(2026, 7, 31),
+    )
+    wb = _carregar_wb(resultado)
+    assert wb["Resumo"].cell(1, 2).value == "01/06/2026 a 31/07/2026"

@@ -8,9 +8,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
-# Hoje so `zip_xml`. `excel_consolidated` foi deliberadamente adiado para
-# um ticket futuro — manter no enum criaria caminho morto na API.
-ExportKind = Literal["zip_xml"]
+# Formatos publicos implementados pelo worker.
+ExportKind = Literal["zip_xml", "excel_nfse"]
 
 ExportStatus = Literal["queued", "running", "ready", "failed", "empty"]
 
@@ -21,7 +20,7 @@ class CreateExportIn(BaseModel):
     - `company_id`: UUID da company (escopo do export). RLS valida
       ownership pelo tenant.
     - `period_start` <= `period_end` (validado aqui e via CHECK no DB).
-    - `kind`: hoje so `zip_xml`.
+    - `kind`: ZIP dos XMLs ou planilha das NFS-e emitidas.
     """
 
     model_config = ConfigDict(extra="forbid")

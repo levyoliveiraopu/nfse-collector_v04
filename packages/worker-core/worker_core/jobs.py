@@ -38,7 +38,7 @@ import uuid
 import zipfile
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Optional
 from uuid import UUID
@@ -48,7 +48,8 @@ from rq import get_current_job
 from sqlalchemy import text
 
 from worker_core.collector import FetchSummary, NfseItem, fetch_nfse
-from worker_core.fetcher import PortalRequestError
+from worker_core.excel_builder import gerar_excel_periodo
+from worker_core.fetcher import PortalRequestError, extrair_dados_nfse
 from worker_core.crypto import CryptoError, decrypt
 from worker_core.db import get_admin_session, get_tenant_session
 from worker_core.db_nsu import DbNsuSource
@@ -58,6 +59,20 @@ logger = logging.getLogger("worker_core.jobs")
 
 # Hard cap do export (DoD do ticket API-15: "aborta export > 2GB").
 DEFAULT_MAX_EXPORT_BYTES = 2 * 1024**3  # 2 GiB
+
+
+def _digits(value: Optional[str]) -> str:
+    return "".join(char for char in (value or "") if char.isdigit())
+
+
+def _is_issued_item(item: NfseItem, company_cnpj: str) -> bool:
+    emitter = _digits(item.cnpj_emitente)
+    return len(emitter) == 14 and emitter == _digits(company_cnpj)
+
+
+def _normalized_cnpj(value: Optional[str]) -> Optional[str]:
+    digits = _digits(value)
+    return digits if len(digits) == 14 else None
 
 
 def _resolve_job_dry_run(explicit: Optional[bool]) -> bool:
@@ -147,18 +162,24 @@ class _ExportRow:
     tenant_id: uuid.UUID
     company_id: uuid.UUID
     kind: str
-    period_start: datetime
-    period_end: datetime
+    period_start: date
+    period_end: date
     status: str
+    company_cnpj: str
+    company_name: str
 
 
 def _load_export(conn, export_id: uuid.UUID) -> Optional[_ExportRow]:
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT id, tenant_id, company_id, kind,
-                   period_start, period_end, status
-              FROM exports WHERE id = %s
+            SELECT e.id, e.tenant_id, e.company_id, e.kind,
+                   e.period_start, e.period_end, e.status,
+                   c.cnpj, c.razao_social
+              FROM exports e
+              JOIN companies c
+                ON c.id = e.company_id AND c.tenant_id = e.tenant_id
+             WHERE e.id = %s
             """,
             (str(export_id),),
         )
@@ -173,10 +194,12 @@ def _load_export(conn, export_id: uuid.UUID) -> Optional[_ExportRow]:
         period_start=row[4],
         period_end=row[5],
         status=row[6],
+        company_cnpj=row[7],
+        company_name=row[8],
     )
 
 
-def _mark_running(conn, export_id: uuid.UUID) -> None:
+def _mark_export_running(conn, export_id: uuid.UUID) -> None:
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -240,9 +263,13 @@ def _list_items(
               JOIN executions e
                 ON e.id = ei.execution_id
                AND e.tenant_id = ei.tenant_id
+              JOIN companies c
+                ON c.id = e.company_id
+               AND c.tenant_id = e.tenant_id
              WHERE ei.tenant_id = %s
                AND e.company_id = %s
-               AND ei.status = 'ok'
+               AND ei.status IN ('ok', 'skipped')
+               AND regexp_replace(COALESCE(ei.cnpj_emitente, ''), '[^0-9]', '', 'g') = c.cnpj
                AND ei.xml_object_key IS NOT NULL
                AND ei.data_emissao >= %s
                AND ei.data_emissao < (%s::date + INTERVAL '1 day')
@@ -402,7 +429,7 @@ def build_export(
                 extra={"export_id": str(eid), "status": export.status},
             )
             return {"status": export.status, "reason": "already_finalized"}
-        if export.kind != "zip_xml":
+        if export.kind not in {"zip_xml", "excel_nfse"}:
             _mark_failed(
                 conn,
                 eid,
@@ -411,7 +438,7 @@ def build_export(
             )
             raise ExportError("kind_not_implemented", f"kind {export.kind!r} nao suportado")
 
-        _mark_running(conn, eid)
+        _mark_export_running(conn, eid)
 
         try:
             items = _list_items(
@@ -433,38 +460,67 @@ def build_export(
             )
             return {"status": "empty", "items": 0}
 
-        tmpdir = _tmpfs_dir()
-        tmpdir.mkdir(parents=True, exist_ok=True)
-        zip_fd, zip_path_str = tempfile.mkstemp(dir=str(tmpdir), prefix="export-", suffix=".zip")
-        os.close(zip_fd)  # ZipFile abre pelo nome.
-        zip_path = Path(zip_path_str)
-
         try:
             written_bytes = 0
-            with zipfile.ZipFile(zip_path, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-                for nsu, object_key in items:
+            if export.kind == "zip_xml":
+                tmpdir = _tmpfs_dir()
+                tmpdir.mkdir(parents=True, exist_ok=True)
+                zip_fd, zip_path_str = tempfile.mkstemp(dir=str(tmpdir), prefix="export-", suffix=".zip")
+                os.close(zip_fd)
+                zip_path = Path(zip_path_str)
+                try:
+                    with zipfile.ZipFile(zip_path, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+                        for nsu, object_key in items:
+                            try:
+                                body = storage.download_bytes(object_key)
+                            except StorageError as exc:
+                                raise ExportError(
+                                    "s3_error", f"falha ao baixar {object_key}: {exc}"
+                                ) from exc
+                            written_bytes += len(body)
+                            if written_bytes > max_bytes:
+                                raise ExportError(
+                                    "size_limit_exceeded",
+                                    f"export excede {max_bytes} bytes",
+                                )
+                            zf.writestr(f"{nsu}.xml", body)
+                    export_bytes = zip_path.read_bytes()
+                finally:
+                    zip_path.unlink(missing_ok=True)
+                ext = "zip"
+            else:
+                dados: list[dict] = []
+                for _, object_key in items:
                     try:
                         body = storage.download_bytes(object_key)
                     except StorageError as exc:
-                        raise ExportError("s3_error", f"falha ao baixar {object_key}: {exc}") from exc
-                    # Projecao: limite conservador pelo tamanho dos XMLs
-                    # (ZIP sempre sera menor ou igual com deflate); se ja
-                    # passou do cap no payload bruto, aborta.
+                        raise ExportError(
+                            "s3_error", f"falha ao baixar {object_key}: {exc}"
+                        ) from exc
                     written_bytes += len(body)
                     if written_bytes > max_bytes:
                         raise ExportError(
                             "size_limit_exceeded",
                             f"export excede {max_bytes} bytes",
                         )
-                    zf.writestr(f"{nsu}.xml", body)
+                    dados.append(
+                        extrair_dados_nfse(body.decode("utf-8-sig", errors="replace"))
+                    )
+                export_bytes = gerar_excel_periodo(
+                    dados,
+                    export.company_cnpj,
+                    export.company_name,
+                    export.period_start,
+                    export.period_end,
+                )
+                ext = "xlsx"
 
-            zip_bytes = zip_path.read_bytes()
             file_id = uuid.uuid4()
             upload = storage.upload_export(
                 tenant_id=export.tenant_id,
                 file_id=file_id,
-                path_or_bytes=zip_bytes,
-                ext="zip",
+                path_or_bytes=export_bytes,
+                ext=ext,
             )
         except ExportError as exc:
             _mark_failed(conn, eid, code=exc.code, message=str(exc))
@@ -480,12 +536,6 @@ def build_export(
                 extra={"export_id": str(eid)},
             )
             raise ExportError("unexpected", str(exc)) from exc
-        finally:
-            try:
-                zip_path.unlink(missing_ok=True)
-            except OSError:
-                pass
-
         expires_at = datetime.now(tz=timezone.utc) + timedelta(days=30)
         _insert_file(
             conn,
@@ -665,7 +715,9 @@ def run_execution(
         nonlocal items_ok, items_fail, storage_errors
         try:
             if dry_run_enabled:
-                if item.status == "ok":
+                if item.status != "parse_error" and not _is_issued_item(item, ctx.cnpj):
+                    return
+                if item.status in {"ok", "cancelada"}:
                     items_ok += 1
                 else:
                     items_fail += 1
@@ -716,7 +768,9 @@ def run_execution(
                 )
                 return
 
-            if item.status == "ok":
+            if item.status != "parse_error" and not _is_issued_item(item, ctx.cnpj):
+                return
+            if item.status in {"ok", "cancelada"}:
                 items_ok += 1
             else:
                 items_fail += 1
@@ -773,7 +827,13 @@ def run_execution(
         items_fail=items_fail,
     )
 
-    if final_status == "succeeded" and not dry_run_enabled and summary.nsu_to > summary.nsu_from:
+    if (
+        final_status in {"succeeded", "partial"}
+        and storage_errors == 0
+        and not summary.fatal_rejected
+        and not dry_run_enabled
+        and summary.nsu_to > summary.nsu_from
+    ):
         db_nsu_source.set(ctx.cnpj, int(summary.nsu_to))
 
     if storage_errors:
@@ -999,7 +1059,7 @@ def _insert_execution_item(
                 "eid": str(ctx.execution_id),
                 "nsu": int(item.nsu),
                 "chave": item.chave_nfse,
-                "cnpj_em": item.cnpj_emitente,
+                "cnpj_em": _normalized_cnpj(item.cnpj_emitente),
                 "data_em": _parse_data_emissao(item.data_emissao),
                 "valor": item.valor,
                 "okey": xml_object_key,

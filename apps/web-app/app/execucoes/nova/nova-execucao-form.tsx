@@ -189,6 +189,7 @@ export function NovaExecucaoForm() {
   return (
     <form
       onSubmit={handleSubmit}
+      data-help-id="execution-new-primary"
       className="flex flex-col gap-6 rounded-lg border border-border bg-card p-6 shadow-sm"
       aria-busy={submitting}
     >
@@ -287,7 +288,15 @@ export function NovaExecucaoForm() {
 
       <fieldset className="flex flex-col gap-2">
         <legend className="text-sm font-semibold">Periodo</legend>
-        <PeriodPicker value={period} onChange={setPeriod} />
+        <PeriodPicker
+          value={period}
+          onChange={setPeriod}
+          descriptionId="execution-period-help"
+        />
+        <p id="execution-period-help" className="text-xs text-muted-foreground">
+          As datas inicial e final são incluídas. Períodos maiores podem levar
+          mais tempo; a sequência fiscal continua sendo controlada por NSU.
+        </p>
         <label className="flex items-center gap-2 text-sm text-muted-foreground">
           <input
             type="checkbox"

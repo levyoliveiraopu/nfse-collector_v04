@@ -10,6 +10,7 @@ Abas geradas:
 """
 
 import logging
+from datetime import date
 from io import BytesIO
 
 from openpyxl import Workbook
@@ -70,6 +71,7 @@ _IDX_VALOR_ISS     = 7   # coluna G
 _IDX_ISS_RETIDO    = 8   # coluna H
 _IDX_SITUACAO      = 9   # coluna I
 _IDX_CHAVE         = 10  # coluna J
+_IDX_TEXTO_EXATO   = (1, 3, 10)  # número, documento do tomador e chave
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +98,39 @@ def gerar_excel_cliente(
         Conteúdo do arquivo ``.xlsx`` como ``bytes``.
         Nome sugerido: ``NFSe_{cnpj}_{ano:04d}-{mes:02d}.xlsx``.
     """
+    return _gerar_excel(
+        lista_dados,
+        cnpj=cnpj,
+        razao_social=razao_social,
+        periodo=f"{mes:02d}/{ano}",
+    )
+
+
+def gerar_excel_periodo(
+    lista_dados: list[dict],
+    cnpj: str,
+    razao_social: str,
+    inicio: date,
+    fim: date,
+) -> bytes:
+    """Gera um workbook para um intervalo inclusivo de datas."""
+    if fim < inicio:
+        raise ValueError("fim deve ser maior ou igual a inicio")
+    return _gerar_excel(
+        lista_dados,
+        cnpj=cnpj,
+        razao_social=razao_social,
+        periodo=f"{inicio:%d/%m/%Y} a {fim:%d/%m/%Y}",
+    )
+
+
+def _gerar_excel(
+    lista_dados: list[dict],
+    *,
+    cnpj: str,
+    razao_social: str,
+    periodo: str,
+) -> bytes:
     wb = Workbook()
 
     aba_notas = wb.active
@@ -104,7 +139,7 @@ def gerar_excel_cliente(
     aba_resumo = wb.create_sheet("Resumo")
 
     _preencher_notas(aba_notas, lista_dados)
-    _preencher_resumo(aba_resumo, lista_dados, cnpj, razao_social, ano, mes)
+    _preencher_resumo(aba_resumo, lista_dados, cnpj, razao_social, periodo)
 
     buffer = BytesIO()
     wb.save(buffer)
@@ -112,10 +147,9 @@ def gerar_excel_cliente(
     conteudo = buffer.read()
 
     logger.info(
-        "Excel gerado — CNPJ=%s | %02d/%d | %d notas | %d bytes",
+        "Excel gerado — CNPJ=%s | %s | %d notas | %d bytes",
         cnpj,
-        mes,
-        ano,
+        periodo,
         len(lista_dados),
         len(conteudo),
     )
@@ -157,6 +191,16 @@ def _escrever_linha_nota(ws, linha: int, dados: dict, fill: PatternFill) -> None
         cell = ws.cell(row=linha, column=col_idx)
         cell.fill = fill
 
+        # Identificadores precisam ser texto para preservar zeros à esquerda
+        # e impedir que o Excel os exiba em notação científica.
+        if col_idx in _IDX_TEXTO_EXATO:
+            cell.value = str(valor_bruto) if valor_bruto is not None else None
+            cell.number_format = "@"
+            cell.alignment = _ALINHAMENTO_ESQUERDA
+            if col_idx == _IDX_CHAVE:
+                cell.font = _FONT_CHAVE
+            continue
+
         # --- Coluna ISS Retido ---
         if col_idx == _IDX_ISS_RETIDO:
             if valor_bruto is True:
@@ -184,13 +228,6 @@ def _escrever_linha_nota(ws, linha: int, dados: dict, fill: PatternFill) -> None
                 cell.font = _FONT_CANCELADA
             elif valor_bruto == "Ativa":
                 cell.font = _FONT_ATIVA
-            continue
-
-        # --- Coluna Chave de Acesso ---
-        if col_idx == _IDX_CHAVE:
-            cell.value = valor_bruto
-            cell.font = _FONT_CHAVE
-            cell.alignment = _ALINHAMENTO_ESQUERDA
             continue
 
         # --- Demais colunas ---
@@ -227,8 +264,7 @@ def _preencher_resumo(
     lista_dados: list[dict],
     cnpj: str,
     razao_social: str,
-    ano: int,
-    mes: int,
+    periodo: str,
 ) -> None:
     """Preenche a aba 'Resumo' com totalizadores do período."""
     notas_ativas     = [d for d in lista_dados if d.get("situacao") != "Cancelada"]
@@ -251,7 +287,7 @@ def _preencher_resumo(
     fonte_rotulo = Font(bold=True)
 
     linhas = [
-        ("Período de Competência",              f"{mes:02d}/{ano}"),
+        ("Período de Competência",              periodo),
         ("CNPJ do Prestador",                   _formatar_cnpj(cnpj)),
         ("Razão Social",                        razao_social),
         (None,                                  None),

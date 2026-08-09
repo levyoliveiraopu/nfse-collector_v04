@@ -17,9 +17,11 @@ from __future__ import annotations
 
 import os
 import uuid
+from io import BytesIO
 from datetime import datetime, timezone, timedelta
 
 import pytest
+from openpyxl import load_workbook
 
 pytestmark = pytest.mark.skipif(
     not os.getenv("TEST_DATABASE_URL"),
@@ -84,6 +86,7 @@ def _seed(
     xml_bytes_each: int = 200,
     period_start=None,
     period_end=None,
+    export_kind: str = "zip_xml",
 ) -> dict:
     """Semeia 1 tenant + 1 company + 1 execution + N itens + N XMLs no S3.
 
@@ -159,8 +162,8 @@ def _seed(
                 "INSERT INTO exports "
                 "(id, tenant_id, company_id, requested_by_user_id, kind, "
                 " period_start, period_end, status) "
-                "VALUES (%s, %s, %s, %s, 'zip_xml', %s, %s, 'queued')",
-                (export_id, tid, cid, uid, pstart, pend),
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, 'queued')",
+                (export_id, tid, cid, uid, export_kind, pstart, pend),
             )
 
     return {
@@ -298,3 +301,20 @@ def test_build_export_periodo_vazio_marca_empty(db_env, s3_env, clean_db) -> Non
                 (seed["tenant_id"],),
             )
             assert cur.fetchone()[0] == 0
+
+
+def test_build_export_excel_nfse(db_env, s3_env, clean_db) -> None:
+    from worker_core.jobs import build_export
+
+    with mock_aws():
+        seed = _seed(n_items=1, export_kind="excel_nfse")
+        result = build_export(seed["export_id"])
+        assert result["object_key"].endswith(".xlsx")
+        import boto3
+
+        payload = boto3.client("s3", region_name="us-east-1").get_object(
+            Bucket=BUCKET, Key=result["object_key"]
+        )["Body"].read()
+
+    workbook = load_workbook(BytesIO(payload))
+    assert workbook.sheetnames == ["Notas Emitidas", "Resumo"]

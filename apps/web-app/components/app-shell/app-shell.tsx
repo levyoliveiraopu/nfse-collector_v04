@@ -4,6 +4,9 @@ import { useCallback, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
+import { HelpPanel } from "@/components/help/help-panel";
+import { HelpTour } from "@/components/help/help-tour";
+import { useHelp } from "@/components/help/help-provider";
 
 type AppShellProps = {
   children: React.ReactNode;
@@ -17,6 +20,7 @@ type AppShellProps = {
  * - Landmarks ARIA (aside/header/main/nav) e skip-link para conteudo principal.
  */
 export function AppShell({ children }: AppShellProps) {
+  const { open: helpOpen } = useHelp();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -46,6 +50,7 @@ export function AppShell({ children }: AppShellProps) {
         className={cn(
           "flex min-h-screen flex-col transition-[padding] duration-200 ease-out",
           collapsed ? "lg:pl-16" : "lg:pl-64",
+          helpOpen && "xl:pr-[440px]",
         )}
       >
         <Topbar
@@ -57,11 +62,14 @@ export function AppShell({ children }: AppShellProps) {
         <main
           id="main-content"
           tabIndex={-1}
+          data-help-id="page-content"
           className="flex-1 p-4 focus-visible:outline-none md:p-6 lg:p-8"
         >
           {children}
         </main>
       </div>
+      <HelpPanel />
+      <HelpTour />
     </div>
   );
 }

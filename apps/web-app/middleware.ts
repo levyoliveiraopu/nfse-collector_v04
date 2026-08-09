@@ -26,6 +26,7 @@ export const config = {
     "/agendamentos/:path*",
     "/ocorrencias/:path*",
     "/arquivos/:path*",
+    "/ajuda/:path*",
     "/usuarios/:path*",
   ],
 };

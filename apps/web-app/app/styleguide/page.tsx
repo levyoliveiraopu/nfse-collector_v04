@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { CNPJInputDemo } from "./cnpj-input-demo";
 import { ConfirmDialogDemo } from "./confirm-dialog-demo";
@@ -252,7 +253,15 @@ console.log(\`hello \${tenant}\`);`}
         title="DataTable"
         description="DS-06 — tabela reutilizavel server-side (TanStack Table + react-query) com filtros (texto/select/date-range), saved filters, paginacao, ordenacao, export CSV e preservacao de estado na URL. Dataset de demo com 10.000 linhas mockadas."
       >
-        <DataTableDemo />
+        <Suspense
+          fallback={
+            <p className="text-sm text-muted-foreground" role="status">
+              Carregando tabela...
+            </p>
+          }
+        >
+          <DataTableDemo />
+        </Suspense>
       </Section>
 
       <Section

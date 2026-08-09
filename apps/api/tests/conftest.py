@@ -45,6 +45,7 @@ RLS_TABLES: tuple[str, ...] = (
     "schedules",
     "audit_logs",
     "subscriptions",
+    "help_metrics_daily",
 )
 
 # Tabelas cuja policy filtra por `tenant_id = GUC`. Excluem `tenants`
@@ -55,7 +56,7 @@ RLS_TABLES_WITH_TENANT_ID: tuple[str, ...] = tuple(
 
 TRUNCATE_SQL = (
     "TRUNCATE "
-    "subscriptions, audit_logs, schedules, files, "
+    "help_metrics_daily, subscriptions, audit_logs, schedules, files, "
     "refresh_tokens, notifications, reprocess_jobs, "
     "occurrences, execution_items, executions, "
     "company_credentials, companies, tenant_users, "
@@ -83,6 +84,7 @@ class TenantSeed:
     schedule_id: uuid.UUID
     audit_log_id: int
     subscription_id: uuid.UUID
+    help_metric_day: str
 
 
 def _normalize_dsn(url: str) -> str:
@@ -230,6 +232,15 @@ def _seed_tenant(conn, *, slug: str, email: str) -> TenantSeed:
     )
     subscription_id = cur.fetchone()[0]
 
+    cur.execute(
+        "INSERT INTO help_metrics_daily "
+        "(tenant_id, day, role, event_type, article_slug, route_key, tour_id) "
+        "VALUES (%s, CURRENT_DATE, 'owner', 'article_opened', "
+        "        'dashboard', 'dashboard', '') RETURNING day",
+        (tenant_id,),
+    )
+    help_metric_day = str(cur.fetchone()[0])
+
     cur.close()
 
     return TenantSeed(
@@ -248,6 +259,7 @@ def _seed_tenant(conn, *, slug: str, email: str) -> TenantSeed:
         schedule_id=schedule_id,
         audit_log_id=audit_log_id,
         subscription_id=subscription_id,
+        help_metric_day=help_metric_day,
     )
 
 
