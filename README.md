@@ -84,6 +84,9 @@ continuar funcionando como CLI single-tenant.
 
 ## Orientacao rapida
 
+- **docs/deploy-oracle-free.md** — subir o sistema inteiro (com HTTPS) em uma
+  VM gratuita para testes, via `infra/oracle/setup.sh` (self-host: Postgres +
+  Redis + MinIO + Caddy, sem servico externo pago).
 - **STATE.md** — estado atual do projeto (fonte unica de verdade).
 - **CHANGELOG.md** — historico de merges, agrupado por PR.
 - **SETUP.md** — guia do **coletor legado** (CLI single-tenant). Para

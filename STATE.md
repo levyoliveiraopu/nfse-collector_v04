@@ -87,6 +87,22 @@
   atualizar o item correspondente no checklist, registrar a evidencia
   neste arquivo e atualizar o `CHANGELOG.md` quando houver mudanca de
   comportamento, seguranca, deploy, API, worker ou UI.
+  - **2026-08-06 - Deploy self-host gratuito para testes (PR #168):**
+    adicionado caminho de deploy que sobe toda a stack em uma unica VM
+    gratuita (ex: Oracle Cloud Always Free), sem servico externo pago:
+    `docs/deploy-oracle-free.md`, `infra/oracle/setup.sh`,
+    `infra/oracle/cloud-init.yaml`, `infra/compose/docker-compose.selfhost.yml`,
+    `infra/compose/caddy/Caddyfile` e `infra/compose/.env.selfhost.example`.
+    Builda as imagens na propria VM e adiciona MinIO (storage S3 local, no
+    lugar do Backblaze B2) e Caddy (HTTPS automatico via Let's Encrypt);
+    painel em `/` e API em `/backend` (mesma origem, sem CORS), com CORS
+    opcional via `API_CORS_ORIGINS`. As correcoes de boot/login que este PR
+    tambem trazia ja entraram em `main` via #170 (ver entradas 2026-08-07
+    abaixo); apos o merge de `main`, #168 fica focado no deploy. Evidencias
+    locais: `docker compose config` valida o merge base+selfhost; round-trip
+    S3 contra MinIO (put/get/URL pre-assinada/download) e boot do worker RQ
+    OK; `ruff check .` e `pytest tests apps/api/tests apps/worker/tests`
+    verdes.
   - **2026-08-07 - Stack Docker local completa (`nfse-local`):** ambiente
     isolado para Docker Desktop entregue com PostgreSQL, Redis, MinIO, API,
     worker, scheduler, web-app e Caddy, expondo somente

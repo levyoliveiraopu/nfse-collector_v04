@@ -1,0 +1,50 @@
+#cloud-config
+# =============================================================================
+# Instalação 100% automática na criação da VM (Oracle Cloud / qualquer nuvem).
+#
+# COMO USAR:
+#   1. Edite as DUAS linhas marcadas abaixo (DOMAIN e ACME_EMAIL).
+#   2. Ao criar a VM na Oracle, abra "Show advanced options" -> aba
+#      "Management" -> campo "User data" -> "Paste cloud-init script" e cole
+#      TODO o conteúdo deste arquivo.
+#   3. Crie a VM. Ela instala sozinha no primeiro boot (Docker, segredos,
+#      build das imagens, migrations, HTTPS). Leva ~5-10 min.
+#
+# Acompanhar depois (via SSH): sudo tail -f /var/log/nfse-setup.log
+# =============================================================================
+package_update: true
+packages:
+  - git
+  - curl
+
+write_files:
+  - path: /opt/nfse-bootstrap.sh
+    permissions: '0755'
+    content: |
+      #!/usr/bin/env bash
+      set -euxo pipefail
+
+      # ============ EDITE ESTAS DUAS LINHAS ============
+      DOMAIN="SEU_DOMINIO"          # ex: nfse-teste.duckdns.org
+      ACME_EMAIL="SEU_EMAIL"        # ex: voce@gmail.com
+      # =================================================
+
+      # Branch do deploy (troque para "main" depois que o PR for mergeado).
+      BRANCH="claude/sistema-testes-internet-ap40rm"
+      REPO="https://github.com/levyoliveiraopu/nfse-collector_v04.git"
+
+      if [ ! -d /opt/nfse/.git ]; then
+        git clone "$REPO" /opt/nfse
+      fi
+      cd /opt/nfse
+      git fetch --all --prune || true
+      git checkout "$BRANCH" || true
+      git pull --ff-only || true
+
+      # setup.sh instala Docker, abre firewall, gera segredos, builda,
+      # roda migrations e sobe tudo. Recebe dominio + email por argumento
+      # (não faz perguntas interativas).
+      bash infra/oracle/setup.sh "$DOMAIN" "$ACME_EMAIL"
+
+runcmd:
+  - [ bash, -lc, "/opt/nfse-bootstrap.sh >> /var/log/nfse-setup.log 2>&1" ]

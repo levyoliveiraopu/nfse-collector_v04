@@ -109,6 +109,20 @@ class Settings(BaseSettings):
         validation_alias="API_JOB_TIMEOUT_SECONDS",
     )
 
+    # -----------------------------------------------------------------
+    # CORS
+    # -----------------------------------------------------------------
+    # Origens permitidas para chamadas cross-origin do browser (painel).
+    # Lista separada por virgula (ex: "https://app.exemplo.com").
+    # Vazio (default) = CORS desligado; use quando o painel e a API
+    # compartilham a mesma origem (ex: painel em / e API em /backend).
+    cors_origins: str = Field(default="", validation_alias="API_CORS_ORIGINS")
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        """Origens CORS parseadas da string separada por virgula."""
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
     @model_validator(mode="after")
     def _validate_auth_secrets(self) -> "Settings":
         if self.environment in ("staging", "production") and not self.jwt_secret:
